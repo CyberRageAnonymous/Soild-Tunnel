@@ -2,6 +2,7 @@ package com.soildtunnel.app.core
 
 import IPtProxy.Controller
 import IPtProxy.IPtProxy as PtProxy
+import IPtProxy.OnTransportEvents
 import android.content.Context
 import com.soildtunnel.app.R
 import com.soildtunnel.app.model.ConnectionProfile
@@ -27,6 +28,19 @@ object TorManager {
     private var torDir: File? = null
     private var ptController: Controller? = null
 
+    /**
+     * Transport callbacks run on Go threads and have nowhere useful to go in
+     * the UI — except errors, which are worth one log line. Passed explicitly
+     * instead of null: the bridge does not accept a missing listener.
+     */
+    private val silentEvents = object : OnTransportEvents {
+        override fun connected(methodName: String) {}
+        override fun error(methodName: String, e: Exception) {
+            DiagnosticsLog.w(TAG, "Transport $methodName reported: ${e.message}")
+        }
+        override fun stopped(methodName: String, e: Exception) {}
+    }
+
     @Volatile
     var running = false
         private set
@@ -50,8 +64,17 @@ object TorManager {
         val iptDir = File(filesDir, "ipt-state").apply { mkdirs() }
         ensureGeoip(context, dir)
 
-        val controller = PtProxy.newController(iptDir.absolutePath, false, false, "WARN", null)
-            ?: throw IllegalStateException("Transport backend failed to start.")
+        val controller = try {
+            PtProxy.newController(iptDir.absolutePath, false, false, "WARN", silentEvents)
+                ?: throw IllegalStateException("Transport backend failed to start.")
+        } catch (t: Throwable) {
+            // Anything the bridge throws here (including a null listener it
+            // refuses) must surface as a readable error, not a silent death.
+            if (t is CancellationException) throw t
+            throw IllegalStateException(
+                "Transport backend failed (${t.javaClass.simpleName}: ${t.message})",
+            )
+        }
         ptController = controller
         DiagnosticsLog.i(
             TAG,
@@ -72,7 +95,11 @@ object TorManager {
             controller.snowflakeFrontDomains = TorDefaults.SNOWFLAKE_FRONT
             controller.snowflakeMaxPeers = 1
             runCatching { controller.start("snowflake", "") }
-                .onFailure { throw IllegalStateException("Snowflake failed to start.") }
+                .onFailure {
+                    throw IllegalStateException(
+                        "Snowflake failed to start (${it.javaClass.simpleName}: ${it.message})",
+                    )
+                }
             snowflakePort = controller.port("snowflake")
             if (snowflakePort <= 0) throw IllegalStateException("Snowflake failed to start.")
             DiagnosticsLog.i(TAG, "Snowflake listening on 127.0.0.1:$snowflakePort")
@@ -82,7 +109,11 @@ object TorManager {
             runCatching {
                 controller.start("obfs4", "")
                 controller.start("webtunnel", "")
-            }.onFailure { throw IllegalStateException("Bridge transport failed to start.") }
+            }.onFailure {
+                throw IllegalStateException(
+                    "Bridge transport failed to start (${it.javaClass.simpleName}: ${it.message})",
+                )
+            }
             obfs4Port = controller.port("obfs4")
             webtunnelPort = controller.port("webtunnel")
             if (obfs4Port <= 0) throw IllegalStateException("Bridge transport failed to start.")
