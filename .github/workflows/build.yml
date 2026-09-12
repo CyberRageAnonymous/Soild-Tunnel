@@ -445,12 +445,18 @@ jobs:
           echo "Built APKs:"
           ls -la "$OUT"
 
-      # Publish a Release on every successful build: each APK shows up as its
-      # own downloadable asset. The release TITLE is just "SoildTunnel vX.Y.Z"
+      # Publish a Release on every successful MAIN build: each APK shows up as
+      # its own downloadable asset. The release TITLE is just "SoildTunnel vX.Y.Z"
       # (no "(build N)" suffix); the tag still embeds the run number so every
       # build gets a unique tag. The "What's new" body comes from
       # .github/release-notes.md - update that file whenever the version changes.
+      #
+      # Branch builds NEVER publish: a public release flips `releases/latest`,
+      # which is exactly what the in-app updater points at — an untested
+      # branch build must not offer itself as an update. Test APKs from
+      # branches land as run artifacts instead (next step).
       - name: Publish GitHub Release
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}-build.{1}', env.VERSION_NAME, github.run_number) }}
@@ -458,3 +464,13 @@ jobs:
           files: artifacts/*.apk
           make_latest: true
           body_path: .github/release-notes.md
+
+      # Test builds (feature branches): no public release, just downloadable
+      # APKs attached to the workflow run for sideload testing.
+      - name: Upload test APKs (branch builds only)
+        if: github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoildTunnel-test-apks
+          path: artifacts/*.apk
+          retention-days: 14

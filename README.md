@@ -14,7 +14,7 @@ liquid-glass interface.
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Android-3DDC84.svg)]()
 [![Min SDK](https://img.shields.io/badge/API-26%2B-green.svg)]()
-[![Version](https://img.shields.io/badge/Version-1.0.4-orange.svg)]()
+[![Version](https://img.shields.io/badge/Version-1.0.5-orange.svg)]()
 
 </div>
 
@@ -41,6 +41,7 @@ No accounts. No logs. No trackers. One tap and you're free.
 | **MASQUE** | Disguises tunnel traffic as normal HTTPS/HTTP2 browsing. Hardest to detect. |
 | **WireGuard** | Blazing-fast modern VPN protocol. Best speed when not blocked. |
 | **GOOL** | Double-tunnel mode (WARP inside WARP) for maximum anti-DPI. |
+| **Tor** | Routes the whole device through the Tor network (Direct, Snowflake, or your own bridges) with a pinnable exit country. |
 | **Smart Auto** | Fingerprints your network's DPI and picks the best protocol automatically. |
 
 ### Anti-DPI Obfuscation
@@ -102,6 +103,26 @@ Choose from pre-configured Cloudflare WARP edge nodes or let Smart Auto scan
 and pick the fastest gateway. Servers are pinged live with color-coded
 latency badges.
 
+### Tor Mode
+
+Pick **Tor** as the protocol and the whole device goes through the Tor
+network instead of WARP — no WARP engine involved:
+
+- **Three entries** — Direct, Snowflake (automatic, no setup), or your own
+  `Bridge …` lines (obfs4 / webtunnel / snowflake)
+- **Exit country picker** — pin where traffic leaves Tor, or leave it on
+  Auto. Switching countries while connected rebuilds circuits live
+- Same TUN, kill switch, split tunneling and per-app blocking as WARP mode
+
+Tor is slower than WARP by nature (three hops around the world) and the
+first connect can take a few minutes. In Tor mode the tunnel is IPv4-only
+and non-DNS UDP is dropped.
+
+### Appearance
+
+Dark glass by default, with a Light theme and System-follow option in the
+Theme card in settings.
+
 ---
 
 ## Architecture
@@ -153,9 +174,9 @@ Grab the latest signed APK from the
 
 | File | Device | Notes |
 |------|--------|-------|
-| `SoildTunnel-1.0.4-arm64-v8a.apk` | Modern 64-bit phones | **Recommended** |
-| `SoildTunnel-1.0.4-armeabi-v7a.apk` | Older 32-bit phones | |
-| `SoildTunnel-1.0.4-universal.apk` | Any Android device | Largest file |
+| `SoildTunnel-1.0.5-arm64-v8a.apk` | Modern 64-bit phones | **Recommended** |
+| `SoildTunnel-1.0.5-armeabi-v7a.apk` | Older 32-bit phones | |
+| `SoildTunnel-1.0.5-universal.apk` | Any Android device | Largest file |
 
 **Installation:**
 1. Download the APK for your device architecture
@@ -195,7 +216,7 @@ bash scripts/build-natives.sh soildtunnel
 
 The release build is fully automated via
 [`.github/workflows/build.yml`](.github/workflows/build.yml) — push a tag
-(`v1.0.4`) and GitHub Actions builds, signs, and publishes the APKs.
+(`v1.0.5`) and GitHub Actions builds, signs, and publishes the APKs.
 
 ---
 
@@ -204,7 +225,9 @@ The release build is fully automated via
 ### Transport
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Protocol | Smart Auto | MASQUE, WireGuard, GOOL, or Auto |
+| Protocol | Smart Auto | MASQUE, WireGuard, GOOL, Tor, or Auto |
+| Tor entry | Snowflake | Direct, Snowflake, or custom bridges |
+| Tor exit | Auto | Pinned exit country, or Auto |
 | Scan Mode | Balanced | TURBO/BALANCED/THOROUGH/STEALTH/IRONCLAD |
 | IP Version | IPv4 | IPv4, IPv6, or Both |
 | MASQUE HTTP/2 | Off | Force HTTP/2 for MASQUE (bypasses QUIC blocks) |

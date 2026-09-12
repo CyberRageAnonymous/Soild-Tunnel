@@ -1,16 +1,14 @@
-# SoildTunnel v1.0.4
+# SoildTunnel v1.0.5
 
-New features, bug fixes, and UI improvements.
+Tor mode, light theme, and stability improvements.
 
 **New features:**
-- **DNS ad blocking** — filter ads and trackers via Cloudflare Family DNS (1.1.1.3). Toggle in Settings > DNS.
-- **Malware protection** — block known phishing and malware domains via Cloudflare DNS security (1.1.1.2). Toggle in Settings > DNS.
+- **Tor mode** — route the whole device through the Tor network: pick Tor as the protocol, choose Direct, Snowflake (automatic, no setup) or your own bridges, and pin an exit country. The exit can be switched live from the home screen while connected.
+- **Light theme** — the app now follows the system theme, or pin Dark / Light from the new Theme card in settings.
 
-**Bug fixes:**
-- **Server country display** — server list now always shows the correct country name and flag instead of the Cloudflare edge location. The actual exit country is shown in the connection card after connecting.
-- **Stable exit IP** — auto-reprovision is now off by default, so your exit IP stays the same across reconnections. Re-enable in Settings > Security if needed.
+**Notes:**
+- Tor is slower than WARP by design (three hops around the world) and the first connect can take a few minutes while circuits are built.
+- In Tor mode the tunnel is IPv4-only and UDP other than DNS is dropped, like other Tor VPNs.
+- The app is bigger this release: it now ships the Tor daemon, Snowflake/obfs4 transports and Tor's country database.
 
-**UI improvements:**
-- **Liquid glass connect button** — enhanced with depth sheen overlay and secondary glow for a more premium feel.
-
-Version: SoildTunnel 1.0.4 (version code 5).
+Version: SoildTunnel 1.0.5 (version code 6).
