@@ -26,7 +26,15 @@ object TorManager {
 
     private var process: Process? = null
     private var torDir: File? = null
+    /**
+     * The transport backend lives as long as the app process: its Go side
+     * registers transports globally and refuses a second registration, so a
+     * fresh controller per connect would die on every reconnect after the
+     * first. One controller, started transports toggled per session.
+     */
     private var ptController: Controller? = null
+    /** Transports actually started this session — only these get stopped. */
+    private val liveTransports = mutableSetOf<String>()
 
     /**
      * Transport callbacks run on Go threads and have nowhere useful to go in
@@ -63,26 +71,29 @@ object TorManager {
         torDir = dir
         ensureGeoip(context, dir)
 
-        DiagnosticsLog.i(
-            TAG,
-            "Transports: snowflake ${PtProxy.snowflakeVersion()}, ${PtProxy.lyrebirdVersion()}",
-        )
         val iptDir = File(filesDir, "ipt-state")
         checkStateDir(iptDir)
 
-        val controller = try {
-            PtProxy.newController(iptDir.absolutePath, true, false, "WARN", silentEvents)
-                ?: throw IllegalStateException(readableNilReason(iptDir))
-        } catch (t: Throwable) {
-            // Anything the bridge throws here must surface as a readable
-            // error, not a silent death.
-            if (t is CancellationException) throw t
-            if (t is IllegalStateException) throw t
-            throw IllegalStateException(
-                "Transport backend failed (${t.javaClass.simpleName}: ${t.message})",
+        var controller = ptController
+        if (controller == null) {
+            controller = try {
+                PtProxy.newController(iptDir.absolutePath, true, false, "WARN", silentEvents)
+                    ?: throw IllegalStateException(readableNilReason(iptDir))
+            } catch (t: Throwable) {
+                // Anything the bridge throws here must surface as a readable
+                // error, not a silent death.
+                if (t is CancellationException) throw t
+                if (t is IllegalStateException) throw t
+                throw IllegalStateException(
+                    "Transport backend failed (${t.javaClass.simpleName}: ${t.message})",
+                )
+            }
+            ptController = controller
+            DiagnosticsLog.i(
+                TAG,
+                "Transports: snowflake ${PtProxy.snowflakeVersion()}, ${PtProxy.lyrebirdVersion()}",
             )
         }
-        ptController = controller
 
         val bridges = userBridges(profile)
         val wantSnowflake = profile.torTransport == TorTransport.SNOWFLAKE ||
@@ -105,6 +116,7 @@ object TorManager {
                 }
             snowflakePort = controller.port("snowflake")
             if (snowflakePort <= 0) throw IllegalStateException("Snowflake failed to start.")
+            liveTransports += "snowflake"
             DiagnosticsLog.i(TAG, "Snowflake listening on 127.0.0.1:$snowflakePort")
         }
         if (profile.torTransport == TorTransport.CUSTOM) {
@@ -120,6 +132,8 @@ object TorManager {
             obfs4Port = controller.port("obfs4")
             webtunnelPort = controller.port("webtunnel")
             if (obfs4Port <= 0) throw IllegalStateException("Bridge transport failed to start.")
+            liveTransports += "obfs4"
+            liveTransports += "webtunnel"
         }
 
         File(dir, "torrc").writeText(
@@ -185,11 +199,11 @@ object TorManager {
             }
         }
         ptController?.let { controller ->
-            runCatching { controller.stop("snowflake") }
-            runCatching { controller.stop("obfs4") }
-            runCatching { controller.stop("webtunnel") }
+            liveTransports.toList().forEach { name ->
+                runCatching { controller.stop(name) }
+            }
         }
-        ptController = null
+        liveTransports.clear()
     }
 
     /** Parks the caller until tor exits or the timeout elapses. */
