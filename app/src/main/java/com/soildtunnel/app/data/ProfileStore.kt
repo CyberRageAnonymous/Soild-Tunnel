@@ -18,7 +18,6 @@ import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.model.ScanMode
 import com.soildtunnel.app.model.SplitMode
 import com.soildtunnel.app.model.TeamAuth
-import com.soildtunnel.app.model.TorTransport
 
 private val Context.dataStore by preferencesDataStore(name = "soildtunnel_profile")
 
@@ -76,8 +75,6 @@ class ProfileStore(private val context: Context) {
         val autoReprovision = booleanPreferencesKey("autoReprovision")
         val dnsAdBlock = booleanPreferencesKey("dnsAdBlock")
         val dnsMalwareBlock = booleanPreferencesKey("dnsMalwareBlock")
-        val torTransport = stringPreferencesKey("torTransport")
-        val torBridges = stringPreferencesKey("torBridges")
         val torExitCountry = stringPreferencesKey("torExitCountry")
     }
 
@@ -154,9 +151,6 @@ class ProfileStore(private val context: Context) {
             autoReprovision = prefs[Keys.autoReprovision] ?: false,
             dnsAdBlock = prefs[Keys.dnsAdBlock] ?: false,
             dnsMalwareBlock = prefs[Keys.dnsMalwareBlock] ?: false,
-            torTransport = prefs[Keys.torTransport]
-                ?.let { runCatching { TorTransport.valueOf(it) }.getOrNull() } ?: TorTransport.SNOWFLAKE,
-            torBridges = prefs[Keys.torBridges] ?: "",
             torExitCountry = prefs[Keys.torExitCountry] ?: "",
         )
     }
@@ -211,8 +205,6 @@ class ProfileStore(private val context: Context) {
             prefs[Keys.autoReprovision] = profile.autoReprovision
             prefs[Keys.dnsAdBlock] = profile.dnsAdBlock
             prefs[Keys.dnsMalwareBlock] = profile.dnsMalwareBlock
-            prefs[Keys.torTransport] = profile.torTransport.name
-            prefs[Keys.torBridges] = profile.torBridges
             prefs[Keys.torExitCountry] = profile.torExitCountry
         }
         // Secrets go to the Keystore-sealed store, never to the prefs file.

@@ -198,7 +198,7 @@ class SoildTunnelVpnService : VpnService() {
 
     /**
      * Tor mode: no WARP engine at all. TorManager boots the tor daemon
-     * (direct / Snowflake / custom bridges), then the TUN bridge forwards
+     * (direct entry), then the TUN bridge forwards
      * everything straight into tor's loopback SOCKS port. Same TUN, same
      * self-test gate and same kill-switch behavior as the engine path —
      * only the thing behind the SOCKS port is different.

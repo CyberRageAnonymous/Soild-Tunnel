@@ -306,18 +306,10 @@
     <!-- Tor mode -->
     <string name="protocol_tor">تور</string>
     <string name="tor_section">شبکه تور</string>
-    <string name="tor_transport_label">ورودی تور</string>
-    <string name="tor_transport_direct">مستقیم</string>
-    <string name="tor_transport_snowflake">اسنوفلیک (خودکار)</string>
-    <string name="tor_transport_custom">پل‌های من</string>
-    <string name="tor_transport_desc">تور چطور وارد شبکه شود. اسنوفلیک بدون هیچ تنظیمی کار می‌کند و بیشتر وقت‌ها جواب می‌دهد؛ وقتی جواب نداد از پل‌های خودت استفاده کن.</string>
-    <string name="tor_bridges_label">پل‌ها (هر خط یکی)</string>
-    <string name="tor_bridges_hint">Bridge obfs4 1.2.3.4:443 ABCDEF…</string>
-    <string name="tor_bridges_help">خط‌های «Bridge …» را بچسبان (obfs4، webtunnel یا snowflake)، با یا بدون کلمه Bridge اولش. خط‌هایی که با # شروع شوند رد می‌شوند.</string>
     <string name="tor_exit_label">کشور خروجی</string>
     <string name="tor_exit_auto">خودکار (سریع‌ترین)</string>
     <string name="tor_exit_desc">مشخص کن ترافیک از کدام کشور خارج شود. حالت خودکار سریع‌ترین خروجی را انتخاب می‌کند.</string>
-    <string name="tor_note">اولین اتصال ممکن است چند دقیقه طول بکشد تا تور مدار بسازد. در حالت تور تونل فقط IPv4 است و UDP به‌جز DNS رد نمی‌شود.</string>
+    <string name="tor_note">تور ذاتاً از WARP کندتر است و اولین اتصال ممکن است چند دقیقه طول بکشد تا مدار ساخته شود. در حالت تور تونل فقط IPv4 است.</string>
     <string name="tor_starting">در حال روشن کردن تور…</string>
     <string name="tor_bootstrap">در حال روشن کردن تور… %1$d%%</string>
     <string name="tor_exit_title">کشور خروجی تور</string>
