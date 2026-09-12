@@ -1,6 +1,6 @@
 package com.soildtunnel.app.core
 
-import IPtProxy.IPtProxy
+import IPtProxy.IPtProxy as PtProxy
 import android.content.Context
 import com.soildtunnel.app.R
 import com.soildtunnel.app.model.ConnectionProfile
@@ -46,7 +46,7 @@ object TorManager {
         val dir = File(filesDir, "tor-data").apply { mkdirs() }
         torDir = dir
         File(filesDir, "ipt-state").apply { mkdirs() }.also {
-            IPtProxy.setStateLocation(it.absolutePath)
+            PtProxy.setStateLocation(it.absolutePath)
         }
         ensureGeoip(context, dir)
 
@@ -59,7 +59,7 @@ object TorManager {
         var webtunnelPort = 0L
         if (wantSnowflake) {
             DiagnosticsLog.i(TAG, "Starting the Snowflake entry transport…")
-            snowflakePort = IPtProxy.startSnowflake(
+            snowflakePort = PtProxy.startSnowflake(
                 TorDefaults.SNOWFLAKE_ICE,
                 TorDefaults.SNOWFLAKE_BROKER,
                 TorDefaults.SNOWFLAKE_FRONT,
@@ -71,9 +71,9 @@ object TorManager {
         }
         if (profile.torTransport == TorTransport.CUSTOM) {
             DiagnosticsLog.i(TAG, "Starting Lyrebird for custom bridges…")
-            IPtProxy.startLyrebird("WARN", false, false, "")
-            obfs4Port = IPtProxy.obfs4Port()
-            webtunnelPort = IPtProxy.webtunnelPort()
+            PtProxy.startLyrebird("WARN", false, false, "")
+            obfs4Port = PtProxy.obfs4Port()
+            webtunnelPort = PtProxy.webtunnelPort()
             if (obfs4Port <= 0) throw IllegalStateException("Bridge transport failed to start.")
         }
 
@@ -131,8 +131,8 @@ object TorManager {
                 }
             }
         }
-        runCatching { IPtProxy.stopSnowflake() }
-        runCatching { IPtProxy.stopLyrebird() }
+        runCatching { PtProxy.stopSnowflake() }
+        runCatching { PtProxy.stopLyrebird() }
     }
 
     /** Parks the caller until tor exits or the timeout elapses. */

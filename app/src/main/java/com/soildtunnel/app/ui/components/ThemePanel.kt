@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.BrightnessMedium
+import androidx.compose.material.icons.rounded.BrightnessAuto
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.Card
@@ -71,7 +71,7 @@ fun ThemePanel(modifier: Modifier = Modifier) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    imageVector = Icons.Rounded.BrightnessMedium,
+                    imageVector = Icons.Rounded.BrightnessAuto,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
