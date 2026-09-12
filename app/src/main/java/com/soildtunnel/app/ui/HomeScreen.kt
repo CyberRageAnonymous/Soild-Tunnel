@@ -316,7 +316,7 @@ fun HomeScreen(
                 // telemetry console - see ConnectionCard.
                 ConnectionCard(
                     connected = state.isConnected,
-                    statusTitle = stateTitle(state),
+                    statusTitle = stateTitle(state, profile.protocol == Protocol.TOR),
                     statusCaption = stateSubtitle(state),
                     connectedSince = connectedSince,
                     ipInfo = ipInfo,
@@ -602,10 +602,13 @@ private fun HomePingBadge(nodeId: String) {
 }
 
 @Composable
-private fun stateTitle(state: ConnectionState): String = when (state) {
+private fun stateTitle(state: ConnectionState, isTor: Boolean = false): String = when (state) {
     is ConnectionState.Idle -> stringResource(R.string.state_idle)
-    is ConnectionState.Launching -> stringResource(R.string.state_launching)
-    is ConnectionState.Connecting -> stringResource(R.string.state_connecting)
+    // Tor mode never starts the engine — don't claim otherwise on screen.
+    is ConnectionState.Launching ->
+        stringResource(if (isTor) R.string.tor_starting else R.string.state_launching)
+    is ConnectionState.Connecting ->
+        stringResource(if (isTor) R.string.tor_starting else R.string.state_connecting)
     is ConnectionState.Verifying -> stringResource(R.string.state_verifying)
     is ConnectionState.Connected -> stringResource(R.string.state_connected)
     is ConnectionState.Reconnecting -> stringResource(R.string.state_reconnecting)

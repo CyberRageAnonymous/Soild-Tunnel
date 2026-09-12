@@ -80,6 +80,14 @@ object TorManager {
         File(dir, "torrc").writeText(
             buildTorrc(dir, profile, snowflakePort, obfs4Port, webtunnelPort),
         )
+        // Privacy note: only the SHAPE is logged (how many lines, how many
+        // parts each) — never the bridges themselves. A pasted bridge that
+        // got wrapped into two lines shows up here as a short fragment line,
+        // which is the classic "stuck at 10%" cause.
+        if (profile.torTransport == TorTransport.CUSTOM) {
+            val shapes = userBridges(profile).map { it.split(" ").size }
+            DiagnosticsLog.i(TAG, "Custom bridges in torrc: ${shapes.size} (parts: ${shapes.joinToString(",")})")
+        }
         val bin = File(context.applicationInfo.nativeLibraryDir, "libtor.so")
         if (!bin.exists()) throw IllegalStateException("Tor binary missing: ${bin.absolutePath}")
         runCatching { bin.setExecutable(true) }
