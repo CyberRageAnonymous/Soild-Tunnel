@@ -61,25 +61,28 @@ object TorManager {
         val filesDir = context.filesDir
         val dir = File(filesDir, "tor-data").apply { mkdirs() }
         torDir = dir
-        val iptDir = File(filesDir, "ipt-state").apply { mkdirs() }
         ensureGeoip(context, dir)
 
+        DiagnosticsLog.i(
+            TAG,
+            "Transports: snowflake ${PtProxy.snowflakeVersion()}, ${PtProxy.lyrebirdVersion()}",
+        )
+        val iptDir = File(filesDir, "ipt-state")
+        checkStateDir(iptDir)
+
         val controller = try {
-            PtProxy.newController(iptDir.absolutePath, false, false, "WARN", silentEvents)
-                ?: throw IllegalStateException("Transport backend failed to start.")
+            PtProxy.newController(iptDir.absolutePath, true, false, "WARN", silentEvents)
+                ?: throw IllegalStateException(readableNilReason(iptDir))
         } catch (t: Throwable) {
-            // Anything the bridge throws here (including a null listener it
-            // refuses) must surface as a readable error, not a silent death.
+            // Anything the bridge throws here must surface as a readable
+            // error, not a silent death.
             if (t is CancellationException) throw t
+            if (t is IllegalStateException) throw t
             throw IllegalStateException(
                 "Transport backend failed (${t.javaClass.simpleName}: ${t.message})",
             )
         }
         ptController = controller
-        DiagnosticsLog.i(
-            TAG,
-            "Transports: snowflake ${PtProxy.snowflakeVersion()}, ${PtProxy.lyrebirdVersion()}",
-        )
 
         val bridges = userBridges(profile)
         val wantSnowflake = profile.torTransport == TorTransport.SNOWFLAKE ||
@@ -246,6 +249,37 @@ object TorManager {
             false
         } ?: false
         if (!done) throw IllegalStateException("Tor could not bootstrap in time.")
+    }
+
+    /**
+     * The Go side only says "nil" when it cannot use this folder, so prove
+     * writability here first — with a message that names the actual problem.
+     */
+    private fun checkStateDir(dir: File) {
+        if (!dir.exists() && !dir.mkdirs()) {
+            throw IllegalStateException("State folder cannot be created: ${dir.absolutePath}")
+        }
+        val probe = File(dir, ".writetest")
+        try {
+            probe.writeBytes(byteArrayOf(1))
+            if (!probe.delete()) DiagnosticsLog.w(TAG, "State folder probe file lingers.")
+        } catch (e: Exception) {
+            throw IllegalStateException("State folder not writable: ${dir.absolutePath} (${e.message})")
+        }
+    }
+
+    /**
+     * The Go backend reports failure only as nil. Its own file log (when it
+     * got far enough to open one) usually names the real cause — surface it.
+     */
+    private fun readableNilReason(dir: File): String {
+        val tail = runCatching {
+            File(dir, "ipt.log").takeIf { it.exists() }
+                ?.bufferedReader()?.useLines { lines -> lines.toList().takeLast(6) }
+                ?.joinToString(" | ")?.take(600)
+        }.getOrNull().orEmpty()
+        return if (tail.isNotBlank()) "Transport backend refused to start: $tail"
+        else "Transport backend refused to start (no backend log)."
     }
 
     /**
