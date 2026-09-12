@@ -313,7 +313,7 @@
     <string name="tor_transport_desc">How Tor enters the network. Snowflake needs no setup and works in most cases; use your own bridges when it doesn\'t.</string>
     <string name="tor_bridges_label">Bridges (one per line)</string>
     <string name="tor_bridges_hint">Bridge obfs4 1.2.3.4:443 ABCDEF…</string>
-    <string name="tor_bridges_help">Paste full “Bridge …” lines (obfs4, webtunnel or snowflake). Anything else is ignored.</string>
+    <string name="tor_bridges_help">Paste “Bridge …” lines (obfs4, webtunnel or snowflake), with or without the leading word Bridge. Lines starting with # are skipped.</string>
     <string name="tor_exit_label">Exit country</string>
     <string name="tor_exit_auto">Auto (fastest)</string>
     <string name="tor_exit_desc">Pin where traffic leaves the Tor network. Auto picks the fastest exit.</string>

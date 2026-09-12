@@ -50,10 +50,13 @@ fun ThemePanel(modifier: Modifier = Modifier) {
 
     fun pick(mode: ThemeMode) {
         if (mode == current) return
-        scope.launch { store.setMode(mode) }
-        // Colors resolve through a process-wide flag, so rebuild the
-        // activity to re-read every one of them — same as the language switch.
-        (context as? android.app.Activity)?.recreate()
+        // The write MUST finish before the rebuild: this scope dies with the
+        // old activity, so recreating first cancels a still-running save and
+        // the new activity reads back the old theme — stuck forever.
+        scope.launch {
+            store.setMode(mode)
+            (context as? android.app.Activity)?.recreate()
+        }
     }
 
     Card(

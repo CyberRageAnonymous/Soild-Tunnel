@@ -24,7 +24,7 @@ object TorDefaults {
 
     /** The stock Snowflake bridge every Tor client ships with. */
     const val SNOWFLAKE_BRIDGE =
-        "Bridge snowflake 192.0.2.3:1 2B280B23E1107BB62ABFC40DDCCAD709A42D255ED"
+        "Bridge snowflake 192.0.2.3:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72"
 
     /**
      * Countries offered in the exit picker. Kept to places that reliably run

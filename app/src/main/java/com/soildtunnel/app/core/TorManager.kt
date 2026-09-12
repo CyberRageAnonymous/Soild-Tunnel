@@ -194,13 +194,19 @@ object TorManager {
         if (!done) throw IllegalStateException("Tor could not bootstrap in time.")
     }
 
-    /** The user's bridges, cleaned up: real Bridge lines only, capped. */
+    /**
+     * The user's bridges, lightly cleaned. Lines may be pasted with or
+     * without the leading "Bridge" (bots share both shapes) and "#" comments
+     * are skipped. Tor itself validates each line and warns in the log about
+     * the ones it cannot use, so nothing is silently dropped here.
+     */
     fun userBridges(profile: ConnectionProfile): List<String> =
         profile.torBridges.lineSequence()
             .map { it.trim() }
-            .filter { it.startsWith("Bridge ") && it.length <= 400 }
+            .filter { it.isNotEmpty() && it.length <= 400 && !it.startsWith("#") }
+            .map { if (it.startsWith("Bridge ")) it else "Bridge $it" }
             .take(20)
-            .map { "Bridge " + it.removePrefix("Bridge ").split(Regex("\\s+")).joinToString(" ") }
+            .map { it.split(Regex("\\s+")).joinToString(" ") }
             .toList()
 
     fun buildTorrc(
