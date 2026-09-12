@@ -25,18 +25,24 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.soildtunnel.app.core.SoildTunnelController
+import com.soildtunnel.app.core.DiagnosticsLog
 import com.soildtunnel.app.core.IpEndpoint
 import com.soildtunnel.app.core.NetProbe
+import com.soildtunnel.app.core.TorDefaults
+import com.soildtunnel.app.core.TorManager
 import com.soildtunnel.app.core.TunnelConfig
 import com.soildtunnel.app.data.OnboardingStore
 import com.soildtunnel.app.data.ProfileStore
+import com.soildtunnel.app.data.ThemeStore
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.ConnectionState
+import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.model.isBusy
 import com.soildtunnel.app.model.isConnected
 import com.soildtunnel.app.ui.HomeScreen
 import com.soildtunnel.app.ui.OnboardingScreen
 import com.soildtunnel.app.ui.theme.SoildTunnelTheme
+import com.soildtunnel.app.ui.theme.ThemeMode
 import java.io.File
 
 class MainActivity : ComponentActivity() {
@@ -45,6 +51,8 @@ class MainActivity : ComponentActivity() {
 
     /** Feature merge: first-run onboarding gate. */
     private lateinit var onboardingStore: OnboardingStore
+
+    private lateinit var themeStore: ThemeStore
 
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(com.soildtunnel.app.core.LocaleStore.wrap(newBase))
@@ -88,6 +96,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         profileStore = ProfileStore(applicationContext)
         onboardingStore = OnboardingStore(applicationContext)
+        themeStore = ThemeStore(applicationContext)
 
         // Load the persisted profile ONCE as the initial UI state; from then
         // on the in-memory state is the single source of truth for the UI.
@@ -124,7 +133,8 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            SoildTunnelTheme {
+            val themeMode by themeStore.mode.collectAsState(initial = ThemeMode.SYSTEM)
+            SoildTunnelTheme(themeMode = themeMode) {
                 // Feature merge: first-run onboarding gate. initial =
                 // true so upgrading users never see a flash of the pager; a
                 // fresh install flips to the pager as soon as the (fast)
@@ -175,10 +185,14 @@ class MainActivity : ComponentActivity() {
                                 SoildTunnelController.ipInfo.first { it?.viaTunnel == true }
                             }
                             if (SoildTunnelController.ipInfo.value?.viaTunnel != true) {
+                                // Tor mode listens on its own loopback port, not the engine's.
+                                val socksPort =
+                                    if (profile?.protocol == Protocol.TOR) TorDefaults.SOCKS_PORT
+                                    else TunnelConfig.SOCKS_PORT
                                 val info = withContext(Dispatchers.IO) {
                                     NetProbe.fetchIpInfoViaSocksWithRetry(
                                         TunnelConfig.SOCKS_HOST,
-                                        TunnelConfig.SOCKS_PORT,
+                                        socksPort,
                                     )
                                 }
                                 if (info != null) {
@@ -225,6 +239,7 @@ class MainActivity : ComponentActivity() {
                                 profileSaves.tryEmit(updated)
                             },
                             onToggleConnection = { toggleConnection(state) },
+                            onTorExitSelected = { onTorExitSelected(it) },
                         )
                     }
                 }
@@ -246,6 +261,42 @@ class MainActivity : ComponentActivity() {
             } else {
                 SoildTunnelController.connect(this@MainActivity, profile)
             }
+        }
+    }
+
+    /**
+     * Tor exit pick from the home screen: saved like any other setting, and
+     * when a Tor session is already up it is pushed live over the control
+     * port instead of waiting for the next connect.
+     */
+    private fun onTorExitSelected(code: String) {
+        val updated = (uiProfile.value ?: return).copy(torExitCountry = code)
+        uiProfile.value = updated
+        profileSaves.tryEmit(updated)
+        lifecycleScope.launch(Dispatchers.IO) {
+            if (TorManager.isAlive()) {
+                val ok = TorManager.switchExitCountry(code)
+                DiagnosticsLog.i("tor", "Live exit switch to '${code.ifBlank { "auto" }}': $ok")
+                if (ok) refreshTunnelIp(updated)
+            }
+        }
+    }
+
+    /** Re-reads the exit IP after a live switch (new circuits need a moment). */
+    private suspend fun refreshTunnelIp(profile: ConnectionProfile) {
+        val port =
+            if (profile.protocol == Protocol.TOR) TorDefaults.SOCKS_PORT
+            else TunnelConfig.SOCKS_PORT
+        SoildTunnelController.setIpInfo(null)
+        SoildTunnelController.setIpLoading(true)
+        try {
+            delay(8000)
+            val info = NetProbe.fetchIpInfoViaSocksWithRetry(TunnelConfig.SOCKS_HOST, port)
+            if (info != null) {
+                SoildTunnelController.setIpInfo(IpEndpoint(info.ip, info.countryCode, true))
+            }
+        } finally {
+            SoildTunnelController.setIpLoading(false)
         }
     }
 

@@ -72,7 +72,11 @@ class SocksTunBridge(
     private val socksPort: Int = 1819,
     private val mtu: Int = 1280,
     private val blockedPackagesProvider: () -> Set<String>,
-    private val routingEngine: RoutingEngine
+    private val routingEngine: RoutingEngine,
+    // Tor mode: tor's SOCKS port only speaks TCP, so UDP needs special
+    // handling (DNS goes through tor's resolver, the rest is dropped).
+    private val torMode: Boolean = false,
+    private val torDnsPort: Int = TorDefaults.DNS_PORT,
 ) {
     data class Stats(val txBytes: Long = 0, val rxBytes: Long = 0)
 
@@ -836,6 +840,14 @@ class SocksTunBridge(
         }
 
         fun run() {
+            // Tor carries no UDP at all, so plain relaying would just
+            // blackhole every DNS query. DNS (port 53) is answered through
+            // tor's own resolver over TCP instead; anything else is dropped
+            // on purpose — same tradeoff Orbot makes.
+            if (torMode) {
+                runTorUdp()
+                return
+            }
             try {
                 val targetIpStr: String = InetAddress.getByAddress(serverIp).hostAddress ?: ""
                 val targetDomain = DnsMap.get(targetIpStr)
@@ -942,6 +954,64 @@ class SocksTunBridge(
                 close()
             }
         }
+
+        /**
+         * UDP in Tor mode: only DNS goes through, everything else is dropped.
+         * Each query is sent to tor's DNSPort over TCP (two-byte length prefix
+         * each way) and the answer is written back into the TUN as a normal
+         * UDP packet. The socket stays on loopback, off the TUN, so it can
+         * never loop back into this bridge.
+         */
+        private fun runTorUdp() {
+            if (serverPort != 53) {
+                close()
+                return
+            }
+            try {
+                while (!isClosed.get() && isRunning.get()) {
+                    val query = payloadQueue.poll(2, TimeUnit.SECONDS)
+                    if (query == null) {
+                        if (SystemClock.elapsedRealtime() - lastActivity.get() > 120000) {
+                            close()
+                            break
+                        }
+                        continue
+                    }
+                    val answer = torDnsQuery(query) ?: continue
+                    lastActivity.set(SystemClock.elapsedRealtime())
+                    sniffDnsResponse(answer)
+                    if (version == 4 && serverIp.size == 4) {
+                        enqueueTun(buildUdp4(bytesToInt(serverIp), bytesToInt(clientIp), 53, clientPort, answer))
+                    } else if (version == 6 && serverIp.size == 16) {
+                        enqueueTun(buildUdp6(serverIp, clientIp, 53, clientPort, answer))
+                    }
+                }
+            } catch (_: Exception) {
+            } finally {
+                close()
+            }
+        }
+
+        private fun torDnsQuery(query: ByteArray): ByteArray? = runCatching {
+            Socket().use { s ->
+                runCatching { vpnService.protect(s) }
+                s.connect(InetSocketAddress("127.0.0.1", torDnsPort), 5000)
+                s.soTimeout = 10000
+                val out = s.getOutputStream()
+                val ins = s.getInputStream()
+                out.write(byteArrayOf((query.size shr 8).toByte(), (query.size and 0xFF).toByte()))
+                out.write(query)
+                out.flush()
+                s.shutdownOutput()
+                val lenBytes = ByteArray(2)
+                if (!readExact(ins, lenBytes)) return@runCatching null
+                val len = ((lenBytes[0].toInt() and 0xFF) shl 8) or (lenBytes[1].toInt() and 0xFF)
+                if (len <= 0 || len > 4096) return@runCatching null
+                val answer = ByteArray(len)
+                if (!readExact(ins, answer)) return@runCatching null
+                answer
+            }
+        }.getOrNull()
 
         private fun receiveFromNetwork(sock: DatagramSocket, direct: Boolean) {
             try {

@@ -35,6 +35,8 @@ import com.soildtunnel.app.core.RoutingEngine
 import com.soildtunnel.app.core.ShareBridge
 import com.soildtunnel.app.core.SmartAuto
 import com.soildtunnel.app.core.SocksTunBridge
+import com.soildtunnel.app.core.TorDefaults
+import com.soildtunnel.app.core.TorManager
 import com.soildtunnel.app.core.TunnelConfig
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.ConnectionState
@@ -161,6 +163,13 @@ class SoildTunnelVpnService : VpnService() {
         EngineMeta.reset()
         DiagnosticsLog.i(TAG, "Connect requested — protocol=${profile.protocol} scan=${profile.scanMode} ip=${profile.ipVersion}")
 
+        // Tor mode runs its own flow start to finish (no WARP engine, no
+        // ladder): it only returns via exception or cancellation.
+        if (profile.protocol == Protocol.TOR) {
+            connectTor(profile)
+            return
+        }
+
         val resolved: ConnectionProfile =
             if (profile.protocol == Protocol.AUTO) {
                 connectSmartAuto(profile)
@@ -185,6 +194,121 @@ class SoildTunnelVpnService : VpnService() {
         registerNetworkWatch()
 
         superviseEngine(resolved)
+    }
+
+    /**
+     * Tor mode: no WARP engine at all. TorManager boots the tor daemon
+     * (direct / Snowflake / custom bridges), then the TUN bridge forwards
+     * everything straight into tor's loopback SOCKS port. Same TUN, same
+     * self-test gate and same kill-switch behavior as the engine path —
+     * only the thing behind the SOCKS port is different.
+     */
+    private suspend fun connectTor(profile: ConnectionProfile) {
+        SoildTunnelController.setState(ConnectionState.Launching)
+        updateNotification(getString(R.string.tor_starting))
+        lockdownTunActive = false
+        cleanupNativeOnly()
+        if (!PortProbe.awaitClosed(SOCKS_HOST, TorDefaults.SOCKS_PORT, PORT_RELEASE_WAIT_MS)) {
+            DiagnosticsLog.w(TAG, "Tor port still busy — starting anyway.")
+        }
+        TorManager.start(this, profile) { percent, summary ->
+            updateNotification(getString(R.string.tor_bootstrap, percent))
+            DiagnosticsLog.i(TAG, "Tor bootstrap $percent% — $summary")
+        }
+
+        SoildTunnelController.setState(ConnectionState.Connecting)
+        updateNotification(getString(R.string.state_connecting))
+        DiagnosticsLog.i(TAG, "Tor SOCKS5 is up.")
+
+        establishTun(profile)
+        startTun2Socks(profile)
+
+        SoildTunnelController.setState(ConnectionState.Verifying)
+        updateNotification(getString(R.string.state_verifying))
+        DiagnosticsLog.i(TAG, "TUN + tor bridge started. Verifying end-to-end connectivity…")
+        val healthy = runCatching { Diagnostics.run(port = TorDefaults.SOCKS_PORT) }.getOrDefault(false)
+        if (!healthy) {
+            DiagnosticsLog.e(TAG, "Self-test failed — refusing to report Connected.")
+            throw IllegalStateException(getString(R.string.err_selftest))
+        }
+
+        EngineMeta.setProtocol(Protocol.TOR.name)
+        val exit = SoildTunnelController.ipInfo.value?.takeIf { it.viaTunnel }
+        if (exit != null) {
+            DiagnosticsLog.i(TAG, "Tor exit verified: ${exit.ip} (${exit.countryCode ?: "??"})")
+        }
+
+        SoildTunnelController.setState(ConnectionState.Connected("$SOCKS_HOST:${TorDefaults.SOCKS_PORT}"))
+        updateNotification(getString(R.string.state_connected))
+        DiagnosticsLog.i(TAG, "All checks passed — tunnel is ready.")
+        UsageStore.startSession()
+        registerNetworkWatch()
+
+        superviseTor(profile)
+    }
+
+    /**
+     * Tor supervisor: same shape as the engine one, minus the engine. Tor
+     * survives network handovers on its own, so there is no fast-restart on
+     * switch — only a tor restart after a genuinely dead tunnel, then
+     * lockdown or an error exactly like the normal path. The TUN and the
+     * bridge stay up across a tor restart; fresh flows just dial the new
+     * listener.
+     */
+    private suspend fun superviseTor(profile: ConnectionProfile) {
+        var attempt = 0
+        while (currentScopeActive()) {
+            if (TorManager.isAlive()) {
+                attempt = 0
+                TorManager.awaitExit(WATCHDOG_INTERVAL_MS)
+                if (TorManager.isAlive()) {
+                    if (probeTunnelCycle(TorDefaults.SOCKS_PORT)) {
+                        probeFailures = 0
+                    } else if (++probeFailures >= WATCHDOG_FAIL_CYCLES) {
+                        DiagnosticsLog.w(
+                            TAG,
+                            "Watchdog: tor tunnel dead across $WATCHDOG_FAIL_CYCLES consecutive checks — restarting tor.",
+                        )
+                        probeFailures = 0
+                        TorManager.stop()
+                    }
+                }
+                continue
+            }
+
+            if (attempt >= maxRetries(profile)) {
+                if (profile.killSwitch || profile.strictKillSwitch) {
+                    enterLockdown(profile)
+                    return
+                }
+                throw IllegalStateException(getString(R.string.err_tor_died))
+            }
+            val backoff = BACKOFF[attempt.coerceAtMost(BACKOFF.size - 1)]
+            attempt++
+            SoildTunnelController.setState(ConnectionState.Reconnecting(attempt, maxRetries(profile)))
+            updateNotification(getString(R.string.state_reconnecting))
+            delay(backoff)
+
+            val restarted = runCatching {
+                TorManager.start(this, profile) { percent, summary ->
+                    DiagnosticsLog.i(TAG, "Tor bootstrap $percent% — $summary")
+                }
+            }.isSuccess
+            if (restarted &&
+                PortProbe.awaitOpen(SOCKS_HOST, TorDefaults.SOCKS_PORT, 30_000L) { TorManager.isAlive() }
+            ) {
+                SoildTunnelController.setState(ConnectionState.Verifying)
+                updateNotification(getString(R.string.state_verifying))
+                if (runCatching { Diagnostics.run(port = TorDefaults.SOCKS_PORT) }.getOrDefault(false)) {
+                    attempt = 0
+                    SoildTunnelController.setState(ConnectionState.Connected("$SOCKS_HOST:${TorDefaults.SOCKS_PORT}"))
+                    updateNotification(getString(R.string.state_connected))
+                } else {
+                    DiagnosticsLog.w(TAG, "Self-test failed after tor restart — retrying.")
+                    TorManager.stop()
+                }
+            }
+        }
     }
 
     /**
@@ -539,7 +663,9 @@ class SoildTunnelVpnService : VpnService() {
         // IPv6 LEAK PROTECTION : on by default -- the v6 default
         // route keeps IPv6 traffic inside the tunnel. Can be disabled for
         // networks where a default v6 route breaks connectivity.
-        if (profile.ipv6LeakProtection) {
+        // Tor mode stays IPv4-only: exit capacity on v6 is thin and
+        // unpredictable, so a v6 default route would only produce hangs.
+        if (profile.ipv6LeakProtection && profile.protocol != Protocol.TOR) {
             builder.addRoute("::", 0)
         }
 
@@ -618,7 +744,12 @@ class SoildTunnelVpnService : VpnService() {
     }
 
     private fun startTun2Socks(profile: ConnectionProfile) {
-        if (profile.blockedApps.isNotEmpty()) {
+        // Tor mode always rides the userspace bridge, even with no blocked
+        // apps: hev forwards UDP through SOCKS5 UDP ASSOCIATE, which tor
+        // does not implement, so DNS would silently die on the hev path.
+        // The bridge answers DNS through tor's own resolver instead.
+        val torMode = profile.protocol == Protocol.TOR
+        if (torMode || profile.blockedApps.isNotEmpty()) {
             // PER-APP BLOCKING : hev-socks5-tunnel cannot filter per
             // UID, so a userspace filter bridge (merged into SoildTunnel's
             // SocksTunBridge) reads the TUN itself, resolves each flow's
@@ -630,10 +761,12 @@ class SoildTunnelVpnService : VpnService() {
                 vpnService = this,
                 tunDescriptor = pfd,
                 socksHost = SOCKS_HOST,
-                socksPort = SOCKS_PORT,
+                socksPort = if (torMode) TorDefaults.SOCKS_PORT else SOCKS_PORT,
                 mtu = profile.mtu.coerceIn(576, 9000),
                 blockedPackagesProvider = { profile.blockedApps.toSet() },
                 routingEngine = RoutingEngine(emptyList()),
+                torMode = torMode,
+                torDnsPort = TorDefaults.DNS_PORT,
             )
             DiagnosticsLog.i(TAG, "Starting userspace filter bridge (blocked apps=${profile.blockedApps.size})")
             bridge.start()
@@ -742,19 +875,19 @@ class SoildTunnelVpnService : VpnService() {
      * session still recovers automatically, and MASQUE's in-engine reconnect
      * loop gets room to finish before the app steps in.
      */
-    private suspend fun probeTunnelCycle(): Boolean {
+    private suspend fun probeTunnelCycle(port: Int = SOCKS_PORT): Boolean {
         repeat(PROBE_ATTEMPTS) { attempt ->
-            if (probeTunnelOnce(PROBE_TARGETS[attempt % PROBE_TARGETS.size])) return true
+            if (probeTunnelOnce(PROBE_TARGETS[attempt % PROBE_TARGETS.size], port)) return true
             if (attempt < PROBE_ATTEMPTS - 1) delay(PROBE_RETRY_GAP_MS)
         }
         return false
     }
 
-    /** Single TCP connect to [target] ("host:port") THROUGH the engine's local SOCKS5 listener. */
-    private fun probeTunnelOnce(target: String): Boolean = runCatching {
+    /** Single TCP connect to [target] ("host:port") THROUGH the local SOCKS5 listener. */
+    private fun probeTunnelOnce(target: String, port: Int = SOCKS_PORT): Boolean = runCatching {
         val proxy = java.net.Proxy(
             java.net.Proxy.Type.SOCKS,
-            java.net.InetSocketAddress(SOCKS_HOST, SOCKS_PORT),
+            java.net.InetSocketAddress(SOCKS_HOST, port),
         )
         java.net.Socket(proxy).use {
             it.connect(
@@ -794,6 +927,7 @@ class SoildTunnelVpnService : VpnService() {
             ShareBridge.stop()
         } catch (_: Throwable) {
         }
+        runCatching { TorManager.stop() }
         tunBridge?.let { runCatching { it.stop() } }
         tunBridge = null
         if (tunnelStarted) {
@@ -833,6 +967,7 @@ class SoildTunnelVpnService : VpnService() {
             ShareBridge.stop()
         } catch (_: Throwable) {
         }
+        runCatching { TorManager.stop() }
         tunBridge?.let { runCatching { it.stop() } }
         tunBridge = null
         if (tunnelStarted) {

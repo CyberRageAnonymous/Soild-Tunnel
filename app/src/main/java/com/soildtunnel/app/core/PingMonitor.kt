@@ -43,25 +43,25 @@ object PingMonitor {
      * tunnel's real end-to-end latency; when false it connects directly and
      * shows the operator's latency instead.
      */
-    suspend fun pingOnce(viaTunnel: Boolean) {
+    suspend fun pingOnce(viaTunnel: Boolean, socksPort: Int = TunnelConfig.SOCKS_PORT) {
         if (!mutex.tryLock()) return
         try {
             _state.value = PingResult(running = true)
-            val ms = withContext(Dispatchers.IO) { measure(viaTunnel) }
+            val ms = withContext(Dispatchers.IO) { measure(viaTunnel, socksPort) }
             _state.value = if (ms >= 0) PingResult(ms = ms) else PingResult(error = true)
         } finally {
             mutex.unlock()
         }
     }
 
-    private fun measure(viaTunnel: Boolean): Long {
+    private fun measure(viaTunnel: Boolean, socksPort: Int): Long {
         val start = SystemClock.elapsedRealtime()
         return try {
             val socket = if (viaTunnel) {
                 Socket(
                     Proxy(
                         Proxy.Type.SOCKS,
-                        InetSocketAddress(TunnelConfig.SOCKS_HOST, TunnelConfig.SOCKS_PORT),
+                        InetSocketAddress(TunnelConfig.SOCKS_HOST, socksPort),
                     ),
                 )
             } else {
