@@ -14,8 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.item
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
@@ -85,17 +84,10 @@ fun TorExitSheet(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.height(430.dp),
             ) {
-                item(key = "auto") {
-                    ExitRow(
-                        code = "",
-                        selected = selected.isBlank(),
-                        onSelect = {
-                            onSelect("")
-                            onDismiss()
-                        },
-                    )
-                }
-                items(TorDefaults.EXIT_COUNTRIES, key = { it }) { code ->
+                itemsIndexed(
+                    items = listOf("") + TorDefaults.EXIT_COUNTRIES,
+                    key = { _, code -> code.ifBlank { "auto" } },
+                ) { _, code ->
                     ExitRow(
                         code = code,
                         selected = selected == code,
