@@ -1,5 +1,6 @@
 package com.soildtunnel.app.core
 
+import IPtProxy.Controller
 import IPtProxy.IPtProxy as PtProxy
 import android.content.Context
 import com.soildtunnel.app.R
@@ -24,6 +25,7 @@ object TorManager {
 
     private var process: Process? = null
     private var torDir: File? = null
+    private var ptController: Controller? = null
 
     @Volatile
     var running = false
@@ -45,10 +47,16 @@ object TorManager {
         val filesDir = context.filesDir
         val dir = File(filesDir, "tor-data").apply { mkdirs() }
         torDir = dir
-        File(filesDir, "ipt-state").apply { mkdirs() }.also {
-            PtProxy.setStateLocation(it.absolutePath)
-        }
+        val iptDir = File(filesDir, "ipt-state").apply { mkdirs() }
         ensureGeoip(context, dir)
+
+        val controller = PtProxy.newController(iptDir.absolutePath, false, false, "WARN", null)
+            ?: throw IllegalStateException("Transport backend failed to start.")
+        ptController = controller
+        DiagnosticsLog.i(
+            TAG,
+            "Transports: snowflake ${PtProxy.snowflakeVersion()}, ${PtProxy.lyrebirdVersion()}",
+        )
 
         val bridges = userBridges(profile)
         val wantSnowflake = profile.torTransport == TorTransport.SNOWFLAKE ||
@@ -59,21 +67,24 @@ object TorManager {
         var webtunnelPort = 0L
         if (wantSnowflake) {
             DiagnosticsLog.i(TAG, "Starting the Snowflake entry transport…")
-            snowflakePort = PtProxy.startSnowflake(
-                TorDefaults.SNOWFLAKE_ICE,
-                TorDefaults.SNOWFLAKE_BROKER,
-                TorDefaults.SNOWFLAKE_FRONT,
-                "", "", "", "",
-                false, false, false, 1,
-            )
+            controller.snowflakeIceServers = TorDefaults.SNOWFLAKE_ICE
+            controller.snowflakeBrokerUrl = TorDefaults.SNOWFLAKE_BROKER
+            controller.snowflakeFrontDomains = TorDefaults.SNOWFLAKE_FRONT
+            controller.snowflakeMaxPeers = 1
+            runCatching { controller.start("snowflake", "") }
+                .onFailure { throw IllegalStateException("Snowflake failed to start.") }
+            snowflakePort = controller.port("snowflake")
             if (snowflakePort <= 0) throw IllegalStateException("Snowflake failed to start.")
             DiagnosticsLog.i(TAG, "Snowflake listening on 127.0.0.1:$snowflakePort")
         }
         if (profile.torTransport == TorTransport.CUSTOM) {
             DiagnosticsLog.i(TAG, "Starting Lyrebird for custom bridges…")
-            PtProxy.startLyrebird("WARN", false, false, "")
-            obfs4Port = PtProxy.obfs4Port()
-            webtunnelPort = PtProxy.webtunnelPort()
+            runCatching {
+                controller.start("obfs4", "")
+                controller.start("webtunnel", "")
+            }.onFailure { throw IllegalStateException("Bridge transport failed to start.") }
+            obfs4Port = controller.port("obfs4")
+            webtunnelPort = controller.port("webtunnel")
             if (obfs4Port <= 0) throw IllegalStateException("Bridge transport failed to start.")
         }
 
@@ -139,8 +150,12 @@ object TorManager {
                 }
             }
         }
-        runCatching { PtProxy.stopSnowflake() }
-        runCatching { PtProxy.stopLyrebird() }
+        ptController?.let { controller ->
+            runCatching { controller.stop("snowflake") }
+            runCatching { controller.stop("obfs4") }
+            runCatching { controller.stop("webtunnel") }
+        }
+        ptController = null
     }
 
     /** Parks the caller until tor exits or the timeout elapses. */
