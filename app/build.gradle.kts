@@ -68,8 +68,8 @@ android {
         applicationId = "com.soildtunnel.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.0.4"
+        versionCode = 6
+        versionName = "1.0.5"
 
         ndk {
             // We ship arm64 (primary) and arm builds.
@@ -238,6 +238,12 @@ dependencies {
 
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+
+    // Tor network: daemon binary (libtor.so per ABI) + pluggable transports
+    // (Snowflake for automatic entry, Lyrebird for obfs4/webtunnel bridges).
+    // Both ship on Maven Central, so no extra repository is needed.
+    implementation("info.guardianproject:tor-android:0.4.7.14")
+    implementation("com.netzarchitekten:IPtProxy:3.8.2")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
