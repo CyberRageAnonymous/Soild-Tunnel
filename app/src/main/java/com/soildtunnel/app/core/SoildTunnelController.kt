@@ -16,6 +16,7 @@ import com.soildtunnel.app.model.Noize
 import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.model.ScanMode
 import com.soildtunnel.app.model.SplitMode
+import com.soildtunnel.app.model.TorTransport
 import com.soildtunnel.app.vpn.SoildTunnelVpnService
 
 /**
@@ -130,6 +131,9 @@ object ProfileCodec {
         add("noProfRetry=${p.noProfileRetry}")
         add("coreLog=${p.coreLogLevel.name}")
         add("blockedApps=${p.blockedApps.joinToString(",")}")
+        add("torTransport=${p.torTransport.name}")
+        add("torBridges=${p.torBridges.replace("\n", "\\n")}")
+        add("torExit=${p.torExitCountry}")
     }.joinToString("\n")
 
     fun decode(raw: String?): ConnectionProfile {
@@ -180,6 +184,9 @@ object ProfileCodec {
                 coreLogLevel = map["coreLog"]?.let { enumOr<CoreLogLevel>(it) } ?: d.coreLogLevel,
                 blockedApps = map["blockedApps"]?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
                     ?: d.blockedApps,
+                torTransport = map["torTransport"]?.let { enumOr<TorTransport>(it) } ?: d.torTransport,
+                torBridges = map["torBridges"]?.replace("\\n", "\n") ?: d.torBridges,
+                torExitCountry = map["torExit"]?.trim()?.take(2)?.uppercase() ?: d.torExitCountry,
             )
         }.getOrDefault(d)
     }

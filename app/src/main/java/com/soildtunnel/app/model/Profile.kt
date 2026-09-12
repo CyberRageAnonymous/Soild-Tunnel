@@ -2,7 +2,10 @@ package com.soildtunnel.app.model
 
 
 /** Transport protocol, mapped 1:1 to the desktop app's CLI flags. */
-enum class Protocol { AUTO, MASQUE, WIREGUARD, GOOL }
+enum class Protocol { AUTO, MASQUE, WIREGUARD, GOOL, TOR }
+
+/** How Tor enters the network (only used when [Protocol] is TOR). */
+enum class TorTransport { DIRECT, SNOWFLAKE, CUSTOM }
 
 /** Endpoint scanning strategy. */
 enum class ScanMode { TURBO, BALANCED, THOROUGH, STEALTH, IRONCLAD }
@@ -183,6 +186,21 @@ data class ConnectionProfile(
     val dnsAdBlock: Boolean = false,
     /** Block malware via Cloudflare DNS (1.1.1.2). */
     val dnsMalwareBlock: Boolean = false,
+    /**
+     * Tor entry transport. SNOWFLAKE (the default) gets in without any setup;
+     * CUSTOM uses the user's own bridges below; DIRECT tries a plain connect.
+     */
+    val torTransport: TorTransport = TorTransport.SNOWFLAKE,
+    /**
+     * User's own bridges, one "Bridge ..." line per row. Only read when
+     * [torTransport] is CUSTOM. Anything that is not a Bridge line is ignored.
+     */
+    val torBridges: String = "",
+    /**
+     * Pinned Tor exit country (two letters, e.g. "DE"). Blank means Tor
+     * picks the fastest exit itself.
+     */
+    val torExitCountry: String = "",
 
 
     /**
@@ -235,6 +253,9 @@ data class ConnectionProfile(
             // fingerprints the network's DPI and resolves AUTO to a concrete,
             // tuned protocol BEFORE launch. Kept only for exhaustiveness.
             Protocol.AUTO -> { /* resolved by SmartAuto before launch */ }
+            // TOR never reaches the engine either: Tor mode runs the tor
+            // daemon plus the TUN bridge, the WARP engine stays off.
+            Protocol.TOR -> { /* handled app-side, see TorManager */ }
             Protocol.MASQUE -> args += "--masque"
             Protocol.WIREGUARD -> args += "--wg"
             Protocol.GOOL -> args += "--gool"
@@ -491,6 +512,9 @@ data class ConnectionProfile(
      * legitimately scanning. A pinned peer connects almost immediately.
      */
     fun connectTimeoutMs(): Long {
+        // Tor has to build circuits first, which takes minutes on a first
+        // connect (especially over Snowflake), not seconds like WARP.
+        if (protocol == Protocol.TOR) return 300_000L
         if (hasManualPeer) return 45_000L
         return when (scanMode) {
             ScanMode.TURBO -> 60_000L
