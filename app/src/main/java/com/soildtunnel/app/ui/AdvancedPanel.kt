@@ -44,7 +44,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import com.soildtunnel.app.R
+import com.soildtunnel.app.core.NetProbe
 import com.soildtunnel.app.core.ShareBridge
+import com.soildtunnel.app.core.TorDefaults
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.CoreLogLevel
 import com.soildtunnel.app.model.EndpointMode
@@ -52,6 +54,7 @@ import com.soildtunnel.app.model.IpVersion
 import com.soildtunnel.app.model.Noize
 import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.model.ScanMode
+import com.soildtunnel.app.model.TorTransport
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.soildtunnel.app.model.SplitMode
 import com.soildtunnel.app.model.TeamAuth
@@ -133,89 +136,172 @@ fun AdvancedPanel(
                     )
                     Spacer(Modifier.height(16.dp))
 
-                    SettingLabel(stringResource(R.string.scan_mode))
-                    DropdownSelector(
-                        options = ScanMode.entries,
-                        selected = profile.scanMode,
-                        onSelect = { onProfileChange(profile.copy(scanMode = it)) },
-                        label = { scanLabel(it) },
-                        enabled = enabled,
-                    )
-                    Spacer(Modifier.height(16.dp))
-
-                    SettingLabel(stringResource(R.string.ip_version))
-                    SegmentedSelector(
-                        options = IpVersion.entries,
-                        selected = profile.ipVersion,
-                        onSelect = { onProfileChange(profile.copy(ipVersion = it)) },
-                        label = { ipLabel(it) },
-                        enabled = enabled,
-                    )
-
-                    // ---------- Transport & anti-DPI ----------
-                    SectionHeader(stringResource(R.string.section_transport))
-
-                    SettingLabel(stringResource(R.string.noize_title))
-                    DropdownSelector(
-                        options = Noize.entries,
-                        selected = profile.noize,
-                        onSelect = { onProfileChange(profile.copy(noize = it)) },
-                        label = { noizeLabel(it) },
-                        enabled = enabled,
-                    )
-                    HelperText(stringResource(R.string.noize_desc))
-                    Spacer(Modifier.height(16.dp))
-
-                    SettingLabel(stringResource(R.string.endpoint_mode))
-                    SegmentedSelector(
-                        options = EndpointMode.entries,
-                        selected = profile.endpointMode,
-                        onSelect = { onProfileChange(profile.copy(endpointMode = it)) },
-                        label = { endpointLabel(it) },
-                        enabled = enabled,
-                    )
-                    if (profile.endpointMode == EndpointMode.MANUAL_PEER) {
-                        Spacer(Modifier.height(12.dp))
-                        // BiDi fix: ip:port is LTR technical text — a plain
-                        // OutlinedTextField scrambles typed digits in the RTL
-                        // (Persian) locale. LtrOutlinedTextField pins LTR.
-                        LtrOutlinedTextField(
-                            value = profile.manualPeer,
-                            onValueChange = { onProfileChange(profile.copy(manualPeer = it)) },
+                    // Scan mode and IP version only steer the WARP engine —
+                    // Tor finds its own path, so both hide in Tor mode.
+                    if (profile.protocol != Protocol.TOR) {
+                        SettingLabel(stringResource(R.string.scan_mode))
+                        DropdownSelector(
+                            options = ScanMode.entries,
+                            selected = profile.scanMode,
+                            onSelect = { onProfileChange(profile.copy(scanMode = it)) },
+                            label = { scanLabel(it) },
                             enabled = enabled,
-                            singleLine = true,
-                            label = { Text(stringResource(R.string.manual_peer_label)) },
-                            placeholder = { Text(stringResource(R.string.manual_peer_hint)) },
-                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(Modifier.height(16.dp))
+
+                        SettingLabel(stringResource(R.string.ip_version))
+                        SegmentedSelector(
+                            options = IpVersion.entries,
+                            selected = profile.ipVersion,
+                            onSelect = { onProfileChange(profile.copy(ipVersion = it)) },
+                            label = { ipLabel(it) },
+                            enabled = enabled,
                         )
                     }
-                    if (profile.endpointMode == EndpointMode.MANUAL_RANGE) {
-                        Spacer(Modifier.height(12.dp))
-                        // BiDi fix: CIDR ranges are LTR technical text — this is
-                        // the exact field where typed digits appeared shuffled.
-                        LtrOutlinedTextField(
-                            value = profile.manualRange,
-                            onValueChange = { onProfileChange(profile.copy(manualRange = it)) },
+
+                    // ---------- Tor ----------
+                    if (profile.protocol == Protocol.TOR) {
+                        SectionHeader(stringResource(R.string.tor_section))
+
+                        SettingLabel(stringResource(R.string.tor_transport_label))
+                        DropdownSelector(
+                            options = TorTransport.entries,
+                            selected = profile.torTransport,
+                            onSelect = { onProfileChange(profile.copy(torTransport = it)) },
+                            label = { torTransportLabel(it) },
                             enabled = enabled,
-                            singleLine = false,
-                            label = { Text(stringResource(R.string.manual_range_label)) },
-                            placeholder = { Text(stringResource(R.string.manual_range_hint)) },
-                            supportingText = { Text(stringResource(R.string.manual_range_help)) },
-                            modifier = Modifier.fillMaxWidth(),
                         )
+                        HelperText(stringResource(R.string.tor_transport_desc))
+                        Spacer(Modifier.height(16.dp))
+
+                        if (profile.torTransport == TorTransport.CUSTOM) {
+                            LtrOutlinedTextField(
+                                value = profile.torBridges,
+                                onValueChange = { onProfileChange(profile.copy(torBridges = it)) },
+                                enabled = enabled,
+                                singleLine = false,
+                                label = { Text(stringResource(R.string.tor_bridges_label)) },
+                                placeholder = { Text(stringResource(R.string.tor_bridges_hint)) },
+                                supportingText = { Text(stringResource(R.string.tor_bridges_help)) },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Spacer(Modifier.height(16.dp))
+                        }
+
+                        SettingLabel(stringResource(R.string.tor_exit_label))
+                        DropdownSelector(
+                            options = listOf("") + TorDefaults.EXIT_COUNTRIES,
+                            selected = profile.torExitCountry,
+                            onSelect = { onProfileChange(profile.copy(torExitCountry = it)) },
+                            label = { torExitLabel(it) },
+                            enabled = enabled,
+                        )
+                        HelperText(stringResource(R.string.tor_exit_desc))
+                        Spacer(Modifier.height(8.dp))
+                        HelperText(stringResource(R.string.tor_note))
                     }
-                    Spacer(Modifier.height(16.dp))
 
-                    SettingLabel(stringResource(R.string.keepalive_label))
-                    DropdownSelector(
-                        options = ConnectionProfile.KEEPALIVE_PRESETS,
-                        selected = profile.keepalive,
-                        onSelect = { onProfileChange(profile.copy(keepalive = it)) },
-                        label = { if (it == 0) stringResource(R.string.keepalive_default) else "$it" },
-                        enabled = enabled,
-                    )
-                    Spacer(Modifier.height(16.dp))
+                    // Obfuscation, endpoints and transports belong to the WARP
+                    // engine — none of it means anything once Tor is driving.
+                    if (profile.protocol != Protocol.TOR) {
+                        SectionHeader(stringResource(R.string.section_transport))
 
+                        SettingLabel(stringResource(R.string.noize_title))
+                        DropdownSelector(
+                            options = Noize.entries,
+                            selected = profile.noize,
+                            onSelect = { onProfileChange(profile.copy(noize = it)) },
+                            label = { noizeLabel(it) },
+                            enabled = enabled,
+                        )
+                        HelperText(stringResource(R.string.noize_desc))
+                        Spacer(Modifier.height(16.dp))
+
+                        SettingLabel(stringResource(R.string.endpoint_mode))
+                        SegmentedSelector(
+                            options = EndpointMode.entries,
+                            selected = profile.endpointMode,
+                            onSelect = { onProfileChange(profile.copy(endpointMode = it)) },
+                            label = { endpointLabel(it) },
+                            enabled = enabled,
+                        )
+                        if (profile.endpointMode == EndpointMode.MANUAL_PEER) {
+                            Spacer(Modifier.height(12.dp))
+                            // BiDi fix: ip:port is LTR technical text — a plain
+                            // OutlinedTextField scrambles typed digits in the RTL
+                            // (Persian) locale. LtrOutlinedTextField pins LTR.
+                            LtrOutlinedTextField(
+                                value = profile.manualPeer,
+                                onValueChange = { onProfileChange(profile.copy(manualPeer = it)) },
+                                enabled = enabled,
+                                singleLine = true,
+                                label = { Text(stringResource(R.string.manual_peer_label)) },
+                                placeholder = { Text(stringResource(R.string.manual_peer_hint)) },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                        if (profile.endpointMode == EndpointMode.MANUAL_RANGE) {
+                            Spacer(Modifier.height(12.dp))
+                            // BiDi fix: CIDR ranges are LTR technical text — this is
+                            // the exact field where typed digits appeared shuffled.
+                            LtrOutlinedTextField(
+                                value = profile.manualRange,
+                                onValueChange = { onProfileChange(profile.copy(manualRange = it)) },
+                                enabled = enabled,
+                                singleLine = false,
+                                label = { Text(stringResource(R.string.manual_range_label)) },
+                                placeholder = { Text(stringResource(R.string.manual_range_hint)) },
+                                supportingText = { Text(stringResource(R.string.manual_range_help)) },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                        Spacer(Modifier.height(16.dp))
+
+                        SettingLabel(stringResource(R.string.keepalive_label))
+                        DropdownSelector(
+                            options = ConnectionProfile.KEEPALIVE_PRESETS,
+                            selected = profile.keepalive,
+                            onSelect = { onProfileChange(profile.copy(keepalive = it)) },
+                            label = { if (it == 0) stringResource(R.string.keepalive_default) else "$it" },
+                            enabled = enabled,
+                        )
+                        Spacer(Modifier.height(16.dp))
+
+                        Divider()
+
+                        ToggleRow(
+                            title = stringResource(R.string.fragment_title),
+                            description = stringResource(R.string.fragment_desc),
+                            checked = profile.fragment,
+                            enabled = enabled,
+                            onChange = { onProfileChange(profile.copy(fragment = it)) },
+                        )
+                        ToggleRow(
+                            title = stringResource(R.string.ech_title),
+                            description = stringResource(R.string.ech_desc),
+                            checked = profile.ech,
+                            enabled = enabled,
+                            onChange = { onProfileChange(profile.copy(ech = it)) },
+                        )
+                        ToggleRow(
+                            title = stringResource(R.string.masque_http2),
+                            description = stringResource(R.string.masque_http2_desc),
+                            checked = profile.masqueHttp2,
+                            enabled = enabled,
+                            onChange = { onProfileChange(profile.copy(masqueHttp2 = it)) },
+                        )
+                        ToggleRow(
+                            title = stringResource(R.string.quick_reconnect),
+                            description = stringResource(R.string.quick_reconnect_desc),
+                            checked = profile.quickReconnect,
+                            enabled = enabled,
+                            onChange = { onProfileChange(profile.copy(quickReconnect = it)) },
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+
+                    // MTU shapes the TUN interface itself, so it stays
+                    // adjustable in Tor mode too.
                     SettingLabel(stringResource(R.string.mtu_label))
                     DropdownSelector(
                         options = ConnectionProfile.MTU_PRESETS,
@@ -227,91 +313,64 @@ fun AdvancedPanel(
                     HelperText(stringResource(R.string.mtu_desc))
                     Spacer(Modifier.height(8.dp))
 
-                    Divider()
-
-                    ToggleRow(
-                        title = stringResource(R.string.fragment_title),
-                        description = stringResource(R.string.fragment_desc),
-                        checked = profile.fragment,
-                        enabled = enabled,
-                        onChange = { onProfileChange(profile.copy(fragment = it)) },
-                    )
-                    ToggleRow(
-                        title = stringResource(R.string.ech_title),
-                        description = stringResource(R.string.ech_desc),
-                        checked = profile.ech,
-                        enabled = enabled,
-                        onChange = { onProfileChange(profile.copy(ech = it)) },
-                    )
-                    ToggleRow(
-                        title = stringResource(R.string.masque_http2),
-                        description = stringResource(R.string.masque_http2_desc),
-                        checked = profile.masqueHttp2,
-                        enabled = enabled,
-                        onChange = { onProfileChange(profile.copy(masqueHttp2 = it)) },
-                    )
-                    ToggleRow(
-                        title = stringResource(R.string.quick_reconnect),
-                        description = stringResource(R.string.quick_reconnect_desc),
-                        checked = profile.quickReconnect,
-                        enabled = enabled,
-                        onChange = { onProfileChange(profile.copy(quickReconnect = it)) },
-                    )
-
-                    // ---------- DNS inside the tunnel ----------
-                    SettingLabel(stringResource(R.string.dns_label))
-                    SegmentedSelector(
-                        options = DnsMode.entries,
-                        selected = profile.dnsMode,
-                        onSelect = { onProfileChange(profile.copy(dnsMode = it)) },
-                        label = { dnsModeLabel(it) },
-                        enabled = enabled,
-                    )
-                    if (profile.dnsMode != DnsMode.PLAIN) {
-                        Spacer(Modifier.height(8.dp))
-                        LtrOutlinedTextField(
-                            value = profile.encryptedDnsEndpoint,
-                            onValueChange = { onProfileChange(profile.copy(encryptedDnsEndpoint = it)) },
+                    // In-tunnel DNS is an engine setting — Tor resolves names
+                    // through its own network, so this hides in Tor mode.
+                    if (profile.protocol != Protocol.TOR) {
+                        // ---------- DNS inside the tunnel ----------
+                        SettingLabel(stringResource(R.string.dns_label))
+                        SegmentedSelector(
+                            options = DnsMode.entries,
+                            selected = profile.dnsMode,
+                            onSelect = { onProfileChange(profile.copy(dnsMode = it)) },
+                            label = { dnsModeLabel(it) },
                             enabled = enabled,
-                            singleLine = true,
-                            label = { Text(stringResource(R.string.enc_dns_endpoint_label)) },
-                            placeholder = { Text(stringResource(R.string.enc_dns_endpoint_hint)) },
-                            supportingText = { Text(stringResource(R.string.enc_dns_endpoint_help)) },
-                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        if (profile.dnsMode != DnsMode.PLAIN) {
+                            Spacer(Modifier.height(8.dp))
+                            LtrOutlinedTextField(
+                                value = profile.encryptedDnsEndpoint,
+                                onValueChange = { onProfileChange(profile.copy(encryptedDnsEndpoint = it)) },
+                                enabled = enabled,
+                                singleLine = true,
+                                label = { Text(stringResource(R.string.enc_dns_endpoint_label)) },
+                                placeholder = { Text(stringResource(R.string.enc_dns_endpoint_hint)) },
+                                supportingText = { Text(stringResource(R.string.enc_dns_endpoint_help)) },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                        if (profile.dnsMode == DnsMode.PLAIN) {
+                            Spacer(Modifier.height(8.dp))
+                            LtrOutlinedTextField(
+                                value = profile.dnsServers,
+                                onValueChange = { onProfileChange(profile.copy(dnsServers = it)) },
+                                enabled = enabled,
+                                singleLine = true,
+                                label = { Text(stringResource(R.string.dns_label)) },
+                                placeholder = { Text(stringResource(R.string.dns_hint)) },
+                                supportingText = { Text(stringResource(R.string.dns_help)) },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        } else {
+                            HelperText(stringResource(R.string.dns_help))
+                        }
+
+                        // ---------- DNS content filtering ----------
+                        Spacer(Modifier.height(8.dp))
+                        ToggleRow(
+                            title = stringResource(R.string.dns_ad_block_title),
+                            description = stringResource(R.string.dns_ad_block_desc),
+                            checked = profile.dnsAdBlock,
+                            enabled = enabled,
+                            onChange = { onProfileChange(profile.copy(dnsAdBlock = it)) },
+                        )
+                        ToggleRow(
+                            title = stringResource(R.string.dns_malware_block_title),
+                            description = stringResource(R.string.dns_malware_block_desc),
+                            checked = profile.dnsMalwareBlock,
+                            enabled = enabled,
+                            onChange = { onProfileChange(profile.copy(dnsMalwareBlock = it)) },
                         )
                     }
-                    if (profile.dnsMode == DnsMode.PLAIN) {
-                        Spacer(Modifier.height(8.dp))
-                        LtrOutlinedTextField(
-                            value = profile.dnsServers,
-                            onValueChange = { onProfileChange(profile.copy(dnsServers = it)) },
-                            enabled = enabled,
-                            singleLine = true,
-                            label = { Text(stringResource(R.string.dns_label)) },
-                            placeholder = { Text(stringResource(R.string.dns_hint)) },
-                            supportingText = { Text(stringResource(R.string.dns_help)) },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    } else {
-                        HelperText(stringResource(R.string.dns_help))
-                    }
-
-                    // ---------- DNS content filtering ----------
-                    Spacer(Modifier.height(8.dp))
-                    ToggleRow(
-                        title = stringResource(R.string.dns_ad_block_title),
-                        description = stringResource(R.string.dns_ad_block_desc),
-                        checked = profile.dnsAdBlock,
-                        enabled = enabled,
-                        onChange = { onProfileChange(profile.copy(dnsAdBlock = it)) },
-                    )
-                    ToggleRow(
-                        title = stringResource(R.string.dns_malware_block_title),
-                        description = stringResource(R.string.dns_malware_block_desc),
-                        checked = profile.dnsMalwareBlock,
-                        enabled = enabled,
-                        onChange = { onProfileChange(profile.copy(dnsMalwareBlock = it)) },
-                    )
 
                     Spacer(Modifier.height(16.dp))
 
@@ -370,134 +429,143 @@ fun AdvancedPanel(
                         Spacer(Modifier.height(8.dp))
                     }
 
-                    // ---------- Upstream proxy / chaining ----------
-                    SectionHeader(stringResource(R.string.section_upstream))
+                    // Chaining and Zero Trust are engine dial-out settings —
+                    // Tor dials out its own way, so both hide in Tor mode.
+                    if (profile.protocol != Protocol.TOR) {
+                        // ---------- Upstream proxy / chaining ----------
+                        SectionHeader(stringResource(R.string.section_upstream))
 
-                    LtrOutlinedTextField(
-                        value = profile.upstreamProxy,
-                        onValueChange = { onProfileChange(profile.copy(upstreamProxy = it)) },
-                        enabled = enabled,
-                        singleLine = true,
-                        label = { Text(stringResource(R.string.upstream_label)) },
-                        placeholder = { Text(stringResource(R.string.upstream_hint)) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    HelperText(stringResource(R.string.upstream_help))
-                    Spacer(Modifier.height(8.dp))
-
-                    // ---------- Zero Trust / organization ----------
-                    SectionHeader(stringResource(R.string.section_zerotrust))
-
-                    SettingLabel(stringResource(R.string.team_auth_label))
-                    DropdownSelector(
-                        options = TeamAuth.entries,
-                        selected = profile.teamAuth,
-                        onSelect = { onProfileChange(profile.copy(teamAuth = it)) },
-                        label = { teamAuthLabel(it) },
-                        enabled = enabled,
-                    )
-                    HelperText(stringResource(R.string.team_auth_desc))
-
-                    if (profile.teamAuth != TeamAuth.OFF) {
-                        Spacer(Modifier.height(12.dp))
                         LtrOutlinedTextField(
-                            value = profile.team,
-                            onValueChange = { onProfileChange(profile.copy(team = it)) },
+                            value = profile.upstreamProxy,
+                            onValueChange = { onProfileChange(profile.copy(upstreamProxy = it)) },
                             enabled = enabled,
                             singleLine = true,
-                            label = { Text(stringResource(R.string.team_label)) },
-                            placeholder = { Text(stringResource(R.string.team_hint)) },
-                            supportingText = { Text(stringResource(R.string.team_help)) },
+                            label = { Text(stringResource(R.string.upstream_label)) },
+                            placeholder = { Text(stringResource(R.string.upstream_hint)) },
                             modifier = Modifier.fillMaxWidth(),
                         )
+                        HelperText(stringResource(R.string.upstream_help))
+                        Spacer(Modifier.height(8.dp))
 
-                        when (profile.teamAuth) {
-                            TeamAuth.SERVICE_TOKEN -> {
-                                Spacer(Modifier.height(12.dp))
-                                LtrOutlinedTextField(
-                                    value = profile.accessClientId,
-                                    onValueChange = {
-                                        onProfileChange(profile.copy(accessClientId = it))
-                                    },
-                                    enabled = enabled,
-                                    singleLine = true,
-                                    label = { Text(stringResource(R.string.access_id_label)) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                                Spacer(Modifier.height(12.dp))
-                                // Masked: a service-token secret is an
-                                // organization credential, so it must not be
-                                // readable over someone's shoulder or land in a
-                                // screenshot.
-                                LtrOutlinedTextField(
-                                    value = profile.accessClientSecret,
-                                    onValueChange = {
-                                        onProfileChange(profile.copy(accessClientSecret = it))
-                                    },
-                                    enabled = enabled,
-                                    singleLine = true,
-                                    visualTransformation = PasswordVisualTransformation(),
-                                    label = { Text(stringResource(R.string.access_secret_label)) },
-                                    supportingText = {
-                                        Text(stringResource(R.string.access_secret_help))
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
+                        // ---------- Zero Trust / organization ----------
+                        SectionHeader(stringResource(R.string.section_zerotrust))
 
-                            TeamAuth.EMAIL -> {
-                                Spacer(Modifier.height(12.dp))
-                                LtrOutlinedTextField(
-                                    value = profile.accessEmail,
-                                    onValueChange = {
-                                        onProfileChange(profile.copy(accessEmail = it))
-                                    },
-                                    enabled = enabled,
-                                    singleLine = true,
-                                    label = { Text(stringResource(R.string.access_email_label)) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-
-                            TeamAuth.TOKEN -> {
-                                Spacer(Modifier.height(12.dp))
-                                LtrOutlinedTextField(
-                                    value = profile.accessToken,
-                                    onValueChange = {
-                                        onProfileChange(profile.copy(accessToken = it))
-                                    },
-                                    enabled = enabled,
-                                    singleLine = true,
-                                    visualTransformation = PasswordVisualTransformation(),
-                                    label = { Text(stringResource(R.string.access_token_label)) },
-                                    supportingText = {
-                                        Text(stringResource(R.string.access_secret_help))
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-
-                            TeamAuth.OFF -> Unit
-                        }
-
-                        Spacer(Modifier.height(4.dp))
-                        ToggleRow(
-                            title = stringResource(R.string.gateway_title),
-                            description = stringResource(R.string.gateway_desc),
-                            checked = profile.gateway,
+                        SettingLabel(stringResource(R.string.team_auth_label))
+                        DropdownSelector(
+                            options = TeamAuth.entries,
+                            selected = profile.teamAuth,
+                            onSelect = { onProfileChange(profile.copy(teamAuth = it)) },
+                            label = { teamAuthLabel(it) },
                             enabled = enabled,
-                            onChange = { onProfileChange(profile.copy(gateway = it)) },
                         )
+                        HelperText(stringResource(R.string.team_auth_desc))
+
+                        if (profile.teamAuth != TeamAuth.OFF) {
+                            Spacer(Modifier.height(12.dp))
+                            LtrOutlinedTextField(
+                                value = profile.team,
+                                onValueChange = { onProfileChange(profile.copy(team = it)) },
+                                enabled = enabled,
+                                singleLine = true,
+                                label = { Text(stringResource(R.string.team_label)) },
+                                placeholder = { Text(stringResource(R.string.team_hint)) },
+                                supportingText = { Text(stringResource(R.string.team_help)) },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+
+                            when (profile.teamAuth) {
+                                TeamAuth.SERVICE_TOKEN -> {
+                                    Spacer(Modifier.height(12.dp))
+                                    LtrOutlinedTextField(
+                                        value = profile.accessClientId,
+                                        onValueChange = {
+                                            onProfileChange(profile.copy(accessClientId = it))
+                                        },
+                                        enabled = enabled,
+                                        singleLine = true,
+                                        label = { Text(stringResource(R.string.access_id_label)) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                    Spacer(Modifier.height(12.dp))
+                                    // Masked: a service-token secret is an
+                                    // organization credential, so it must not be
+                                    // readable over someone's shoulder or land in a
+                                    // screenshot.
+                                    LtrOutlinedTextField(
+                                        value = profile.accessClientSecret,
+                                        onValueChange = {
+                                            onProfileChange(profile.copy(accessClientSecret = it))
+                                        },
+                                        enabled = enabled,
+                                        singleLine = true,
+                                        visualTransformation = PasswordVisualTransformation(),
+                                        label = { Text(stringResource(R.string.access_secret_label)) },
+                                        supportingText = {
+                                            Text(stringResource(R.string.access_secret_help))
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+
+                                TeamAuth.EMAIL -> {
+                                    Spacer(Modifier.height(12.dp))
+                                    LtrOutlinedTextField(
+                                        value = profile.accessEmail,
+                                        onValueChange = {
+                                            onProfileChange(profile.copy(accessEmail = it))
+                                        },
+                                        enabled = enabled,
+                                        singleLine = true,
+                                        label = { Text(stringResource(R.string.access_email_label)) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+
+                                TeamAuth.TOKEN -> {
+                                    Spacer(Modifier.height(12.dp))
+                                    LtrOutlinedTextField(
+                                        value = profile.accessToken,
+                                        onValueChange = {
+                                            onProfileChange(profile.copy(accessToken = it))
+                                        },
+                                        enabled = enabled,
+                                        singleLine = true,
+                                        visualTransformation = PasswordVisualTransformation(),
+                                        label = { Text(stringResource(R.string.access_token_label)) },
+                                        supportingText = {
+                                            Text(stringResource(R.string.access_secret_help))
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+
+                                TeamAuth.OFF -> Unit
+                            }
+
+                            Spacer(Modifier.height(4.dp))
+                            ToggleRow(
+                                title = stringResource(R.string.gateway_title),
+                                description = stringResource(R.string.gateway_desc),
+                                checked = profile.gateway,
+                                enabled = enabled,
+                                onChange = { onProfileChange(profile.copy(gateway = it)) },
+                            )
+                        }
                     }
 
                     // ---------- Routing ----------
                     SectionHeader(stringResource(R.string.section_routing))
 
+                    // Proxy mode only fronts the WARP engine — Tor always
+                    // drives the whole device, so the switch locks in Tor mode.
                     ToggleRow(
                         title = stringResource(R.string.proxy_mode_title),
-                        description = stringResource(R.string.proxy_mode_desc),
-                        checked = profile.proxyMode,
-                        enabled = enabled,
+                        description = stringResource(
+                            if (profile.protocol == Protocol.TOR) R.string.proxy_mode_tor_note
+                            else R.string.proxy_mode_desc,
+                        ),
+                        checked = profile.proxyMode && profile.protocol != Protocol.TOR,
+                        enabled = enabled && profile.protocol != Protocol.TOR,
                         onChange = { onProfileChange(profile.copy(proxyMode = it)) },
                     )
                     // Fixed local proxy endpoints (standard ports,
@@ -612,94 +680,98 @@ fun AdvancedPanel(
                         )
                     }
 
-                    // ---------- Engine tuning ----------
-                    SectionHeader(stringResource(R.string.section_engine_tuning))
+                    // Engine tuning talks to the WARP engine's own knobs —
+                    // nothing here reaches tor, so it hides in Tor mode.
+                    if (profile.protocol != Protocol.TOR) {
+                        // ---------- Engine tuning ----------
+                        SectionHeader(stringResource(R.string.section_engine_tuning))
 
-                    if (profile.fragment) {
+                        if (profile.fragment) {
+                            LtrOutlinedTextField(
+                                value = profile.fragmentSize,
+                                onValueChange = { onProfileChange(profile.copy(fragmentSize = it)) },
+                                enabled = enabled,
+                                singleLine = true,
+                                label = { Text(stringResource(R.string.fragment_size_label)) },
+                                placeholder = { Text(stringResource(R.string.fragment_size_hint)) },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            LtrOutlinedTextField(
+                                value = profile.fragmentDelay,
+                                onValueChange = { onProfileChange(profile.copy(fragmentDelay = it)) },
+                                enabled = enabled,
+                                singleLine = true,
+                                label = { Text(stringResource(R.string.fragment_delay_label)) },
+                                placeholder = { Text(stringResource(R.string.fragment_delay_hint)) },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Spacer(Modifier.height(12.dp))
+                        }
+                        ToggleRow(
+                            title = stringResource(R.string.no_data_check_title),
+                            description = stringResource(R.string.no_data_check_desc),
+                            checked = profile.noDataCheck,
+                            enabled = enabled,
+                            onChange = { onProfileChange(profile.copy(noDataCheck = it)) },
+                        )
                         LtrOutlinedTextField(
-                            value = profile.fragmentSize,
-                            onValueChange = { onProfileChange(profile.copy(fragmentSize = it)) },
+                            value = profile.tlsGroups,
+                            onValueChange = { onProfileChange(profile.copy(tlsGroups = it)) },
                             enabled = enabled,
                             singleLine = true,
-                            label = { Text(stringResource(R.string.fragment_size_label)) },
-                            placeholder = { Text(stringResource(R.string.fragment_size_hint)) },
+                            label = { Text(stringResource(R.string.tls_groups_label)) },
+                            placeholder = { Text(stringResource(R.string.tls_groups_hint)) },
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Spacer(Modifier.height(12.dp))
                         LtrOutlinedTextField(
-                            value = profile.fragmentDelay,
-                            onValueChange = { onProfileChange(profile.copy(fragmentDelay = it)) },
+                            value = profile.customSni,
+                            onValueChange = { onProfileChange(profile.copy(customSni = it)) },
                             enabled = enabled,
                             singleLine = true,
-                            label = { Text(stringResource(R.string.fragment_delay_label)) },
-                            placeholder = { Text(stringResource(R.string.fragment_delay_hint)) },
+                            label = { Text(stringResource(R.string.custom_sni_label)) },
+                            placeholder = { Text(stringResource(R.string.custom_sni_hint)) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        HelperText(stringResource(R.string.custom_sni_desc))
+                        Spacer(Modifier.height(12.dp))
+                        LtrOutlinedTextField(
+                            value = if (profile.validateSecs == 0) "" else profile.validateSecs.toString(),
+                            onValueChange = { onProfileChange(profile.copy(validateSecs = it.filter(Char::isDigit).take(4).toIntOrNull() ?: 0)) },
+                            enabled = enabled,
+                            singleLine = true,
+                            label = { Text(stringResource(R.string.validate_secs_label)) },
+                            placeholder = { Text(stringResource(R.string.secs_hint)) },
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Spacer(Modifier.height(12.dp))
+                        LtrOutlinedTextField(
+                            value = if (profile.reconnectSecs == 0) "" else profile.reconnectSecs.toString(),
+                            onValueChange = { onProfileChange(profile.copy(reconnectSecs = it.filter(Char::isDigit).take(4).toIntOrNull() ?: 0)) },
+                            enabled = enabled,
+                            singleLine = true,
+                            label = { Text(stringResource(R.string.reconnect_secs_label)) },
+                            placeholder = { Text(stringResource(R.string.secs_hint)) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        ToggleRow(
+                            title = stringResource(R.string.no_profile_retry_title),
+                            description = stringResource(R.string.no_profile_retry_desc),
+                            checked = profile.noProfileRetry,
+                            enabled = enabled,
+                            onChange = { onProfileChange(profile.copy(noProfileRetry = it)) },
+                        )
+                        SettingLabel(stringResource(R.string.core_log_level_label))
+                        DropdownSelector(
+                            options = CoreLogLevel.entries,
+                            selected = profile.coreLogLevel,
+                            onSelect = { onProfileChange(profile.copy(coreLogLevel = it)) },
+                            label = { it.name },
+                            enabled = enabled,
+                        )
                     }
-                    ToggleRow(
-                        title = stringResource(R.string.no_data_check_title),
-                        description = stringResource(R.string.no_data_check_desc),
-                        checked = profile.noDataCheck,
-                        enabled = enabled,
-                        onChange = { onProfileChange(profile.copy(noDataCheck = it)) },
-                    )
-                    LtrOutlinedTextField(
-                        value = profile.tlsGroups,
-                        onValueChange = { onProfileChange(profile.copy(tlsGroups = it)) },
-                        enabled = enabled,
-                        singleLine = true,
-                        label = { Text(stringResource(R.string.tls_groups_label)) },
-                        placeholder = { Text(stringResource(R.string.tls_groups_hint)) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    LtrOutlinedTextField(
-                        value = profile.customSni,
-                        onValueChange = { onProfileChange(profile.copy(customSni = it)) },
-                        enabled = enabled,
-                        singleLine = true,
-                        label = { Text(stringResource(R.string.custom_sni_label)) },
-                        placeholder = { Text(stringResource(R.string.custom_sni_hint)) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    HelperText(stringResource(R.string.custom_sni_desc))
-                    Spacer(Modifier.height(12.dp))
-                    LtrOutlinedTextField(
-                        value = if (profile.validateSecs == 0) "" else profile.validateSecs.toString(),
-                        onValueChange = { onProfileChange(profile.copy(validateSecs = it.filter(Char::isDigit).take(4).toIntOrNull() ?: 0)) },
-                        enabled = enabled,
-                        singleLine = true,
-                        label = { Text(stringResource(R.string.validate_secs_label)) },
-                        placeholder = { Text(stringResource(R.string.secs_hint)) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    LtrOutlinedTextField(
-                        value = if (profile.reconnectSecs == 0) "" else profile.reconnectSecs.toString(),
-                        onValueChange = { onProfileChange(profile.copy(reconnectSecs = it.filter(Char::isDigit).take(4).toIntOrNull() ?: 0)) },
-                        enabled = enabled,
-                        singleLine = true,
-                        label = { Text(stringResource(R.string.reconnect_secs_label)) },
-                        placeholder = { Text(stringResource(R.string.secs_hint)) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    ToggleRow(
-                        title = stringResource(R.string.no_profile_retry_title),
-                        description = stringResource(R.string.no_profile_retry_desc),
-                        checked = profile.noProfileRetry,
-                        enabled = enabled,
-                        onChange = { onProfileChange(profile.copy(noProfileRetry = it)) },
-                    )
-                    SettingLabel(stringResource(R.string.core_log_level_label))
-                    DropdownSelector(
-                        options = CoreLogLevel.entries,
-                        selected = profile.coreLogLevel,
-                        onSelect = { onProfileChange(profile.copy(coreLogLevel = it)) },
-                        label = { it.name },
-                        enabled = enabled,
-                    )
 
                     // ---------- Reset ----------
                     SectionHeader(stringResource(R.string.section_reset))
@@ -822,7 +894,23 @@ private fun protocolLabel(protocol: Protocol): String = when (protocol) {
     Protocol.MASQUE -> stringResource(R.string.protocol_masque)
     Protocol.WIREGUARD -> stringResource(R.string.protocol_wireguard)
     Protocol.GOOL -> stringResource(R.string.protocol_gool)
+    Protocol.TOR -> stringResource(R.string.protocol_tor)
 }
+
+@Composable
+private fun torTransportLabel(t: TorTransport): String = when (t) {
+    TorTransport.DIRECT -> stringResource(R.string.tor_transport_direct)
+    TorTransport.SNOWFLAKE -> stringResource(R.string.tor_transport_snowflake)
+    TorTransport.CUSTOM -> stringResource(R.string.tor_transport_custom)
+}
+
+@Composable
+private fun torExitLabel(code: String): String =
+    if (code.isBlank()) {
+        stringResource(R.string.tor_exit_auto)
+    } else {
+        "${NetProbe.flagEmoji(code)} ${NetProbe.countryName(code).ifBlank { code }} ($code)"
+    }
 
 @Composable
 private fun scanLabel(mode: ScanMode): String = when (mode) {

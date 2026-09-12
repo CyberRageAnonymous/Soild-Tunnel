@@ -65,9 +65,12 @@ import com.soildtunnel.app.core.IpEndpoint
 import com.soildtunnel.app.core.NetProbe
 import com.soildtunnel.app.core.ServerCatalog
 import com.soildtunnel.app.core.ServerPinger
+import com.soildtunnel.app.core.TorDefaults
+import com.soildtunnel.app.core.TunnelConfig
 import com.soildtunnel.app.core.UpdateChecker
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.ConnectionState
+import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.model.isBusy
 import com.soildtunnel.app.model.isConnected
 import com.soildtunnel.app.ui.components.AmbientBackground
@@ -76,6 +79,8 @@ import com.soildtunnel.app.ui.components.ConnectButton
 import com.soildtunnel.app.ui.components.ConnectionCard
 import com.soildtunnel.app.ui.components.DiagnosticsPanel
 import com.soildtunnel.app.ui.components.LanguagePanel
+import com.soildtunnel.app.ui.components.ThemePanel
+import com.soildtunnel.app.ui.components.TorExitSheet
 import com.soildtunnel.app.ui.components.UsagePanel
 import com.soildtunnel.app.ui.components.ServerPickerSheet
 import com.soildtunnel.app.ui.components.glassChip
@@ -102,6 +107,7 @@ fun HomeScreen(
     ipLoading: Boolean,
     onProfileChange: (ConnectionProfile) -> Unit,
     onToggleConnection: () -> Unit,
+    onTorExitSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val mode = when {
@@ -129,6 +135,8 @@ fun HomeScreen(
 
     // The server console.
     var showServerSheet by remember { mutableStateOf(false) }
+    // Tor exit picker (replaces the server console in Tor mode).
+    var showTorSheet by remember { mutableStateOf(false) }
     var updateResult by remember { mutableStateOf(UpdateChecker.getCachedResult()) }
     val settingsEnabled = state is ConnectionState.Idle || state is ConnectionState.Error
 
@@ -217,6 +225,10 @@ fun HomeScreen(
 
                         Spacer(Modifier.height(16.dp))
 
+                        ThemePanel()
+
+                        Spacer(Modifier.height(16.dp))
+
                         AboutPanel()
                     }
                 }
@@ -279,11 +291,20 @@ fun HomeScreen(
                 Spacer(Modifier.height(22.dp))
 
                 // Server selector pill — the entry point to the node console.
-                ServerSelectorPill(
-                    profile = profile,
-                    enabled = settingsEnabled,
-                    onClick = { if (settingsEnabled) showServerSheet = true },
-                )
+                // In Tor mode there are no WARP nodes; the pill picks the Tor
+                // exit country instead (live switch while connected).
+                if (profile.protocol == Protocol.TOR) {
+                    TorExitPill(
+                        exitCountry = profile.torExitCountry,
+                        onClick = { showTorSheet = true },
+                    )
+                } else {
+                    ServerSelectorPill(
+                        profile = profile,
+                        enabled = settingsEnabled,
+                        onClick = { if (settingsEnabled) showServerSheet = true },
+                    )
+                }
 
                 Spacer(Modifier.height(24.dp))
 
@@ -301,6 +322,8 @@ fun HomeScreen(
                     ipInfo = ipInfo,
                     ipLoading = ipLoading,
                     error = state is ConnectionState.Error,
+                    socksPort = if (profile.protocol == Protocol.TOR) TorDefaults.SOCKS_PORT
+                    else TunnelConfig.SOCKS_PORT,
                 )
 
                 Spacer(Modifier.height(16.dp))
@@ -360,6 +383,15 @@ fun HomeScreen(
                 onProfileChange(ServerCatalog.applyTo(profile, node))
             },
             onDismiss = { showServerSheet = false },
+        )
+    }
+
+    if (showTorSheet) {
+        TorExitSheet(
+            selected = profile.torExitCountry,
+            connected = state.isConnected,
+            onSelect = { onTorExitSelected(it) },
+            onDismiss = { showTorSheet = false },
         )
     }
 
@@ -466,6 +498,63 @@ private fun ServerSelectorPill(
         if (selected != null) {
             HomePingBadge(nodeId = selected.id)
         }
+        Spacer(Modifier.weight(1f))
+        Icon(
+            imageVector = Icons.Rounded.KeyboardArrowDown,
+            contentDescription = null,
+            tint = CardTextMuted,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+/**
+ * The Tor-mode pill: TOR label + picked exit country + chevron. Always
+ * tappable — picking a country while connected switches the live session.
+ */
+@Composable
+private fun TorExitPill(
+    exitCountry: String,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(16.dp)
+    val name = if (exitCountry.isBlank()) {
+        stringResource(R.string.tor_exit_auto)
+    } else {
+        NetProbe.countryName(exitCountry).ifBlank { exitCountry }
+    }
+    val flag = if (exitCountry.isBlank()) "" else NetProbe.flagEmoji(exitCountry)
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(color = CardSubSurface, shape = shape)
+            .border(1.dp, EdgeNeon, shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.protocol_tor).uppercase(),
+            fontFamily = FontFamily.Monospace,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.6.sp,
+            color = CardTextDim,
+        )
+        Spacer(Modifier.width(2.dp))
+        if (flag.isNotEmpty()) {
+            Text(text = flag, fontSize = 13.sp)
+        }
+        Text(
+            text = name,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp,
+            letterSpacing = 1.4.sp,
+            color = NeonMint,
+        )
         Spacer(Modifier.weight(1f))
         Icon(
             imageVector = Icons.Rounded.KeyboardArrowDown,

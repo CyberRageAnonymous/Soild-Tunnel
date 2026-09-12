@@ -71,6 +71,7 @@ import kotlin.math.sin
 import kotlinx.coroutines.delay
 import com.soildtunnel.app.R
 import com.soildtunnel.app.core.EngineMeta
+import com.soildtunnel.app.core.TunnelConfig
 import com.soildtunnel.app.core.HevTunnel
 import com.soildtunnel.app.core.IpEndpoint
 import com.soildtunnel.app.core.NetProbe
@@ -97,6 +98,8 @@ fun ConnectionCard(
     ipLoading: Boolean,
     error: Boolean,
     modifier: Modifier = Modifier,
+    // Tor mode listens on its own loopback port, not the engine's.
+    socksPort: Int = TunnelConfig.SOCKS_PORT,
 ) {
     val accent = when {
         error -> ERROR_ACCENT
@@ -125,7 +128,7 @@ fun ConnectionCard(
             TimerBlock(connectedSince = connectedSince, connected = connected)
             ServerIpPill(connected = connected, ipInfo = ipInfo, ipLoading = ipLoading)
             SpeedStrip(connectedSince = connectedSince, connected = connected)
-            ProtocolStrip(connected = connected)
+            ProtocolStrip(connected = connected, socksPort = socksPort)
         }
     }
 }
@@ -375,7 +378,7 @@ private fun SpeedCell(
 // 5. protocol
 
 @Composable
-private fun ProtocolStrip(connected: Boolean) {
+private fun ProtocolStrip(connected: Boolean, socksPort: Int) {
     val meta by EngineMeta.state.collectAsState()
     val ping by PingMonitor.state.collectAsState()
 
@@ -383,7 +386,7 @@ private fun ProtocolStrip(connected: Boolean) {
     // through the tunnel every few seconds, serialised by PingMonitor.
     LaunchedEffect(connected) {
         while (connected) {
-            PingMonitor.pingOnce(viaTunnel = true)
+            PingMonitor.pingOnce(viaTunnel = true, socksPort = socksPort)
             delay(LATENCY_REFRESH_MS)
         }
     }
