@@ -31,7 +31,13 @@ object TorManager {
      * registers transports globally and refuses a second registration, so a
      * fresh controller per connect would die on every reconnect after the
      * first. One controller, started transports toggled per session.
+     *
+     * Every touch of the controller, the transport set and the tor process
+     * handle goes through [ptLock]: a connect racing a still-running
+     * disconnect used to hit Go maps from two threads at once, which kills
+     * the whole process instantly (the kick-out on fast protocol switches).
      */
+    private val ptLock = Any()
     private var ptController: Controller? = null
     /** Transports actually started this session — only these get stopped. */
     private val liveTransports = mutableSetOf<String>()
@@ -86,62 +92,58 @@ object TorManager {
             if (!pre.ok) throw IllegalStateException("Snowflake precheck failed: ${pre.detail}")
         }
 
-        var controller = ptController
-        if (controller == null) {
-            controller = try {
-                PtProxy.newController(iptDir.absolutePath, true, false, "WARN", silentEvents)
-                    ?: throw IllegalStateException(readableNilReason(iptDir))
-            } catch (t: Throwable) {
-                // Anything the bridge throws here must surface as a readable
-                // error, not a silent death.
-                if (t is CancellationException) throw t
-                if (t is IllegalStateException) throw t
-                throw IllegalStateException(
-                    "Transport backend failed (${t.javaClass.simpleName}: ${t.message})",
+        // One backend per process (see ptLock): fast local init, no network,
+        // so holding the lock here is fine and closes the create/stop race.
+        val controller = synchronized(ptLock) {
+            ptController ?: createController(iptDir).also {
+                ptController = it
+                DiagnosticsLog.i(
+                    TAG,
+                    "Transports: snowflake ${PtProxy.snowflakeVersion()}, ${PtProxy.lyrebirdVersion()}",
                 )
             }
-            ptController = controller
-            DiagnosticsLog.i(
-                TAG,
-                "Transports: snowflake ${PtProxy.snowflakeVersion()}, ${PtProxy.lyrebirdVersion()}",
-            )
         }
 
         var snowflakePort = 0L
         var obfs4Port = 0L
         var webtunnelPort = 0L
-        if (wantSnowflake) {
-            DiagnosticsLog.i(TAG, "Starting the Snowflake entry transport…")
-            controller.snowflakeIceServers = TorDefaults.SNOWFLAKE_ICE
-            controller.snowflakeBrokerUrl = TorDefaults.SNOWFLAKE_BROKER
-            controller.snowflakeFrontDomains = TorDefaults.SNOWFLAKE_FRONT
-            controller.snowflakeMaxPeers = 1
-            runCatching { controller.start("snowflake", "") }
-                .onFailure {
+        // Transports start and stop under the same lock: Go maps are not
+        // thread-safe, and overlapping calls abort the whole process.
+        // Only fast local binds happen here — no network, no suspension.
+        synchronized(ptLock) {
+            if (wantSnowflake) {
+                DiagnosticsLog.i(TAG, "Starting the Snowflake entry transport…")
+                controller.snowflakeIceServers = TorDefaults.SNOWFLAKE_ICE
+                controller.snowflakeBrokerUrl = TorDefaults.SNOWFLAKE_BROKER
+                controller.snowflakeFrontDomains = TorDefaults.SNOWFLAKE_FRONT
+                controller.snowflakeMaxPeers = 1
+                runCatching { controller.start("snowflake", "") }
+                    .onFailure {
+                        throw IllegalStateException(
+                            "Snowflake failed to start (${it.javaClass.simpleName}: ${it.message})",
+                        )
+                    }
+                snowflakePort = controller.port("snowflake")
+                if (snowflakePort <= 0) throw IllegalStateException("Snowflake failed to start.")
+                liveTransports += "snowflake"
+                DiagnosticsLog.i(TAG, "Snowflake listening on 127.0.0.1:$snowflakePort")
+            }
+            if (profile.torTransport == TorTransport.CUSTOM) {
+                DiagnosticsLog.i(TAG, "Starting Lyrebird for custom bridges…")
+                runCatching {
+                    controller.start("obfs4", "")
+                    controller.start("webtunnel", "")
+                }.onFailure {
                     throw IllegalStateException(
-                        "Snowflake failed to start (${it.javaClass.simpleName}: ${it.message})",
+                        "Bridge transport failed to start (${it.javaClass.simpleName}: ${it.message})",
                     )
                 }
-            snowflakePort = controller.port("snowflake")
-            if (snowflakePort <= 0) throw IllegalStateException("Snowflake failed to start.")
-            liveTransports += "snowflake"
-            DiagnosticsLog.i(TAG, "Snowflake listening on 127.0.0.1:$snowflakePort")
-        }
-        if (profile.torTransport == TorTransport.CUSTOM) {
-            DiagnosticsLog.i(TAG, "Starting Lyrebird for custom bridges…")
-            runCatching {
-                controller.start("obfs4", "")
-                controller.start("webtunnel", "")
-            }.onFailure {
-                throw IllegalStateException(
-                    "Bridge transport failed to start (${it.javaClass.simpleName}: ${it.message})",
-                )
+                obfs4Port = controller.port("obfs4")
+                webtunnelPort = controller.port("webtunnel")
+                if (obfs4Port <= 0) throw IllegalStateException("Bridge transport failed to start.")
+                liveTransports += "obfs4"
+                liveTransports += "webtunnel"
             }
-            obfs4Port = controller.port("obfs4")
-            webtunnelPort = controller.port("webtunnel")
-            if (obfs4Port <= 0) throw IllegalStateException("Bridge transport failed to start.")
-            liveTransports += "obfs4"
-            liveTransports += "webtunnel"
         }
 
         File(dir, "torrc").writeText(
@@ -167,7 +169,7 @@ object TorManager {
                 environment()["TMPDIR"] = filesDir.absolutePath
             }
             .start()
-        process = proc
+        synchronized(ptLock) { process = proc }
         Thread({
             try {
                 proc.inputStream.bufferedReader().useLines { lines ->
@@ -196,8 +198,11 @@ object TorManager {
 
     fun stop() {
         running = false
-        val proc = process
-        process = null
+        val proc = synchronized(ptLock) {
+            val p = process
+            process = null
+            p
+        }
         if (proc != null) {
             runCatching {
                 proc.destroy()
@@ -206,12 +211,14 @@ object TorManager {
                 }
             }
         }
-        ptController?.let { controller ->
-            liveTransports.toList().forEach { name ->
-                runCatching { controller.stop(name) }
+        synchronized(ptLock) {
+            ptController?.let { controller ->
+                liveTransports.toList().forEach { name ->
+                    runCatching { controller.stop(name) }
+                }
             }
+            liveTransports.clear()
         }
-        liveTransports.clear()
     }
 
     /** Parks the caller until tor exits or the timeout elapses. */
@@ -277,6 +284,21 @@ object TorManager {
      * The Go side only says "nil" when it cannot use this folder, so prove
      * writability here first — with a message that names the actual problem.
      */
+    private fun createController(iptDir: File): Controller {
+        return try {
+            PtProxy.newController(iptDir.absolutePath, true, false, "WARN", silentEvents)
+                ?: throw IllegalStateException(readableNilReason(iptDir))
+        } catch (t: Throwable) {
+            // Anything the bridge throws here must surface as a readable
+            // error, not a silent death.
+            if (t is CancellationException) throw t
+            if (t is IllegalStateException) throw t
+            throw IllegalStateException(
+                "Transport backend failed (${t.javaClass.simpleName}: ${t.message})",
+            )
+        }
+    }
+
     private fun checkStateDir(dir: File) {
         if (!dir.exists() && !dir.mkdirs()) {
             throw IllegalStateException("State folder cannot be created: ${dir.absolutePath}")

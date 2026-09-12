@@ -92,29 +92,29 @@ object SnowflakePreflight {
     }.getOrDefault(false)
 
     /** Minimal STUN binding request; a matching reply proves UDP flows. */
-    private fun stunResponds(stun: String): Boolean = runCatching {
+    private suspend fun stunResponds(stun: String): Boolean {
         // stun:host:port
         val rest = stun.removePrefix("stun:")
         val host = rest.substringBeforeLast(":")
-        val port = rest.substringAfterLast(":").toIntOrNull() ?: return@runCatching false
-        val addr = withTimeoutOrNull(5000L) {
-            runCatching { InetAddress.getByName(host) }.getOrNull()
-        } ?: return@runCatching false
-        DatagramSocket().use { sock ->
-            sock.soTimeout = 3000
-            val req = ByteArray(20)
-            req[0] = 0x00
-            req[1] = 0x01
-            req[4] = 0x21
-            req[5] = 0x12
-            req[6] = 0xA4.toByte()
-            req[7] = 0x42
-            for (i in 8 until 20) req[i] = (i * 37).toByte()
-            sock.send(DatagramPacket(req, req.size, InetSocketAddress(addr, port)))
-            val buf = ByteArray(64)
-            val resp = DatagramPacket(buf, buf.size)
-            sock.receive(resp)
-            resp.length >= 20 && buf[0] == 0x01.toByte() && buf[1] == 0x01.toByte()
-        }
-    }.getOrDefault(false)
+        val port = rest.substringAfterLast(":").toIntOrNull() ?: return false
+        val addr = resolve(host)?.firstOrNull() ?: return false
+        return runCatching {
+            DatagramSocket().use { sock ->
+                sock.soTimeout = 3000
+                val req = ByteArray(20)
+                req[0] = 0x00
+                req[1] = 0x01
+                req[4] = 0x21
+                req[5] = 0x12
+                req[6] = 0xA4.toByte()
+                req[7] = 0x42
+                for (i in 8 until 20) req[i] = (i * 37).toByte()
+                sock.send(DatagramPacket(req, req.size, InetSocketAddress(addr, port)))
+                val buf = ByteArray(64)
+                val resp = DatagramPacket(buf, buf.size)
+                sock.receive(resp)
+                resp.length >= 20 && buf[0] == 0x01.toByte() && buf[1] == 0x01.toByte()
+            }
+        }.getOrDefault(false)
+    }
 }
