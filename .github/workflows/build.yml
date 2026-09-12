@@ -225,6 +225,11 @@ jobs:
             fi
             if ! grep -qE 'Could not (resolve|GET|get resource|download)|Received status code (403|408|429|50[0-9])|Read timed out|Connection reset|Premature end of Content-Length' "$LOG"; then
               echo "::error::Release build failed for a reason that is NOT an artifact download problem - not retrying."
+              # Surface the real compiler errors as annotations (the full log
+              # otherwise lives only in places you cannot read from an API).
+              grep -m12 -E '^e: ' "$LOG" | cut -c1-800 | sed 's/%/%25/g' | while IFS= read -r err; do
+                echo "::error::$err"
+              done || true
               exit "$status"
             fi
             if [ "$attempt" -ge 3 ]; then
