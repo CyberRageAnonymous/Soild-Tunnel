@@ -74,6 +74,18 @@ object TorManager {
         val iptDir = File(filesDir, "ipt-state")
         checkStateDir(iptDir)
 
+        val bridges = userBridges(profile)
+        val wantSnowflake = profile.torTransport == TorTransport.SNOWFLAKE ||
+            (profile.torTransport == TorTransport.CUSTOM &&
+                bridges.any { it.lowercase().startsWith("bridge snowflake") })
+
+        // Fail fast with a NAMED cause instead of hanging at 10% forever.
+        if (wantSnowflake) {
+            val pre = SnowflakePreflight.run()
+            DiagnosticsLog.i(TAG, "Snowflake precheck: ${pre.detail}")
+            if (!pre.ok) throw IllegalStateException("Snowflake precheck failed: ${pre.detail}")
+        }
+
         var controller = ptController
         if (controller == null) {
             controller = try {
@@ -95,10 +107,6 @@ object TorManager {
             )
         }
 
-        val bridges = userBridges(profile)
-        val wantSnowflake = profile.torTransport == TorTransport.SNOWFLAKE ||
-            (profile.torTransport == TorTransport.CUSTOM &&
-                bridges.any { it.lowercase().startsWith("bridge snowflake") })
         var snowflakePort = 0L
         var obfs4Port = 0L
         var webtunnelPort = 0L
