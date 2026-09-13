@@ -4,6 +4,13 @@ package com.soildtunnel.app.model
 /** Transport protocol, mapped 1:1 to the desktop app's CLI flags. */
 enum class Protocol { AUTO, MASQUE, WIREGUARD, GOOL, TOR }
 
+/**
+ * How Tor enters the network (only used when [Protocol] is TOR). The
+ * built-in entries ship with official bridges, so they need no setup;
+ * CUSTOM uses the user's own pasted bridges.
+ */
+enum class TorTransport { DIRECT, OBFS4, SNOWFLAKE, MEEK, CUSTOM }
+
 /** Endpoint scanning strategy. */
 enum class ScanMode { TURBO, BALANCED, THOROUGH, STEALTH, IRONCLAD }
 
@@ -183,6 +190,16 @@ data class ConnectionProfile(
     val dnsAdBlock: Boolean = false,
     /** Block malware via Cloudflare DNS (1.1.1.2). */
     val dnsMalwareBlock: Boolean = false,
+    /**
+     * Tor entry transport. OBFS4 (the default) connects through official
+     * built-in bridges with no setup.
+     */
+    val torTransport: TorTransport = TorTransport.OBFS4,
+    /**
+     * User's own bridges, one bridge per row, used only when [torTransport]
+     * is CUSTOM. Accepts full "Bridge ..." lines or bare bridge lines.
+     */
+    val torBridges: String = "",
     /**
      * Pinned Tor exit country (two letters, e.g. "DE"). Blank means Tor
      * picks the fastest exit itself.

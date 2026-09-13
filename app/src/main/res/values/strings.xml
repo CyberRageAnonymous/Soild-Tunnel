@@ -306,6 +306,16 @@
     <!-- Tor mode -->
     <string name="protocol_tor">Tor</string>
     <string name="tor_section">Tor network</string>
+    <string name="tor_transport_label">Tor entry</string>
+    <string name="tor_transport_direct">Direct</string>
+    <string name="tor_transport_obfs4">obfs4 (built-in)</string>
+    <string name="tor_transport_snowflake">Snowflake (built-in)</string>
+    <string name="tor_transport_meek">Meek (built-in)</string>
+    <string name="tor_transport_custom">My bridges</string>
+    <string name="tor_transport_desc">Built-in entries connect through official Tor bridges with no setup. Meek is slow but hard to block; use your own bridges when nothing else works.</string>
+    <string name="tor_bridges_label">Bridges (one per line)</string>
+    <string name="tor_bridges_hint">Bridge obfs4 1.2.3.4:443 ABCDEF…</string>
+    <string name="tor_bridges_help">Paste bridge lines with or without the leading word Bridge. Lines starting with # are skipped.</string>
     <string name="tor_exit_label">Exit country</string>
     <string name="tor_exit_auto">Auto (fastest)</string>
     <string name="tor_exit_desc">Pin where traffic leaves the Tor network. Auto picks the fastest exit.</string>

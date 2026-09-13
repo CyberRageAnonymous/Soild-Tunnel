@@ -54,6 +54,7 @@ import com.soildtunnel.app.model.IpVersion
 import com.soildtunnel.app.model.Noize
 import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.model.ScanMode
+import com.soildtunnel.app.model.TorTransport
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.soildtunnel.app.model.SplitMode
 import com.soildtunnel.app.model.TeamAuth
@@ -161,6 +162,31 @@ fun AdvancedPanel(
                     // ---------- Tor ----------
                     if (profile.protocol == Protocol.TOR) {
                         SectionHeader(stringResource(R.string.tor_section))
+
+                        SettingLabel(stringResource(R.string.tor_transport_label))
+                        DropdownSelector(
+                            options = TorTransport.entries,
+                            selected = profile.torTransport,
+                            onSelect = { onProfileChange(profile.copy(torTransport = it)) },
+                            label = { torTransportLabel(it) },
+                            enabled = enabled,
+                        )
+                        HelperText(stringResource(R.string.tor_transport_desc))
+                        Spacer(Modifier.height(16.dp))
+
+                        if (profile.torTransport == TorTransport.CUSTOM) {
+                            LtrOutlinedTextField(
+                                value = profile.torBridges,
+                                onValueChange = { onProfileChange(profile.copy(torBridges = it)) },
+                                enabled = enabled,
+                                singleLine = false,
+                                label = { Text(stringResource(R.string.tor_bridges_label)) },
+                                placeholder = { Text(stringResource(R.string.tor_bridges_hint)) },
+                                supportingText = { Text(stringResource(R.string.tor_bridges_help)) },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Spacer(Modifier.height(16.dp))
+                        }
 
                         SettingLabel(stringResource(R.string.tor_exit_label))
                         DropdownSelector(
@@ -869,6 +895,15 @@ private fun protocolLabel(protocol: Protocol): String = when (protocol) {
     Protocol.WIREGUARD -> stringResource(R.string.protocol_wireguard)
     Protocol.GOOL -> stringResource(R.string.protocol_gool)
     Protocol.TOR -> stringResource(R.string.protocol_tor)
+}
+
+@Composable
+private fun torTransportLabel(t: TorTransport): String = when (t) {
+    TorTransport.DIRECT -> stringResource(R.string.tor_transport_direct)
+    TorTransport.OBFS4 -> stringResource(R.string.tor_transport_obfs4)
+    TorTransport.SNOWFLAKE -> stringResource(R.string.tor_transport_snowflake)
+    TorTransport.MEEK -> stringResource(R.string.tor_transport_meek)
+    TorTransport.CUSTOM -> stringResource(R.string.tor_transport_custom)
 }
 
 @Composable

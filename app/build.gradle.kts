@@ -239,9 +239,11 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
-    // Tor network: the daemon binary (libtor.so per ABI) ships on Maven
-    // Central, so no extra repository is needed.
+    // Tor network: the daemon binary (libtor.so per ABI) plus the pluggable
+    // transports (obfs4/snowflake/webtunnel/meek) for bridged entry. Both
+    // ship on Maven Central, so no extra repository is needed.
     implementation("info.guardianproject:tor-android:0.4.7.14")
+    implementation("com.netzarchitekten:IPtProxy:5.5.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

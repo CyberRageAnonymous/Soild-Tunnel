@@ -28,6 +28,7 @@ import com.soildtunnel.app.core.SoildTunnelController
 import com.soildtunnel.app.core.DiagnosticsLog
 import com.soildtunnel.app.core.IpEndpoint
 import com.soildtunnel.app.core.NetProbe
+import com.soildtunnel.app.core.TorBridges
 import com.soildtunnel.app.core.TorDefaults
 import com.soildtunnel.app.core.TorManager
 import com.soildtunnel.app.core.TunnelConfig
@@ -111,6 +112,11 @@ class MainActivity : ComponentActivity() {
         }
 
         maybeRequestNotificationPermission()
+
+        // Keep the built-in Tor bridges fresh (two-day cache, silent).
+        lifecycleScope.launch(Dispatchers.IO) {
+            runCatching { TorBridges.refreshInBackground(applicationContext) }
+        }
 
         // Feature merge: a previous run died with an uncaught JVM
         // exception — open the saved crash report once so the user can see and

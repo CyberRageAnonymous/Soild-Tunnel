@@ -41,7 +41,7 @@ No accounts. No logs. No trackers. One tap and you're free.
 | **MASQUE** | Disguises tunnel traffic as normal HTTPS/HTTP2 browsing. Hardest to detect. |
 | **WireGuard** | Blazing-fast modern VPN protocol. Best speed when not blocked. |
 | **GOOL** | Double-tunnel mode (WARP inside WARP) for maximum anti-DPI. |
-| **Tor** | Routes the whole device through the Tor network (direct entry) with a pinnable exit country. |
+| **Tor** | Routes the whole device through the Tor network with official built-in bridges (or your own) and a pinnable exit country. |
 | **Smart Auto** | Fingerprints your network's DPI and picks the best protocol automatically. |
 
 ### Anti-DPI Obfuscation
@@ -108,7 +108,10 @@ latency badges.
 Pick **Tor** as the protocol and the whole device goes through the Tor
 network instead of WARP — no WARP engine involved:
 
-- **Direct entry** — connects straight to the Tor network, no setup needed
+- **Built-in entries, no setup** — obfs4, Snowflake and Meek through
+  official Tor bridges that refresh themselves every two days
+- **Direct entry** — connects straight to the Tor network where it is reachable
+- **Your own bridges** — paste any obfs4 / snowflake / webtunnel / meek lines
 - **Exit country picker** — pin where traffic leaves Tor, or leave it on
   Auto. Switching countries while connected rebuilds circuits live
 - Same TUN, kill switch, split tunneling and per-app blocking as WARP mode
@@ -224,6 +227,7 @@ The release build is fully automated via
 | Setting | Default | Description |
 |---------|---------|-------------|
 | Protocol | Smart Auto | MASQUE, WireGuard, GOOL, Tor, or Auto |
+| Tor entry | obfs4 built-in | Direct, built-in obfs4/Snowflake/Meek, or custom bridges |
 | Tor exit | Auto | Pinned exit country, or Auto |
 | Scan Mode | Balanced | TURBO/BALANCED/THOROUGH/STEALTH/IRONCLAD |
 | IP Version | IPv4 | IPv4, IPv6, or Both |
