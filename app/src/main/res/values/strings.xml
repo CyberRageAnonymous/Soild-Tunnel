@@ -319,7 +319,7 @@
     <string name="tor_exit_label">Exit country</string>
     <string name="tor_exit_auto">Auto (fastest)</string>
     <string name="tor_exit_desc">Pin where traffic leaves the Tor network. Auto picks the fastest exit.</string>
-    <string name="tor_note">Tor is slower than WARP by design, and the first connect can take a few minutes while circuits are built. In Tor mode the tunnel is IPv4-only.</string>
+    <string name="tor_note">Tor is slower than WARP by design, and the first connect can take a few minutes while circuits are built. Both IPv4 and IPv6 flow through the tunnel (IPv6 only via exits that support it).</string>
     <string name="tor_starting">Starting Tor…</string>
     <string name="tor_bootstrap">Starting Tor… %1$d%%</string>
     <string name="tor_exit_title">Tor exit country</string>

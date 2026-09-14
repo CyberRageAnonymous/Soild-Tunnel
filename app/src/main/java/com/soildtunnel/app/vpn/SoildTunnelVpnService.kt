@@ -663,9 +663,10 @@ class SoildTunnelVpnService : VpnService() {
         // IPv6 LEAK PROTECTION : on by default -- the v6 default
         // route keeps IPv6 traffic inside the tunnel. Can be disabled for
         // networks where a default v6 route breaks connectivity.
-        // Tor mode stays IPv4-only: exit capacity on v6 is thin and
-        // unpredictable, so a v6 default route would only produce hangs.
-        if (profile.ipv6LeakProtection && profile.protocol != Protocol.TOR) {
+        // Tor mode shares this: with the flag on, v6 flows ride through
+        // tor's SOCKS exactly like v4 (tor picks an IPv6-capable exit); with
+        // it off the tunnel is v4-only and v6 stays outside the VPN.
+        if (profile.ipv6LeakProtection) {
             builder.addRoute("::", 0)
         }
 

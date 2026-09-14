@@ -319,7 +319,7 @@
     <string name="tor_exit_label">کشور خروجی</string>
     <string name="tor_exit_auto">خودکار (سریع‌ترین)</string>
     <string name="tor_exit_desc">مشخص کن ترافیک از کدام کشور خارج شود. حالت خودکار سریع‌ترین خروجی را انتخاب می‌کند.</string>
-    <string name="tor_note">تور ذاتاً از WARP کندتر است و اولین اتصال ممکن است چند دقیقه طول بکشد تا مدار ساخته شود. در حالت تور تونل فقط IPv4 است.</string>
+    <string name="tor_note">تور ذاتاً از WARP کندتر است و اولین اتصال ممکن است چند دقیقه طول بکشد تا مدار ساخته شود. IPv4 و IPv6 هر دو از داخل تونل رد می‌شوند (IPv6 فقط از خروجی‌هایی که پشتیبانی‌اش می‌کنند).</string>
     <string name="tor_starting">در حال روشن کردن تور…</string>
     <string name="tor_bootstrap">در حال روشن کردن تور… %1$d%%</string>
     <string name="tor_exit_title">کشور خروجی تور</string>

@@ -117,7 +117,9 @@ network instead of WARP — no WARP engine involved:
 - Same TUN, kill switch, split tunneling and per-app blocking as WARP mode
 
 Tor is slower than WARP by nature (three hops around the world) and the
-first connect can take a few minutes. In Tor mode the tunnel is IPv4-only.
+first connect can take a few minutes. Both IPv4 and IPv6 travel through
+the tunnel; IPv6 destinations are reached whenever the exit supports them.
+IPv6 can be switched off with the IPv6 Leak Protection toggle.
 
 ### Appearance
 

@@ -356,7 +356,12 @@ object TorManager {
         plugins: Map<String, Long>,
         lines: List<String>,
     ): String = buildString {
-        appendLine("SocksPort 127.0.0.1:${TorDefaults.SOCKS_PORT}")
+        // Tor is dual-stack by default; these make that explicit so the
+        // config reads the way it behaves. IPv6 destinations only succeed
+        // when the exit supports them -- exactly like the official apps.
+        appendLine("SocksPort 127.0.0.1:${TorDefaults.SOCKS_PORT} IPv6Traffic")
+        appendLine("ClientUseIPv6 1")
+        appendLine("ClientPreferIPv6ORPort 1")
         appendLine("DNSPort 127.0.0.1:${TorDefaults.DNS_PORT}")
         appendLine("ControlPort 127.0.0.1:${TorDefaults.CONTROL_PORT}")
         appendLine("CookieAuthentication 1")

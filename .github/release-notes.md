@@ -8,7 +8,7 @@ Tor mode, light theme, and stability improvements.
 
 **Notes:**
 - Tor is slower than WARP by design (three hops around the world) and the first connect can take a few minutes while circuits are built.
-- In Tor mode the tunnel is IPv4-only.
+- Both IPv4 and IPv6 travel through the Tor tunnel; IPv6 destinations are reached when the exit supports them (turn it off with IPv6 Leak Protection).
 - The app is bigger this release: it now ships the Tor daemon, its transports and Tor's country database.
 
 Version: SoildTunnel 1.0.5 (version code 6).
