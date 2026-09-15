@@ -52,6 +52,9 @@ import com.soildtunnel.app.core.Diagnostics
 import com.soildtunnel.app.core.DiagnosticsLog
 import com.soildtunnel.app.core.LogLevel
 import com.soildtunnel.app.core.LogLine
+import com.soildtunnel.app.ui.theme.CardSubSurface
+import com.soildtunnel.app.ui.theme.CardTextMuted
+import com.soildtunnel.app.ui.theme.Palette
 
 /**
  * A collapsible “pro” panel that shows the live status of every part of the
@@ -206,7 +209,7 @@ private fun LogConsole() {
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 120.dp, max = 260.dp)
-            .background(Color(0xFF0C0F16), RoundedCornerShape(12.dp))
+            .background(CardSubSurface, RoundedCornerShape(12.dp))
             .padding(12.dp)
             .verticalScroll(scroll),
     ) {
@@ -214,7 +217,7 @@ private fun LogConsole() {
             Text(
                 text = androidx.compose.ui.res.stringResource(R.string.diag_empty_logs),
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF8A93A6),
+                color = CardTextMuted,
             )
         } else {
             Column {
@@ -231,11 +234,14 @@ private fun LogConsole() {
     }
 }
 
-private fun logColor(level: LogLevel): Color = when (level) {
-    LogLevel.ERROR -> Color(0xFFFF7A90)
-    LogLevel.WARN -> Color(0xFFF5C451)
-    LogLevel.INFO -> Color(0xFFB8C2D6)
-    LogLevel.DEBUG -> Color(0xFF7C8698)
+private fun logColor(level: LogLevel): Color {
+    val light = Palette.light
+    return when (level) {
+        LogLevel.ERROR -> if (light) Color(0xFFB3261E) else Color(0xFFFF7A90)
+        LogLevel.WARN -> if (light) Color(0xFF8A5A00) else Color(0xFFF5C451)
+        LogLevel.INFO -> if (light) Color(0xFF31404F) else Color(0xFFB8C2D6)
+        LogLevel.DEBUG -> if (light) Color(0xFF64748B) else Color(0xFF7C8698)
+    }
 }
 
 @Composable

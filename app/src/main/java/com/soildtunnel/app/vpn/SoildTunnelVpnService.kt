@@ -91,6 +91,12 @@ class SoildTunnelVpnService : VpnService() {
     private var networkChangedAt = 0L
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // CRASH FIX : startForeground must be called before the 5-second
+        // FGS deadline on EVERY start path — including ACTION_DISCONNECT.
+        // The previous code only promoted in the else (connect) branch,
+        // so a disconnect that arrived before the service was promoted
+        // triggered ForegroundServiceDidNotStartInTimeException.
+        startForeground(NOTIF_ID, buildNotification(getString(R.string.state_launching)))
         when (intent?.action) {
             ACTION_DISCONNECT -> {
                 // STRICT KILL SWITCH : a manual disconnect must not
@@ -107,7 +113,6 @@ class SoildTunnelVpnService : VpnService() {
             }
             else -> {
                 val profile = ProfileCodec.decode(intent?.getStringExtra(EXTRA_PROFILE))
-                startForeground(NOTIF_ID, buildNotification(getString(R.string.state_launching)))
                 startTunnel(profile)
             }
         }
@@ -290,7 +295,7 @@ class SoildTunnelVpnService : VpnService() {
             delay(backoff)
 
             val restarted = runCatching {
-                TorManager.start(this, profile) { percent, summary ->
+                TorManager.start(this, profile, keepExit = true) { percent, summary ->
                     DiagnosticsLog.i(TAG, "Tor bootstrap $percent% — $summary")
                 }
             }.isSuccess

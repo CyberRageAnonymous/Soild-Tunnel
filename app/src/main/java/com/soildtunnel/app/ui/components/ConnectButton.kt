@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import com.soildtunnel.app.ui.theme.Palette
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -134,7 +135,7 @@ fun ConnectButton(
                     .background(
                         brush = Brush.verticalGradient(
                             colors = listOf(
-                                Color.White.copy(alpha = 0.12f),
+                                InkGlow.copy(alpha = 0.12f),
                                 Color.Transparent,
                             ),
                             startY = 0f,
@@ -196,7 +197,7 @@ private fun DrawScope.drawHalo(accent: Color, scale: Float) {
     // Secondary inner glow for glass depth
     drawCircle(
         brush = Brush.radialGradient(
-            colors = listOf(Color.White.copy(alpha = 0.06f), Color.Transparent),
+            colors = listOf(InkGlow.copy(alpha = 0.06f), Color.Transparent),
             center = Offset(size.width / 2f, size.height / 2f),
             radius = radius * 0.55f,
         ),
@@ -218,7 +219,7 @@ private fun DrawScope.drawTickRing(accent: Color) {
         val major = i % MAJOR_EVERY == 0
         val inner = if (major) majorInner else minorInner
         drawLine(
-            color = if (major) accent.copy(alpha = 0.55f) else Color.White.copy(alpha = 0.14f),
+            color = if (major) accent.copy(alpha = 0.55f) else InkGlow.copy(alpha = 0.14f),
             start = Offset(center.x + dx * inner, center.y + dy * inner),
             end = Offset(center.x + dx * outer, center.y + dy * outer),
             strokeWidth = if (major) stroke * 1.4f else stroke,
@@ -234,7 +235,7 @@ private fun DrawScope.drawDashedRing() {
     val dash = sweep * 0.45f
     for (i in 0 until DASH_COUNT) {
         drawArc(
-            color = Color.White.copy(alpha = 0.16f),
+            color = InkGlow.copy(alpha = 0.16f),
             startAngle = i * sweep,
             sweepAngle = dash,
             useCenter = false,
@@ -304,5 +305,11 @@ private val GLYPH = 54.dp
 private const val TICK_COUNT = 60
 private const val MAJOR_EVERY = 5
 private const val DASH_COUNT = 48
-private val DISC_BASE = Color(0xFF05070B)
+
+/** Light-ink strokes sit dark on light discs: flip white/black with the theme. */
+private val InkGlow: Color
+    get() = if (Palette.light) Color.Black else Color.White
+
+private val DISC_BASE: Color
+    get() = if (Palette.light) Color(0xFFE9EEF3) else Color(0xFF05070B)
 private val DEEP_TEXT = Color(0xFF062B24)

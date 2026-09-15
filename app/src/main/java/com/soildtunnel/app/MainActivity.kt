@@ -293,14 +293,38 @@ class MainActivity : ComponentActivity() {
         val port =
             if (profile.protocol == Protocol.TOR) TorDefaults.SOCKS_PORT
             else TunnelConfig.SOCKS_PORT
+        val pinned =
+            if (profile.protocol == Protocol.TOR) profile.torExitCountry.trim().uppercase() else ""
         SoildTunnelController.setIpInfo(null)
         SoildTunnelController.setIpLoading(true)
         try {
-            delay(8000)
-            val info = NetProbe.fetchIpInfoViaSocksWithRetry(TunnelConfig.SOCKS_HOST, port)
-            if (info != null) {
-                SoildTunnelController.setIpInfo(IpEndpoint(info.ip, info.countryCode, true))
+            if (!pinned.matches(Regex("^[A-Z]{2}$"))) {
+                delay(8000)
+                val info = NetProbe.fetchIpInfoViaSocksWithRetry(TunnelConfig.SOCKS_HOST, port)
+                if (info != null) {
+                    SoildTunnelController.setIpInfo(IpEndpoint(info.ip, info.countryCode, true))
+                }
+                return
             }
+            // Exit pinned: NEWNYM takes a while to surface — a single fetch
+            // often returns the OLD circuit's IP, which reads as "my exit
+            // country choice is ignored". Poll until the exit actually reports
+            // the pinned country (bounded), then publish the real result.
+            repeat(TOR_EXIT_VERIFY_ATTEMPTS) {
+                delay(TOR_EXIT_VERIFY_PACE_MS)
+                val info = NetProbe.fetchIpInfoViaSocks(TunnelConfig.SOCKS_HOST, port, timeoutMs = 6000)
+                if (info == null) return@repeat
+                if (!info.countryCode.isNullOrBlank() && info.countryCode.equals(pinned, ignoreCase = true)) {
+                    SoildTunnelController.setIpInfo(IpEndpoint(info.ip, info.countryCode, true))
+                    DiagnosticsLog.i("tor", "Exit now in $pinned — ${info.ip}.")
+                    return
+                }
+                DiagnosticsLog.i(
+                    "tor",
+                    "Waiting for $pinned exit… (now ${info.countryCode ?: "??"} / ${info.ip})",
+                )
+            }
+            DiagnosticsLog.w("tor", "Exit still not $pinned after $TOR_EXIT_VERIFY_ATTEMPTS rounds.")
         } finally {
             SoildTunnelController.setIpLoading(false)
         }
@@ -315,5 +339,8 @@ class MainActivity : ComponentActivity() {
     companion object {
         /** Set by the Quick Settings tile when it needs the consent dialog. */
         const val EXTRA_CONNECT_ON_LAUNCH = "com.soildtunnel.app.CONNECT_ON_LAUNCH"
+
+        private const val TOR_EXIT_VERIFY_ATTEMPTS = 10
+        private const val TOR_EXIT_VERIFY_PACE_MS = 4_000L
     }
 }

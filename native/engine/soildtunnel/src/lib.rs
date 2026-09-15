@@ -45,7 +45,21 @@ fn parse_local_v4(s: &str) -> Ipv4Addr {
 }
 
 const TUNNEL_MTU: usize = 1280;
-const INNER_MTU: usize = 1200;
+
+/// MTU pair for warp-in-warp: the outer tunnel's ceiling and the inner
+/// tunnel one hop down, which always loses the WG/UDP/IP overhead first.
+/// The app may steer it with SOILDTUNNEL_TUN_MTU; the default is the known
+/// safe 1280 and 1500 is the absolute physical ceiling (any higher would
+/// fragment IP packets on a standard 1500-byte link).
+fn sled_mtu_pair() -> (usize, usize) {
+    let outer = std::env::var("SOILDTUNNEL_TUN_MTU")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .map(|m| m.clamp(TUNNEL_MTU, 1500))
+        .unwrap_or(TUNNEL_MTU);
+    (outer, outer.saturating_sub(80).max(1024))
+}
+
 const DEFAULT_CONFIG: &str = "soildtunnel.toml";
 
 pub async fn run() -> Result<()> {
@@ -1552,14 +1566,16 @@ async fn run_warp_in_warp(
     }
 
     log::info!("[*] establishing outer WARP tunnel to {peer}...");
-    let (outer_stack, mut outer_exit) = establish_wg(&primary, peer, TUNNEL_MTU, true, 5, "outer").await?;
+    let (outer_mtu, inner_mtu) = sled_mtu_pair();
+    log::info!("[*] warp-in-warp MTUs: outer {outer_mtu}, inner {inner_mtu}");
+    let (outer_stack, mut outer_exit) = establish_wg(&primary, peer, outer_mtu, true, 5, "outer").await?;
 
     let (forwarder, _forwarder_guard) = spawn_udp_forwarder(&outer_stack, inner_peer).await?;
     log::info!("[+] inner endpoint {inner_peer} tunneled through outer warp via {forwarder}");
 
     log::info!("[*] establishing inner WARP tunnel (warp-in-warp)...");
     let (inner_stack, mut inner_exit) =
-        establish_wg(&secondary, forwarder, INNER_MTU, false, 20, "inner").await?;
+        establish_wg(&secondary, forwarder, inner_mtu, false, 20, "inner").await?;
 
     log::info!("[+] socks5 server listening on {listen}");
     let http_task = spawn_http_proxy(&inner_stack);

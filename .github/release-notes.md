@@ -1,14 +1,15 @@
-# SoildTunnel v1.0.5
+# SoildTunnel v1.0.6
 
-Tor mode, light theme, and stability improvements.
+Stability and speed fixes for the 1.0.5 release.
 
-**New features:**
-- **Tor mode** — route the whole device through the Tor network: built-in obfs4, Snowflake and Meek entries through official Tor bridges (no setup, refreshed automatically), direct entry, your own bridges, and a pinnable exit country. The exit can be switched live from the home screen while connected.
-- **Light theme** — the app now follows the system theme, or pin Dark / Light from the new Theme card in settings.
+**Fixes:**
+- Crash on disconnect — the VPN service now promotes itself to a foreground service before handling the disconnect request, so a quick disconnect right after connect no longer kills the app with a `ForegroundServiceDidNotStartInTimeException`.
+- **Tor traffic counters** — the dashboard now reads the TUN↔SOCKS bridge that Tor and per-app blocking ride on, so Downlink/Uplink finally show live numbers in Tor mode (previously stuck at 0).
+- **Tor exit country** — a live-switched exit country is now remembered across tor restarts (a supervisor restart used to silently revert to the old/automatic exit), and after switching, the app keeps polling the exit until the new country actually shows instead of publishing the old circuit's IP.
+- **Light theme** — the home backdrop, the diagnostics log console and the power button are no longer hard-coded dark; they follow the selected theme.
+- **WARP×2 (Gool) MTU** — the Advanced MTU setting now reaches the double-tunnel engine (outer/inner tunnel MTUs follow it, clamped to a safe 1280–1500). Raising the MTU on a clean network gives WARP×2 bigger TCP segments and room for full-size QUIC packets; the stock default is unchanged and stays safe on filtered networks.
 
 **Notes:**
-- Tor is slower than WARP by design (three hops around the world) and the first connect can take a few minutes while circuits are built.
-- Both IPv4 and IPv6 travel through the Tor tunnel; IPv6 destinations are reached when the exit supports them (turn it off with IPv6 Leak Protection).
-- The app is bigger this release: it now ships the Tor daemon, its transports and Tor's country database.
+- WARP×2 stacks two WARP tunnels, so it inherently carries less per byte than single WARP; the MTU setting is the app-side lever for that gap.
 
-Version: SoildTunnel 1.0.5 (version code 6).
+Version: SoildTunnel 1.0.6 (version code 7).

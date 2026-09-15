@@ -31,6 +31,17 @@ object TorManager {
     private var torDir: File? = null
 
     /**
+     * The exit country the user most recently asked for, remembered across
+     * tor restarts. Fresh connects adopt it from the profile; a live switch
+     * (see [switchExitCountry]) overwrites it so a supervisor restart keeps
+     * the user's choice instead of reverting to a stale profile.
+     */
+    @Volatile
+    private var desiredExit = ""
+
+    fun desiredExitCountry(): String = desiredExit
+
+    /**
      * Every touch of the controller, the transport set and the tor process
      * handle goes through here. A connect racing a still-running disconnect
      * used to hit Go maps from two threads at once, which kills the whole
@@ -77,8 +88,10 @@ object TorManager {
         context: Context,
         profile: ConnectionProfile,
         onProgress: (percent: Int, summary: String) -> Unit,
+        keepExit: Boolean = false,
     ): Unit = withContext(Dispatchers.IO) {
         stop()
+        if (!keepExit) desiredExit = profile.torExitCountry.trim().uppercase()
         val filesDir = context.filesDir
         val dir = File(filesDir, "tor-data").apply { mkdirs() }
         torDir = dir
@@ -232,6 +245,9 @@ object TorManager {
      * control port for a moment; safe to call from the UI layer.
      */
     suspend fun switchExitCountry(countryCode: String): Boolean = withContext(Dispatchers.IO) {
+        // Remember the choice before touching the network so a failed push
+        // (tor busy) still survives the next restart via buildTorrc.
+        desiredExit = countryCode.trim().uppercase()
         runCatching {
             control().use { it.setExit(countryCode) }
         }.getOrDefault(false)
@@ -379,7 +395,7 @@ object TorManager {
             }
             lines.forEach { appendLine("Bridge $it") }
         }
-        val exit = profile.torExitCountry.trim().uppercase()
+        val exit = desiredExit.ifBlank { profile.torExitCountry.trim().uppercase() }
         if (exit.matches(Regex("^[A-Z]{2}$"))) {
             appendLine("ExitNodes {$exit}")
             appendLine("StrictNodes 1")

@@ -73,6 +73,7 @@ import com.soildtunnel.app.R
 import com.soildtunnel.app.core.EngineMeta
 import com.soildtunnel.app.core.TunnelConfig
 import com.soildtunnel.app.core.HevTunnel
+import com.soildtunnel.app.core.SocksTunBridge
 import com.soildtunnel.app.core.IpEndpoint
 import com.soildtunnel.app.core.NetProbe
 import com.soildtunnel.app.core.PingMonitor
@@ -480,9 +481,12 @@ private fun rememberTrafficStats(connectedSince: Long?, connected: Boolean): Tra
         while (true) {
             val hev = HevTunnel.traffic()
             val share = ShareBridge.traffic()
-            if (hev != null || ShareBridge.active.value) {
-                val down = (hev?.downloadBytes ?: 0L) + share.downloadBytes
-                val up = (hev?.uploadBytes ?: 0L) + share.uploadBytes
+            val bridge = SocksTunBridge.active?.getStats()
+            if (hev != null || ShareBridge.active.value || bridge != null) {
+                // Bridge counters: tx = TUN reads (device -> network), rx =
+                // TUN writes (network -> device), matching hev's mapping.
+                val down = (hev?.downloadBytes ?: 0L) + share.downloadBytes + (bridge?.rxBytes ?: 0L)
+                val up = (hev?.uploadBytes ?: 0L) + share.uploadBytes + (bridge?.txBytes ?: 0L)
                 val at = SystemClock.elapsedRealtime()
                 var downRate = stats.downRate
                 var upRate = stats.upRate

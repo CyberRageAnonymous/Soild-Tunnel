@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.soildtunnel.app.ui.theme.GlowPoolViolet
 import com.soildtunnel.app.ui.theme.GridLine
+import com.soildtunnel.app.ui.theme.Void
 
 /** Static backdrop: void base + grid lines + two glow pools. */
 @Composable
@@ -24,7 +25,7 @@ fun AmbientBackground(
         modifier = modifier
             .fillMaxSize()
             .drawBehind {
-                drawRect(VOID)
+                drawRect(Void)
                 drawGrid()
                 drawCircle(
                     brush = Brush.radialGradient(
@@ -61,7 +62,6 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGrid() {
     }
 }
 
-private val VOID = Color(0xFF030408)
 private val ACTIVE_GLOW = Color(0xFF2BE8C0)
 private val VIOLET_GLOW = GlowPoolViolet
 private val GRID_STEP = 44.dp
