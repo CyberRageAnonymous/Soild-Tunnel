@@ -216,10 +216,10 @@ class SoildTunnelVpnService : VpnService() {
         if (!PortProbe.awaitClosed(SOCKS_HOST, TorDefaults.SOCKS_PORT, PORT_RELEASE_WAIT_MS)) {
             DiagnosticsLog.w(TAG, "Tor port still busy — starting anyway.")
         }
-        TorManager.start(this, profile) { percent, summary ->
+        TorManager.start(this, profile, onProgress = { percent, summary ->
             updateNotification(getString(R.string.tor_bootstrap, percent))
             DiagnosticsLog.i(TAG, "Tor bootstrap $percent% — $summary")
-        }
+        })
 
         SoildTunnelController.setState(ConnectionState.Connecting)
         updateNotification(getString(R.string.state_connecting))
@@ -295,9 +295,9 @@ class SoildTunnelVpnService : VpnService() {
             delay(backoff)
 
             val restarted = runCatching {
-                TorManager.start(this, profile, keepExit = true) { percent, summary ->
+                TorManager.start(this, profile, onProgress = { percent, summary ->
                     DiagnosticsLog.i(TAG, "Tor bootstrap $percent% — $summary")
-                }
+                }, keepExit = true)
             }.isSuccess
             if (restarted &&
                 PortProbe.awaitOpen(SOCKS_HOST, TorDefaults.SOCKS_PORT, 30_000L) { TorManager.isAlive() }
