@@ -292,11 +292,13 @@ fun HomeScreen(
 
                 // Server selector pill — the entry point to the node console.
                 // In Tor mode there are no WARP nodes; the pill picks the Tor
-                // exit country instead (live switch while connected).
+                // exit country instead. Tor starts random; a country is only
+                // pickable once connected (the sheet live-switches the session).
                 if (profile.protocol == Protocol.TOR) {
                     TorExitPill(
                         exitCountry = profile.torExitCountry,
-                        onClick = { showTorSheet = true },
+                        enabled = state.isConnected,
+                        onClick = { if (state.isConnected) showTorSheet = true },
                     )
                 } else {
                     ServerSelectorPill(
@@ -509,12 +511,14 @@ private fun ServerSelectorPill(
 }
 
 /**
- * The Tor-mode pill: TOR label + picked exit country + chevron. Always
- * tappable — picking a country while connected switches the live session.
+ * The Tor-mode pill: TOR label + picked exit country + chevron. Locked
+ * until the session is up; once connected it opens the exit sheet, which
+ * live-switches the session.
  */
 @Composable
 private fun TorExitPill(
     exitCountry: String,
+    enabled: Boolean,
     onClick: () -> Unit,
 ) {
     val shape = RoundedCornerShape(16.dp)
@@ -524,15 +528,17 @@ private fun TorExitPill(
         NetProbe.countryName(exitCountry).ifBlank { exitCountry }
     }
     val flag = if (exitCountry.isBlank()) "" else NetProbe.flagEmoji(exitCountry)
+    val alpha = if (enabled) 1f else 0.55f
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier
             .fillMaxWidth()
+            .alpha(alpha)
             .background(color = CardSubSurface, shape = shape)
             .border(1.dp, EdgeNeon, shape)
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 11.dp),
     ) {
         Text(

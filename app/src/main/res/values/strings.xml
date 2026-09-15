@@ -317,7 +317,7 @@
     <string name="tor_bridges_hint">Bridge obfs4 1.2.3.4:443 ABCDEF…</string>
     <string name="tor_bridges_help">Paste bridge lines with or without the leading word Bridge. Lines starting with # are skipped.</string>
     <string name="tor_exit_label">Exit country</string>
-    <string name="tor_exit_auto">Auto (fastest)</string>
+    <string name="tor_exit_auto">Random</string>
     <string name="tor_exit_desc">Pin where traffic leaves the Tor network. Auto picks the fastest exit.</string>
     <string name="tor_note">Tor is slower than WARP by design, and the first connect can take a few minutes while circuits are built. Both IPv4 and IPv6 flow through the tunnel (IPv6 only via exits that support it).</string>
     <string name="tor_starting">Starting Tor…</string>

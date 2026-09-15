@@ -44,9 +44,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import com.soildtunnel.app.R
-import com.soildtunnel.app.core.NetProbe
 import com.soildtunnel.app.core.ShareBridge
-import com.soildtunnel.app.core.TorDefaults
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.CoreLogLevel
 import com.soildtunnel.app.model.EndpointMode
@@ -188,15 +186,9 @@ fun AdvancedPanel(
                             Spacer(Modifier.height(16.dp))
                         }
 
-                        SettingLabel(stringResource(R.string.tor_exit_label))
-                        DropdownSelector(
-                            options = listOf("") + TorDefaults.EXIT_COUNTRIES,
-                            selected = profile.torExitCountry,
-                            onSelect = { onProfileChange(profile.copy(torExitCountry = it)) },
-                            label = { torExitLabel(it) },
-                            enabled = enabled,
-                        )
-                        HelperText(stringResource(R.string.tor_exit_desc))
+                        // The exit country lives on the home pill now: it stays locked
+                        // until the session is up, and a connected pick
+                        // switches the live session.
                         Spacer(Modifier.height(8.dp))
                         HelperText(stringResource(R.string.tor_note))
                     }
@@ -905,14 +897,6 @@ private fun torTransportLabel(t: TorTransport): String = when (t) {
     TorTransport.MEEK -> stringResource(R.string.tor_transport_meek)
     TorTransport.CUSTOM -> stringResource(R.string.tor_transport_custom)
 }
-
-@Composable
-private fun torExitLabel(code: String): String =
-    if (code.isBlank()) {
-        stringResource(R.string.tor_exit_auto)
-    } else {
-        "${NetProbe.flagEmoji(code)} ${NetProbe.countryName(code).ifBlank { code }} ($code)"
-    }
 
 @Composable
 private fun scanLabel(mode: ScanMode): String = when (mode) {
