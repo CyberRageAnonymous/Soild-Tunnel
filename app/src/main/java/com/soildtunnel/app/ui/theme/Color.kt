@@ -1,5 +1,8 @@
 package com.soildtunnel.app.ui.theme
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 
 // Control Room palette. Every screen reads colors through these same names;
@@ -9,7 +12,7 @@ import androidx.compose.ui.graphics.Color
 
 /** Flipped by the theme setting before composition; the colors follow it. */
 object Palette {
-    var light: Boolean = false
+    var light: Boolean by mutableStateOf(false)
 }
 
 // ---- Neon accents (same ink in both themes) --------------------------------
