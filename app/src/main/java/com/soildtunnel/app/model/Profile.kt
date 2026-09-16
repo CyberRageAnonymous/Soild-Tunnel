@@ -401,6 +401,14 @@ data class ConnectionProfile(
             put("SOILDTUNNEL_MASQUE_NO_DATA_CHECK", "1")
             put("SOILDTUNNEL_WG_NO_DATA_CHECK", "1")
         }
+        // WARP-in-WARP (Gool) runs two tunnels stacked; the inner one used to
+        // be fixed at a small MTU no matter what the user set, so a raised
+        // TUN MTU only added framing overhead without any bigger segments.
+        // Hand the profile's MTU to the engine now (1280..1500); stock users
+        // keep the engine's safe defaults untouched.
+        if (protocol == Protocol.GOOL && mtu != DEFAULT_MTU) {
+            put("SOILDTUNNEL_TUN_MTU", mtu.coerceIn(1280, 1500).toString())
+        }
         if (validateSecs > 0) {
             put("SOILDTUNNEL_MASQUE_VALIDATE_SECS", validateSecs.coerceIn(1, 3600).toString())
         }

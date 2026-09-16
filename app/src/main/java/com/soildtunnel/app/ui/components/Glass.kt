@@ -52,11 +52,15 @@ fun Modifier.neonPanel(
         shape = shape,
     )
     .background(
-        // Stop-based sheen across the top edge, gone by ~30% height.
+        // Sheen across the top edge (stronger at the rim, gone by ~42% depth)
+        // plus a faint mirror at the bottom rim — the two light catchers a real
+        // slab of glass shows.
         brush = Brush.verticalGradient(
             colorStops = arrayOf(
                 0.00f to GlassSheenTop,
-                0.30f to Color.Transparent,
+                0.42f to Color.Transparent,
+                0.84f to Color.Transparent,
+                1.00f to GlassSheenTop.copy(alpha = 0.45f),
             ),
         ),
         shape = shape,
@@ -76,7 +80,9 @@ fun Modifier.glassPane(
         brush = Brush.verticalGradient(
             colorStops = arrayOf(
                 0.00f to GlassSheenTop,
-                0.32f to Color.Transparent,
+                0.42f to Color.Transparent,
+                0.84f to Color.Transparent,
+                1.00f to GlassSheenTop.copy(alpha = 0.45f),
             ),
         ),
         shape = shape,

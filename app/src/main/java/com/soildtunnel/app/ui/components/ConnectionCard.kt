@@ -2,13 +2,6 @@ package com.soildtunnel.app.ui.components
 
 import android.os.SystemClock
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -34,7 +27,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -45,18 +37,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathMeasure
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -67,12 +52,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Locale
-import kotlin.math.sin
 import kotlinx.coroutines.delay
 import com.soildtunnel.app.R
 import com.soildtunnel.app.core.EngineMeta
 import com.soildtunnel.app.core.TunnelConfig
 import com.soildtunnel.app.core.HevTunnel
+import com.soildtunnel.app.core.SocksTunBridge
 import com.soildtunnel.app.core.IpEndpoint
 import com.soildtunnel.app.core.NetProbe
 import com.soildtunnel.app.core.PingMonitor
@@ -84,10 +69,8 @@ import com.soildtunnel.app.ui.theme.CardTextPrimary
 import com.soildtunnel.app.ui.theme.NeonCyan
 import com.soildtunnel.app.ui.theme.NeonMint
 import com.soildtunnel.app.ui.theme.NeonRed
-import com.soildtunnel.app.ui.theme.NeonViolet
 
-/** Telemetry console — state, timer, IP, speeds, protocol info.
- *  Edge glow animates only while connected. */
+/** Telemetry console — state, timer, IP, speeds, protocol info. */
 @Composable
 fun ConnectionCard(
     connected: Boolean,
@@ -107,15 +90,10 @@ fun ConnectionCard(
         else -> IDLE_ACCENT
     }
 
-    // Only alive while connected: no frame subscription when there is nothing
-    // to show off.
-    val pulse = if (connected) rememberGlowPulse() else null
-
     Box(
         modifier = modifier
             .fillMaxWidth()
             .neonPanel(CARD_SHAPE, edge = accent.copy(alpha = 0.28f))
-            .glassEdge(accent = accent, pulse = pulse)
             .padding(horizontal = 18.dp, vertical = 16.dp),
     ) {
         Column(
@@ -480,9 +458,12 @@ private fun rememberTrafficStats(connectedSince: Long?, connected: Boolean): Tra
         while (true) {
             val hev = HevTunnel.traffic()
             val share = ShareBridge.traffic()
-            if (hev != null || ShareBridge.active.value) {
-                val down = (hev?.downloadBytes ?: 0L) + share.downloadBytes
-                val up = (hev?.uploadBytes ?: 0L) + share.uploadBytes
+            val bridge = SocksTunBridge.active?.getStats()
+            if (hev != null || ShareBridge.active.value || bridge != null) {
+                // Bridge counters: tx = TUN reads (device -> network), rx =
+                // TUN writes (network -> device), matching hev's mapping.
+                val down = (hev?.downloadBytes ?: 0L) + share.downloadBytes + (bridge?.rxBytes ?: 0L)
+                val up = (hev?.uploadBytes ?: 0L) + share.uploadBytes + (bridge?.txBytes ?: 0L)
                 val at = SystemClock.elapsedRealtime()
                 var downRate = stats.downRate
                 var upRate = stats.upRate
@@ -501,136 +482,6 @@ private fun rememberTrafficStats(connectedSince: Long?, connected: Boolean): Tra
     }
 
     return stats
-}
-
-// the animated edge
-
-/** The two animated states of the border light show. */
-private class GlowPulse(val phase: State<Float>, val breath: State<Float>)
-
-@Composable
-private fun rememberGlowPulse(): GlowPulse {
-    val transition = rememberInfiniteTransition(label = "cardGlow")
-    // Travels the perimeter linearly, so the loop is seamless.
-    val phase = transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(GLOW_TRAVEL_MS, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "phase",
-    )
-    // Overall intensity, so the whole edge breathes instead of only flickering.
-    val breath = transition.animateFloat(
-        initialValue = 0.68f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1_700, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "breath",
-    )
-    return remember(phase, breath) { GlowPulse(phase, breath) }
-}
-
-/** One equaliser band on the edge. */
-private class GlowBand(
-    val offset: Float,
-    val span: Float,
-    val harmonic: Int,
-    val skew: Float,
-    /** 0f = cyan … 1f = violet; the core mint sits between. */
-    val tint: Float,
-)
-
-private val GLOW_BANDS = listOf(
-    GlowBand(offset = 0.00f, span = 0.15f, harmonic = 2, skew = 0.00f, tint = 0.35f),
-    GlowBand(offset = 0.13f, span = 0.08f, harmonic = 3, skew = 0.34f, tint = 0.70f),
-    GlowBand(offset = 0.28f, span = 0.13f, harmonic = 5, skew = 0.11f, tint = 0.20f),
-    GlowBand(offset = 0.43f, span = 0.06f, harmonic = 7, skew = 0.61f, tint = 0.95f),
-    GlowBand(offset = 0.56f, span = 0.14f, harmonic = 3, skew = 0.79f, tint = 0.45f),
-    GlowBand(offset = 0.70f, span = 0.09f, harmonic = 5, skew = 0.24f, tint = 0.80f),
-    GlowBand(offset = 0.85f, span = 0.12f, harmonic = 2, skew = 0.50f, tint = 0.05f),
-)
-
-/** Console edge glow. */
-private fun Modifier.glassEdge(accent: Color, pulse: GlowPulse?): Modifier = drawWithCache {
-    val hairline = 1.dp.toPx()
-    val inset = hairline / 2f
-    val radius = CARD_RADIUS.toPx()
-    val outline = Path().apply {
-        addRoundRect(
-            RoundRect(
-                rect = Rect(inset, inset, size.width - inset, size.height - inset),
-                cornerRadius = CornerRadius(radius),
-            ),
-        )
-    }
-    val measure = PathMeasure().apply { setPath(outline, true) }
-    val perimeter = measure.length
-    val band = Path()
-    val innerGlow = Brush.radialGradient(
-        colors = listOf(accent.copy(alpha = 0.10f), Color.Transparent),
-        center = Offset(size.width / 2f, 0f),
-        radius = size.width * 0.95f,
-    )
-
-    onDrawBehind {
-        drawPath(outline, brush = innerGlow)
-        drawPath(
-            outline,
-            color = accent.copy(alpha = if (pulse == null) 0.22f else 0.30f),
-            style = Stroke(hairline),
-        )
-        if (pulse == null) return@onDrawBehind
-
-        val phase = pulse.phase.value
-        val breath = pulse.breath.value
-        for (spec in GLOW_BANDS) {
-            val amp = 0.5f + 0.5f * sin(TWO_PI * (spec.harmonic * phase + spec.skew))
-            val length = perimeter * spec.span * (0.30f + 0.95f * amp)
-            val start = ((phase + spec.offset) % 1f) * perimeter
-            // Cyan → mint → violet sweep across the bands.
-            val colour = when {
-                spec.tint < 0.5f ->
-                    lerp(NeonCyan, NeonMint, (spec.tint / 0.5f).coerceIn(0f, 1f))
-                else ->
-                    lerp(NeonMint, NeonViolet, ((spec.tint - 0.5f) / 0.5f).coerceIn(0f, 1f))
-            }
-            val width = hairline * (1.1f + 2.3f * amp)
-            val alpha = (0.20f + 0.80f * amp) * breath
-
-            band.reset()
-            measure.appendSegment(band, start, length, perimeter)
-
-            // halo -> mid -> core, additively blended: a soft bloom without a
-            // blur pass or an extra layer.
-            drawGlowStroke(band, colour, alpha * 0.09f, width * 4.4f)
-            drawGlowStroke(band, colour, alpha * 0.26f, width * 2.1f)
-            drawGlowStroke(band, colour, alpha, width)
-        }
-    }
-}
-
-private fun DrawScope.drawGlowStroke(path: Path, colour: Color, alpha: Float, width: Float) {
-    drawPath(
-        path = path,
-        color = colour.copy(alpha = alpha.coerceIn(0f, 1f)),
-        style = Stroke(width = width, cap = StrokeCap.Round),
-        blendMode = BlendMode.Plus,
-    )
-}
-
-/** Copy perimeter segment, wrapping at corners. */
-private fun PathMeasure.appendSegment(dst: Path, start: Float, length: Float, perimeter: Float) {
-    val end = start + length
-    if (end <= perimeter) {
-        getSegment(start, end, dst, true)
-    } else {
-        getSegment(start, perimeter, dst, true)
-        getSegment(0f, end - perimeter, dst, true)
-    }
 }
 
 /** 1px low-opacity neon rim for sub-containers. */
@@ -671,6 +522,4 @@ private val SUB_BORDER = Color(0x2435E0FF)
 private val DIVIDER = Color(0x1FFFFFFF)
 private val IDLE_ACCENT = NeonCyan
 private val ERROR_ACCENT = NeonRed
-private const val GLOW_TRAVEL_MS = 5_200
 private const val LATENCY_REFRESH_MS = 4_000L
-private const val TWO_PI = 6.2831855f

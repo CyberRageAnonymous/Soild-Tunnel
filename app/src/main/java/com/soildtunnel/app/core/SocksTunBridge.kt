@@ -80,6 +80,13 @@ class SocksTunBridge(
 ) {
     data class Stats(val txBytes: Long = 0, val rxBytes: Long = 0)
 
+    companion object {
+        // The bridge runs transiently under the service; the dashboard polls
+        // whichever instance is current. Set on start, cleared on stop.
+        @Volatile
+        var active: SocksTunBridge? = null
+    }
+
     private val isRunning = AtomicBoolean(false)
     private var readThread: Thread? = null
     private var writeThread: Thread? = null
@@ -112,6 +119,7 @@ class SocksTunBridge(
     fun start() {
         if (isRunning.getAndSet(true)) return
 
+        active = this
         LogRepository.i("Initializing tunnel bridge (MTU=$mtu)...")
 
         writeThread = Thread({
@@ -156,6 +164,7 @@ class SocksTunBridge(
 
     fun stop() {
         if (!isRunning.getAndSet(false)) return
+        if (active === this) active = null
         tcpSessions.values.forEach { it.close() }
         tcpSessions.clear()
         udpSessions.values.forEach { it.close() }

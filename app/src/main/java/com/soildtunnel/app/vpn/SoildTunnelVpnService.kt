@@ -91,6 +91,12 @@ class SoildTunnelVpnService : VpnService() {
     private var networkChangedAt = 0L
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // CRASH FIX : startForeground must be called before the 5-second
+        // FGS deadline on EVERY start path — including ACTION_DISCONNECT.
+        // The previous code only promoted in the else (connect) branch,
+        // so a disconnect that arrived before the service was promoted
+        // triggered ForegroundServiceDidNotStartInTimeException.
+        startForeground(NOTIF_ID, buildNotification(getString(R.string.state_launching)))
         when (intent?.action) {
             ACTION_DISCONNECT -> {
                 // STRICT KILL SWITCH : a manual disconnect must not
@@ -107,7 +113,6 @@ class SoildTunnelVpnService : VpnService() {
             }
             else -> {
                 val profile = ProfileCodec.decode(intent?.getStringExtra(EXTRA_PROFILE))
-                startForeground(NOTIF_ID, buildNotification(getString(R.string.state_launching)))
                 startTunnel(profile)
             }
         }
@@ -211,10 +216,10 @@ class SoildTunnelVpnService : VpnService() {
         if (!PortProbe.awaitClosed(SOCKS_HOST, TorDefaults.SOCKS_PORT, PORT_RELEASE_WAIT_MS)) {
             DiagnosticsLog.w(TAG, "Tor port still busy — starting anyway.")
         }
-        TorManager.start(this, profile) { percent, summary ->
+        TorManager.start(this, profile, onProgress = { percent, summary ->
             updateNotification(getString(R.string.tor_bootstrap, percent))
             DiagnosticsLog.i(TAG, "Tor bootstrap $percent% — $summary")
-        }
+        })
 
         SoildTunnelController.setState(ConnectionState.Connecting)
         updateNotification(getString(R.string.state_connecting))
@@ -290,9 +295,9 @@ class SoildTunnelVpnService : VpnService() {
             delay(backoff)
 
             val restarted = runCatching {
-                TorManager.start(this, profile) { percent, summary ->
+                TorManager.start(this, profile, onProgress = { percent, summary ->
                     DiagnosticsLog.i(TAG, "Tor bootstrap $percent% — $summary")
-                }
+                }, keepExit = true)
             }.isSuccess
             if (restarted &&
                 PortProbe.awaitOpen(SOCKS_HOST, TorDefaults.SOCKS_PORT, 30_000L) { TorManager.isAlive() }

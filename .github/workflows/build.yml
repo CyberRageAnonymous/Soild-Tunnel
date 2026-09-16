@@ -25,8 +25,18 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # SDK bootstrap: android-actions/setup-android died on the hosted
+      # runners because it force-installs the legacy "tools" package, which
+      # current cmdline-tools/sdkmanager removed — "Failed to find package
+      # 'tools'" every single build. The runner image already ships a full
+      # Android SDK, so just accept licenses and put sdkmanager on PATH; the
+      # AGP auto-installer fetches any missing platform/build-tools as needed.
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        run: |
+          SDKMANAGER="$(command -v sdkmanager || find /usr/local/lib/android/sdk/cmdline-tools -name sdkmanager 2>/dev/null | head -n1)"
+          [ -n "$SDKMANAGER" ] || { echo "ERROR: no sdkmanager found in the runner SDK"; exit 1; }
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
 
       - name: Install NDK
         run: |
