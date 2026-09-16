@@ -11,5 +11,7 @@ Stability and speed fixes for the 1.0.5 release.
 
 **Notes:**
 - WARP×2 stacks two WARP tunnels, so it inherently carries less per byte than single WARP; the MTU setting is the app-side lever for that gap.
+- **Smart protocol** (the default) now has no server picker — it chooses its gateway automatically, so the node console only appears in the WARP modes.
+- Panels got a lighter liquid-glass finish and the animated neon rim around the telemetry card was retired — it was pure showmanship and lightened the UI.
 
 Version: SoildTunnel 1.0.6 (version code 7).

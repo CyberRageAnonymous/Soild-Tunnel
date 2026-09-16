@@ -290,17 +290,17 @@ fun HomeScreen(
 
                 Spacer(Modifier.height(22.dp))
 
-                // Server selector pill — the entry point to the node console.
-                // In Tor mode there are no WARP nodes; the pill picks the Tor
-                // exit country instead. Tor starts random; a country is only
-                // pickable once connected (the sheet live-switches the session).
+                // Server selector pill — the entry point to the node console. Smart mode
+                // picks its gateway on its own, so there is no server to choose
+                // there; Tor shows an exit-country pill instead (locked until
+                // connected, live-switch once the session is up).
                 if (profile.protocol == Protocol.TOR) {
                     TorExitPill(
                         exitCountry = profile.torExitCountry,
                         enabled = state.isConnected,
                         onClick = { if (state.isConnected) showTorSheet = true },
                     )
-                } else {
+                } else if (profile.protocol != Protocol.AUTO) {
                     ServerSelectorPill(
                         profile = profile,
                         enabled = settingsEnabled,

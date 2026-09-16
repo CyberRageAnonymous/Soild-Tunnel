@@ -50,19 +50,21 @@ val CardTextDim: Color get() = if (Palette.light) Color(0xFF93A4B4) else Color(0
 // ---- Console surfaces ------------------------------------------------------
 
 private val LightVoid = Color(0xFFF2F4F6)
-private val LightPanelTop = Color(0xD9FFFFFF)
-private val LightPanelBottom = Color(0xF2F3F5F7)
-private val LightCardSub = Color(0xFFFBFCFD)
+private val LightPanelTop = Color(0xD1FFFFFF)
+private val LightPanelBottom = Color(0xF0F3F5F7)
+private val LightCardSub = Color(0xE6FBFCFD)
 
 /** Void behind everything: near-black with slight blue tint. */
 val Void: Color get() = if (Palette.light) LightVoid else Color(0xFF030408)
 
 /** Translucent console panel, top of the vertical gradient. */
-val PanelTop: Color get() = if (Palette.light) LightPanelTop else Color(0xB310141B)
+val PanelTop: Color get() = if (Palette.light) LightPanelTop else Color(0xA610141B)
 /** Same panel, bottom: slightly more opaque so text always sits on enough ink. */
-val PanelBottom: Color get() = if (Palette.light) LightPanelBottom else Color(0xE607090C)
-/** Sub-containers inside a panel (IP pill, speed strip, meta strip). */
-val CardSubSurface: Color get() = if (Palette.light) LightCardSub else Color(0xFF0B0E14)
+val PanelBottom: Color get() = if (Palette.light) LightPanelBottom else Color(0xE207090C)
+/** Sub-containers inside a panel (IP pill, speed strip, meta strip). Just
+ *  translucent enough that the void glow pools bleed through, liquid-glass
+ *  style, without hurting text legibility. */
+val CardSubSurface: Color get() = if (Palette.light) LightCardSub else Color(0xDE0B0E14)
 
 // Back-compat aliases.
 val CardSurfaceTop: Color get() = PanelTop
@@ -88,9 +90,9 @@ val GlowPoolViolet: Color get() = if (Palette.light) Color(0xFFD9CFF7) else Colo
 
 // ---- Liquid-glass fills (white lift on dark, ink shade on light) -----------
 
-val GlassFillTop: Color get() = if (Palette.light) Color(0x14000000) else Color(0x26FFFFFF)
-val GlassFillBottom: Color get() = if (Palette.light) Color(0x08000000) else Color(0x0DFFFFFF)
-val GlassSheenTop: Color get() = if (Palette.light) Color(0x0D000000) else Color(0x17FFFFFF)
+val GlassFillTop: Color get() = if (Palette.light) Color(0x1A000000) else Color(0x30FFFFFF)
+val GlassFillBottom: Color get() = if (Palette.light) Color(0x0D000000) else Color(0x12FFFFFF)
+val GlassSheenTop: Color get() = if (Palette.light) Color(0x15000000) else Color(0x24FFFFFF)
 
 /** Drawer surface: nearly opaque so logs stay readable. */
 val DrawerGlass: Color get() = if (Palette.light) Color(0xF7F6F8FA) else Color(0xF5030508)
