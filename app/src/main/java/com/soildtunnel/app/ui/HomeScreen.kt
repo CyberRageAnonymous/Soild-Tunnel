@@ -290,17 +290,16 @@ fun HomeScreen(
 
                 Spacer(Modifier.height(22.dp))
 
-                // Server selector pill — the entry point to the node console. Smart mode
-                // picks its gateway on its own, so there is no server to choose
-                // there; Tor shows an exit-country pill instead (locked until
-                // connected, live-switch once the session is up).
+                // Server pill — only WARP×2 has a real node console. Smart picks its
+                // own gateway, MASQUE and WireGuard dial the same Cloudflare anycast
+                // edge, and Tor shows its exit pill above.
                 if (profile.protocol == Protocol.TOR) {
                     TorExitPill(
                         exitCountry = profile.torExitCountry,
                         enabled = state.isConnected,
                         onClick = { if (state.isConnected) showTorSheet = true },
                     )
-                } else if (profile.protocol != Protocol.AUTO) {
+                } else if (profile.protocol == Protocol.GOOL) {
                     ServerSelectorPill(
                         profile = profile,
                         enabled = settingsEnabled,
