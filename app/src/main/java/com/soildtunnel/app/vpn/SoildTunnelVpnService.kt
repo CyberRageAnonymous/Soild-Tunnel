@@ -166,6 +166,19 @@ class SoildTunnelVpnService : VpnService() {
         // starts, so the panel always reflects the current attempt on time.
         Diagnostics.resetChecks()
         EngineMeta.reset()
+        // Pinned country fix: when the user pinned a WARP×2 edge (e.g. Germany),
+        // the engine's quick-reconnect cache was reusing the last working peer
+        // (often the Iranian POP) and skipping the scan of the pinned range.
+        // Clear every sticky/lastconn cache so the pinned range is actually scanned.
+        val pinnedRange = profile.endpointMode == EndpointMode.MANUAL_RANGE && profile.manualRange.trim().isNotEmpty()
+        if (pinnedRange) {
+            StickyServer.clear(this)
+            filesDir.listFiles()?.forEach { f ->
+                if (f.name.contains("lastconn", ignoreCase = true)) {
+                    runCatching { f.delete() }
+                }
+            }
+        }
         DiagnosticsLog.i(TAG, "Connect requested — protocol=${profile.protocol} scan=${profile.scanMode} ip=${profile.ipVersion}")
 
         // Tor mode runs its own flow start to finish (no WARP engine, no

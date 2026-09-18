@@ -282,7 +282,8 @@ data class ConnectionProfile(
             IpVersion.BOTH -> args += "--dual"
         }
 
-        args += if (quickReconnect) "--quick-reconnect" else "--no-quick-reconnect"
+        val pinnedRange = endpointMode == EndpointMode.MANUAL_RANGE && manualRange.trim().isNotEmpty()
+        args += if (quickReconnect && !pinnedRange) "--quick-reconnect" else "--no-quick-reconnect"
 
         // Anti-DPI obfuscation.
         if (noize != Noize.OFF) {
