@@ -40,7 +40,7 @@ No accounts. No logs. No trackers. One tap and you're free.
 |----------|-------------|
 | **MASQUE** | Disguises tunnel traffic as normal HTTPS/HTTP2 browsing. Hardest to detect. |
 | **WireGuard** | Blazing-fast modern VPN protocol. Best speed when not blocked. |
-| **WARP×2** | Country-pinned WARP that respects the selected edge (no double-tunnel). |
+| **GOOL** | Double-tunnel mode (WARP inside WARP) for maximum anti-DPI. |
 | **Tor** | Routes the whole device through the Tor network with official built-in bridges (or your own) and a pinnable exit country. |
 | **Smart Auto** | Fingerprints your network's DPI and picks the best protocol automatically. |
 
@@ -143,7 +143,7 @@ Theme card in settings.
 │       │         │ hev-    │    │ soildtunnel│   │
 │       │         │ socks5  │    │ engine     │   │
 │       │         │ tunnel  │    │ (MASQUE/WG/│   │
-│       │         └─────────┘    │  WARP×2)   │   │
+│       │         └─────────┘    │  GOOL)     │   │
 │       │                        └────────────┘   │
 │       │                                         │
 │  ┌────┴─────────────────────────────────────┐   │
@@ -156,7 +156,7 @@ Theme card in settings.
 **Components:**
 
 - **Engine** (`native/engine/soildtunnel`) — Rust async runtime handling
-  MASQUE/WireGuard/WARP×2 transports, endpoint scanning, identity provisioning,
+  MASQUE/WireGuard/GOOL transports, endpoint scanning, identity provisioning,
   and DNS resolution. Compiled with `cargo-ndk` for ARM.
 - **hev-socks5-tunnel** — High-performance userspace SOCKS5-to-TUN forwarder
   with per-app UID filtering for split tunneling and app blocking.
