@@ -14,7 +14,7 @@ liquid-glass interface.
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Android-3DDC84.svg)]()
 [![Min SDK](https://img.shields.io/badge/API-26%2B-green.svg)]()
-[![Version](https://img.shields.io/badge/Version-1.0.6-orange.svg)]()
+[![Version](https://img.shields.io/badge/Version-1.0.7-orange.svg)]()
 
 </div>
 
@@ -40,7 +40,7 @@ No accounts. No logs. No trackers. One tap and you're free.
 |----------|-------------|
 | **MASQUE** | Disguises tunnel traffic as normal HTTPS/HTTP2 browsing. Hardest to detect. |
 | **WireGuard** | Blazing-fast modern VPN protocol. Best speed when not blocked. |
-| **GOOL** | Double-tunnel mode (WARP inside WARP) for maximum anti-DPI. |
+| **WARP×2** | Country-pinned WARP that respects the selected edge (no double-tunnel). |
 | **Tor** | Routes the whole device through the Tor network with official built-in bridges (or your own) and a pinnable exit country. |
 | **Smart Auto** | Fingerprints your network's DPI and picks the best protocol automatically. |
 
@@ -143,7 +143,7 @@ Theme card in settings.
 │       │         │ hev-    │    │ soildtunnel│   │
 │       │         │ socks5  │    │ engine     │   │
 │       │         │ tunnel  │    │ (MASQUE/WG/│   │
-│       │         └─────────┘    │  GOOL)     │   │
+│       │         └─────────┘    │  WARP×2)   │   │
 │       │                        └────────────┘   │
 │       │                                         │
 │  ┌────┴─────────────────────────────────────┐   │
@@ -156,7 +156,7 @@ Theme card in settings.
 **Components:**
 
 - **Engine** (`native/engine/soildtunnel`) — Rust async runtime handling
-  MASQUE/WireGuard/GOOL transports, endpoint scanning, identity provisioning,
+  MASQUE/WireGuard/WARP×2 transports, endpoint scanning, identity provisioning,
   and DNS resolution. Compiled with `cargo-ndk` for ARM.
 - **hev-socks5-tunnel** — High-performance userspace SOCKS5-to-TUN forwarder
   with per-app UID filtering for split tunneling and app blocking.
@@ -177,9 +177,9 @@ Grab the latest signed APK from the
 
 | File | Device | Notes |
 |------|--------|-------|
-| `SoildTunnel-1.0.6-arm64-v8a.apk` | Modern 64-bit phones | **Recommended** |
-| `SoildTunnel-1.0.6-armeabi-v7a.apk` | Older 32-bit phones | |
-| `SoildTunnel-1.0.6-universal.apk` | Any Android device | Largest file |
+| `SoildTunnel-1.0.7-arm64-v8a.apk` | Modern 64-bit phones | **Recommended** |
+| `SoildTunnel-1.0.7-armeabi-v7a.apk` | Older 32-bit phones | |
+| `SoildTunnel-1.0.7-universal.apk` | Any Android device | Largest file |
 
 **Installation:**
 1. Download the APK for your device architecture
@@ -219,7 +219,7 @@ bash scripts/build-natives.sh soildtunnel
 
 The release build is fully automated via
 [`.github/workflows/build.yml`](.github/workflows/build.yml) — push a tag
-(`v1.0.6`) and GitHub Actions builds, signs, and publishes the APKs.
+(`v1.0.7`) and GitHub Actions builds, signs, and publishes the APKs.
 
 ---
 
@@ -228,7 +228,7 @@ The release build is fully automated via
 ### Transport
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Protocol | Smart Auto | MASQUE, WireGuard, GOOL, Tor, or Auto |
+| Protocol | Smart Auto | MASQUE, WireGuard, WARP×2, Tor, or Auto |
 | Tor entry | obfs4 built-in | Direct, built-in obfs4/Snowflake/Meek, or custom bridges |
 | Tor exit | Auto | Pinned exit country, or Auto |
 | Scan Mode | Balanced | TURBO/BALANCED/THOROUGH/STEALTH/IRONCLAD |

@@ -262,7 +262,7 @@ data class ConnectionProfile(
             Protocol.TOR -> { /* handled app-side, see TorManager */ }
             Protocol.MASQUE -> args += "--masque"
             Protocol.WIREGUARD -> args += "--wg"
-            Protocol.GOOL -> args += "--gool"
+            Protocol.GOOL -> args += "--wg"
         }
 
         // A pinned peer makes scan mode irrelevant, so only emit it otherwise.
