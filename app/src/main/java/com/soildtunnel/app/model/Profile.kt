@@ -17,6 +17,8 @@ enum class ScanMode { TURBO, BALANCED, THOROUGH, STEALTH, IRONCLAD }
 /** IP family preference. */
 enum class IpVersion { V4, V6, BOTH }
 
+enum class NetworkBackend { SOILDTUNNEL, SOILDTUNNEL_PSIPHON }
+
 /**
  * Anti-DPI obfuscation profile ("Amnezia"-style). Maps to the engine's
  * `--noize <profile>` option (see soildtunnelnoize.rs / noize.rs in the engine).
@@ -64,6 +66,7 @@ data class ConnectionProfile(
     val protocol: Protocol = Protocol.AUTO,
     val scanMode: ScanMode = ScanMode.BALANCED,
     val ipVersion: IpVersion = IpVersion.V4,
+    val networkBackend: NetworkBackend = NetworkBackend.SOILDTUNNEL,
     val quickReconnect: Boolean = true,
     val masqueHttp2: Boolean = false,
     /**
@@ -263,6 +266,9 @@ data class ConnectionProfile(
             Protocol.MASQUE -> args += "--masque"
             Protocol.WIREGUARD -> args += "--wg"
             Protocol.GOOL -> args += "--gool"
+        }
+        if (networkBackend == NetworkBackend.SOILDTUNNEL_PSIPHON && protocol != Protocol.TOR) {
+            args += "--psiphon"
         }
 
         // A pinned peer makes scan mode irrelevant, so only emit it otherwise.

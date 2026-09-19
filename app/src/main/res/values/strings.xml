@@ -236,6 +236,9 @@
     <string name="onboarding_body_2">Smart mode analyzes your network and picks the protocol that actually works, with anti-DPI obfuscation when needed.</string>
     <string name="onboarding_title_3">Private by design</string>
     <string name="onboarding_body_3">No accounts, no logs, no trackers. Android will ask for VPN permission on your first connect; that is the system keeping you in control.</string>
+    <string name="network_backend_title">Network backend</string>
+    <string name="network_backend_soildtunnel">soildtunnel</string>
+    <string name="network_backend_psiphon">soildtunnel + Psiphon</string>
     <string name="crash_title">SoildTunnel stopped unexpectedly</string>
     <string name="crash_subtitle">The details below were saved by the crash handler. You can copy them into a bug report.</string>
     <string name="crash_copy">Copy details</string>

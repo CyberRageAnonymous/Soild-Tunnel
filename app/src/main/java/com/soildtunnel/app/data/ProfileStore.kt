@@ -13,6 +13,7 @@ import com.soildtunnel.app.model.CoreLogLevel
 import com.soildtunnel.app.model.DnsMode
 import com.soildtunnel.app.model.EndpointMode
 import com.soildtunnel.app.model.IpVersion
+import com.soildtunnel.app.model.NetworkBackend
 import com.soildtunnel.app.model.Noize
 import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.model.ScanMode
@@ -79,6 +80,7 @@ class ProfileStore(private val context: Context) {
         val torTransport = stringPreferencesKey("torTransport")
         val torBridges = stringPreferencesKey("torBridges")
         val torExitCountry = stringPreferencesKey("torExitCountry")
+        val networkBackend = stringPreferencesKey("networkBackend")
     }
 
     /**
@@ -99,6 +101,8 @@ class ProfileStore(private val context: Context) {
                 ?.let { runCatching { ScanMode.valueOf(it) }.getOrNull() } ?: ScanMode.BALANCED,
             ipVersion = prefs[Keys.ip]
                 ?.let { runCatching { IpVersion.valueOf(it) }.getOrNull() } ?: IpVersion.V4,
+            networkBackend = prefs[Keys.networkBackend]
+                ?.let { runCatching { NetworkBackend.valueOf(it) }.getOrNull() } ?: NetworkBackend.SOILDTUNNEL,
             quickReconnect = prefs[Keys.quick] ?: true,
             masqueHttp2 = prefs[Keys.h2] ?: false,
             lanShare = prefs[Keys.share] ?: false,
@@ -166,6 +170,7 @@ class ProfileStore(private val context: Context) {
             prefs[Keys.protocol] = profile.protocol.name
             prefs[Keys.scan] = profile.scanMode.name
             prefs[Keys.ip] = profile.ipVersion.name
+            prefs[Keys.networkBackend] = profile.networkBackend.name
             prefs[Keys.quick] = profile.quickReconnect
             prefs[Keys.h2] = profile.masqueHttp2
             prefs[Keys.share] = profile.lanShare

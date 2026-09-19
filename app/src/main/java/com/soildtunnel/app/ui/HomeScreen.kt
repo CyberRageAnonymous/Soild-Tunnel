@@ -213,14 +213,6 @@ fun HomeScreen(
 
                         Spacer(Modifier.height(16.dp))
 
-                        AdvancedPanel(
-                            profile = profile,
-                            onProfileChange = onProfileChange,
-                            enabled = settingsEnabled,
-                        )
-
-                        Spacer(Modifier.height(16.dp))
-
                         LanguagePanel()
 
                         Spacer(Modifier.height(16.dp))
