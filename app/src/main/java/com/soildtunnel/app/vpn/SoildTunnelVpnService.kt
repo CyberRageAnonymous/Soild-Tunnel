@@ -697,7 +697,12 @@ class SoildTunnelVpnService : VpnService() {
             builder.setBlocking(true)
         }
 
-        TunnelConfig.DNS_SERVERS.forEach { builder.addDnsServer(it) }
+        val dnsServers = when {
+            isV4 && !isV6 -> TunnelConfig.DNS_SERVERS
+            !isV4 && isV6 -> listOf("2606:4700:4700::1111", "2001:4860:4860::8888")
+            else -> TunnelConfig.DNS_SERVERS + listOf("2606:4700:4700::1111", "2001:4860:4860::8888")
+        }
+        dnsServers.forEach { builder.addDnsServer(it) }
 
         // Split tunneling + loop prevention (keeps the engine's own traffic off
         // the TUN (in-process protect).
@@ -712,7 +717,7 @@ class SoildTunnelVpnService : VpnService() {
         val tunLog = buildString {
             if (isV4) append("ipv4=${TunnelConfig.TUN_IPV4}/${TunnelConfig.TUN_IPV4_PREFIX} ")
             if (isV6) append("ipv6=${TunnelConfig.TUN_IPV6}/${TunnelConfig.TUN_IPV6_PREFIX} ")
-            append("mtu=$mtu split=${profile.splitMode} apps=${profile.splitApps.size} dns=${TunnelConfig.DNS_SERVERS}")
+            append("mtu=$mtu split=${profile.splitMode} apps=${profile.splitApps.size} dns=$dnsServers")
         }
         DiagnosticsLog.i(TAG, "TUN established: $tunLog")
     }
