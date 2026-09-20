@@ -267,9 +267,6 @@ data class ConnectionProfile(
             Protocol.WIREGUARD -> args += "--wg"
             Protocol.GOOL -> args += "--gool"
         }
-        if (networkBackend == NetworkBackend.SOILDTUNNEL_PSIPHON && protocol != Protocol.TOR) {
-            args += "--psiphon"
-        }
 
         // A pinned peer makes scan mode irrelevant, so only emit it otherwise.
         if (!hasManualPeer) {
