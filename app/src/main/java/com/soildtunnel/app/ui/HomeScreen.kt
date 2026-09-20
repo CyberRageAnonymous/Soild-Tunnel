@@ -282,16 +282,15 @@ fun HomeScreen(
 
                 Spacer(Modifier.height(22.dp))
 
-                // Server pill — only WARP×2 has a real node console. Smart picks its
-                // own gateway, MASQUE and WireGuard dial the same Cloudflare anycast
-                // edge, and Tor shows its exit pill above.
                 if (profile.protocol == Protocol.TOR) {
                     TorExitPill(
                         exitCountry = profile.torExitCountry,
                         enabled = state.isConnected,
                         onClick = { if (state.isConnected) showTorSheet = true },
                     )
-                } else if (profile.protocol == Protocol.GOOL) {
+                } else if (profile.protocol == Protocol.GOOL
+                    || (profile.networkBackend == com.soildtunnel.app.model.NetworkBackend.SOILDTUNNEL_PSIPHON
+                        && profile.protocol != com.soildtunnel.app.model.Protocol.TOR)) {
                     ServerSelectorPill(
                         profile = profile,
                         enabled = settingsEnabled,

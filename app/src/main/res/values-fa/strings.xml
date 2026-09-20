@@ -236,6 +236,9 @@
     <string name="onboarding_body_2">حالت هوشمند شبکه‌ات را تحلیل می‌کند و پروتکل واقعاً کارا را انتخاب می‌کند؛ با مخفی‌سازی ضد-DPI در صورت نیاز.</string>
     <string name="onboarding_title_3">خصوصی از پایه</string>
     <string name="onboarding_body_3">نه حساب کاربری، نه لاگ، نه ردیاب. اندروید بار اول اجازه VPN می‌خواهد؛ این خودِ سیستم است که کنترل را دست شما نگه می‌دارد.</string>
+    <string name="network_backend_title">بک‌اند شبکه</string>
+    <string name="network_backend_soildtunnel">soildtunnel</string>
+    <string name="network_backend_psiphon">soildtunnel + Psiphon</string>
     <string name="crash_title">SoildTunnel غیرمنتظره متوقف شد</string>
     <string name="crash_subtitle">جزئیات زیر توسط هندلر کرش ذخیره شده. می‌توانی در گزارش باگ کپی‌شان کنی.</string>
     <string name="crash_copy">کپی جزئیات</string>
