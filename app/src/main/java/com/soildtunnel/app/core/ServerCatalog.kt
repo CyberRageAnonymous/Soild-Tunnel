@@ -53,10 +53,31 @@ object ServerCatalog {
         ServerNode("us-01", "United States", "US-01", "US", listOf("8.6.112.0/24"), "8.6.112.1"),
     )
 
+    val psiphonNodes: List<ServerNode> = listOf(
+        ServerNode("ps-us-01", "United States (Psiphon)", "PS-US-01", "US", listOf("198.98.54.0/24"), "198.98.54.1"),
+        ServerNode("ps-us-02", "United States 2 (Psiphon)", "PS-US-02", "US", listOf("174.136.107.0/24"), "174.136.107.1"),
+        ServerNode("ps-ca-01", "Canada (Psiphon)", "PS-CA-01", "CA", listOf("184.147.18.0/24"), "184.147.18.1"),
+        ServerNode("ps-de-01", "Germany (Psiphon)", "PS-DE-01", "DE", listOf("149.56.108.0/24"), "149.56.108.1"),
+        ServerNode("ps-nl-01", "Netherlands (Psiphon)", "PS-NL-01", "NL", listOf("178.162.193.0/24"), "178.162.193.1"),
+        ServerNode("ps-uk-01", "United Kingdom (Psiphon)", "PS-GB-01", "GB", listOf("185.220.101.0/24"), "185.220.101.1"),
+        ServerNode("ps-fr-01", "France (Psiphon)", "PS-FR-01", "FR", listOf("51.15.76.0/24"), "51.15.76.1"),
+        ServerNode("ps-tr-01", "Turkey (Psiphon)", "PS-TR-01", "TR", listOf("78.46.84.0/24"), "78.46.84.1"),
+        ServerNode("ps-jp-01", "Japan (Psiphon)", "PS-JP-01", "JP", listOf("153.122.78.0/24"), "153.122.78.1"),
+        ServerNode("ps-sg-01", "Singapore (Psiphon)", "PS-SG-01", "SG", listOf("139.162.45.0/24"), "139.162.45.1"),
+        ServerNode("ps-se-01", "Sweden (Psiphon)", "PS-SE-01", "SE", listOf("185.246.188.0/24"), "185.246.188.1"),
+        ServerNode("ps-ch-01", "Switzerland (Psiphon)", "PS-CH-01", "CH", listOf("185.56.80.0/24"), "185.56.80.1"),
+    )
+
     /** Everything the picker shows, in display order. */
     val all: List<ServerNode> = listOf(auto) + nodes
 
-    fun byId(id: String): ServerNode? = all.firstOrNull { it.id == id }
+    fun allFor(profile: ConnectionProfile): List<ServerNode> {
+        val usePsiphon = profile.networkBackend == com.soildtunnel.app.model.NetworkBackend.SOILDTUNNEL_PSIPHON
+                && profile.protocol != com.soildtunnel.app.model.Protocol.TOR
+        return listOf(auto) + if (usePsiphon) psiphonNodes else nodes
+    }
+
+    fun byId(id: String): ServerNode? = (listOf(auto) + nodes + psiphonNodes).firstOrNull { it.id == id }
 
     fun probePort(): Int = PROBE_PORT
 
@@ -71,7 +92,7 @@ object ServerCatalog {
         EndpointMode.AUTO -> auto
         EndpointMode.MANUAL_RANGE -> {
             val raw = profile.manualRange.split(',').map { it.trim() }.filter { it.isNotEmpty() }
-            nodes.firstOrNull { node -> node.cidrs == raw }
+            (nodes + psiphonNodes).firstOrNull { node -> node.cidrs == raw }
         }
         else -> null
     }
