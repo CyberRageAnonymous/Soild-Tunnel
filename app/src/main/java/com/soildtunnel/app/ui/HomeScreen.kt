@@ -574,6 +574,7 @@ private fun TorExitPill(
     }
 }
 
+@Composable
 private fun PsiphonExitPill(
     exitCountry: String,
     enabled: Boolean,
