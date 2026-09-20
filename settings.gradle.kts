@@ -54,6 +54,7 @@ dependencyResolutionManagement {
             name = "MavenCentralMirrorGoogle"
             url = uri("https://maven-central.storage-download.googleapis.com/maven2/")
         }
+        flatDir { dirs("app/libs") }
     }
 }
 
