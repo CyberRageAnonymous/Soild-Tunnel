@@ -133,10 +133,9 @@ fun HomeScreen(
     var showAdvancedSheet by remember { mutableStateOf(false) }
     val advancedSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    // The server console.
     var showServerSheet by remember { mutableStateOf(false) }
-    // Tor exit picker (replaces the server console in Tor mode).
     var showTorSheet by remember { mutableStateOf(false) }
+    var showPsiphonSheet by remember { mutableStateOf(false) }
     var updateResult by remember { mutableStateOf(UpdateChecker.getCachedResult()) }
     val settingsEnabled = state is ConnectionState.Idle || state is ConnectionState.Error
 
@@ -288,9 +287,14 @@ fun HomeScreen(
                         enabled = state.isConnected,
                         onClick = { if (state.isConnected) showTorSheet = true },
                     )
-                } else if (profile.protocol == Protocol.GOOL
-                    || (profile.networkBackend == com.soildtunnel.app.model.NetworkBackend.SOILDTUNNEL_PSIPHON
-                        && profile.protocol != com.soildtunnel.app.model.Protocol.TOR)) {
+                } else if (profile.networkBackend == com.soildtunnel.app.model.NetworkBackend.SOILDTUNNEL_PSIPHON
+                    && profile.protocol != com.soildtunnel.app.model.Protocol.TOR) {
+                    PsiphonExitPill(
+                        exitCountry = profile.psiphonExitRegion,
+                        enabled = settingsEnabled,
+                        onClick = { if (settingsEnabled) showPsiphonSheet = true },
+                    )
+                } else if (profile.protocol == Protocol.GOOL) {
                     ServerSelectorPill(
                         profile = profile,
                         enabled = settingsEnabled,
@@ -384,6 +388,15 @@ fun HomeScreen(
             connected = state.isConnected,
             onSelect = { onTorExitSelected(it) },
             onDismiss = { showTorSheet = false },
+        )
+    }
+
+    if (showPsiphonSheet) {
+        com.soildtunnel.app.ui.components.PsiphonExitSheet(
+            selected = profile.psiphonExitRegion,
+            connected = state.isConnected,
+            onSelect = { onProfileChange(profile.copy(psiphonExitRegion = it.uppercase())) },
+            onDismiss = { showPsiphonSheet = false },
         )
     }
 
@@ -556,6 +569,56 @@ private fun TorExitPill(
             imageVector = Icons.Rounded.KeyboardArrowDown,
             contentDescription = null,
             tint = CardTextMuted,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+private fun PsiphonExitPill(
+    exitCountry: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(16.dp)
+    val name = if (exitCountry.isBlank()) "Automatic" else com.soildtunnel.app.model.PsiphonExitRegions.name(exitCountry)
+    val flag = if (exitCountry.isBlank()) "\uD83C\uDF10" else com.soildtunnel.app.core.NetProbe.flagEmoji(exitCountry)
+    val alpha = if (enabled) 1f else 0.55f
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .alpha(alpha)
+            .background(color = com.soildtunnel.app.ui.theme.CardSubSurface, shape = shape)
+            .border(1.dp, com.soildtunnel.app.ui.theme.EdgeNeon, shape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+    ) {
+        Text(
+            text = "PSIPHON",
+            fontFamily = FontFamily.Monospace,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.6.sp,
+            color = com.soildtunnel.app.ui.theme.CardTextDim,
+        )
+        Spacer(Modifier.width(2.dp))
+        if (flag.isNotEmpty()) {
+            Text(text = flag, fontSize = 13.sp)
+        }
+        Text(
+            text = name,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp,
+            letterSpacing = 1.4.sp,
+            color = com.soildtunnel.app.ui.theme.NeonMint,
+        )
+        Spacer(Modifier.weight(1f))
+        Icon(
+            imageVector = Icons.Rounded.KeyboardArrowDown,
+            contentDescription = null,
+            tint = com.soildtunnel.app.ui.theme.CardTextMuted,
             modifier = Modifier.size(20.dp),
         )
     }
