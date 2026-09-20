@@ -12,9 +12,10 @@ package com.soildtunnel.app.core
  * SOCKS5 proxy -> the classic "connected but no site loads" symptom.
  */
 object TunnelConfig {
-    /** Local SOCKS5 proxy the SoildTunnel engine exposes. */
     const val SOCKS_HOST = "127.0.0.1"
     const val SOCKS_PORT = 1819
+    const val CHAIN_SOCKS_PORT = 1825
+    const val PSIPHON_SOCKS_PORT = 1827
 
     /** Point-to-point TUN addressing (matches hev tunnel.ipv4 / tunnel.ipv6). */
     const val TUN_IPV4 = "10.10.14.1"

@@ -220,6 +220,10 @@ androidComponents {
     }
 }
 
+repositories {
+    flatDir { dirs("libs") }
+}
+
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
     implementation(composeBom)
@@ -244,6 +248,7 @@ dependencies {
     // ship on Maven Central, so no extra repository is needed.
     implementation("info.guardianproject:tor-android:0.4.7.14")
     implementation("com.netzarchitekten:IPtProxy:5.5.1")
+    implementation(":psiphontunnel-2.0.39@aar")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
