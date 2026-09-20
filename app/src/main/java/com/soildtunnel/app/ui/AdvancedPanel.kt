@@ -52,6 +52,7 @@ import com.soildtunnel.app.model.IpVersion
 import com.soildtunnel.app.model.Noize
 import com.soildtunnel.app.model.NetworkBackend
 import com.soildtunnel.app.model.Protocol
+import com.soildtunnel.app.model.PsiphonExitRegions
 import com.soildtunnel.app.model.ScanMode
 import com.soildtunnel.app.model.TorTransport
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -145,6 +146,18 @@ fun AdvancedPanel(
                             enabled = enabled,
                         )
                         Spacer(Modifier.height(16.dp))
+
+                        if (profile.networkBackend == NetworkBackend.SOILDTUNNEL_PSIPHON) {
+                            SettingLabel("Psiphon exit country")
+                            DropdownSelector(
+                                options = PsiphonExitRegions.values,
+                                selected = profile.psiphonExitRegion.uppercase(),
+                                onSelect = { onProfileChange(profile.copy(psiphonExitRegion = it.uppercase())) },
+                                label = { PsiphonExitRegions.label(it) },
+                                enabled = enabled,
+                            )
+                            Spacer(Modifier.height(16.dp))
+                        }
 
                         SettingLabel(stringResource(R.string.scan_mode))
                         DropdownSelector(

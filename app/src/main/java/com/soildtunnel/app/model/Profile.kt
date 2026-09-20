@@ -19,6 +19,37 @@ enum class IpVersion { V4, V6, BOTH }
 
 enum class NetworkBackend { SOILDTUNNEL, SOILDTUNNEL_PSIPHON }
 
+object PsiphonExitRegions {
+    val values = listOf(
+        "", "AE", "AR", "AT", "AU", "BE", "BG", "BR", "CA", "CH", "CL", "CO", "CY",
+        "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GB", "GR", "HK", "HR", "HU",
+        "IE", "IL", "IN", "IS", "IT", "JP", "KR", "LT", "LU", "LV", "MD", "MX",
+        "MY", "NL", "NO", "NZ", "PH", "PL", "PT", "RO", "RS", "SE", "SG", "SK",
+        "TH", "TR", "TW", "UA", "US", "VN", "ZA",
+    )
+    private val names = mapOf(
+        "" to "Automatic", "AE" to "United Arab Emirates", "AR" to "Argentina", "AT" to "Austria",
+        "AU" to "Australia", "BE" to "Belgium", "BG" to "Bulgaria", "BR" to "Brazil", "CA" to "Canada",
+        "CH" to "Switzerland", "CL" to "Chile", "CO" to "Colombia", "CY" to "Cyprus", "CZ" to "Czechia",
+        "DE" to "Germany", "DK" to "Denmark", "EE" to "Estonia", "ES" to "Spain", "FI" to "Finland",
+        "FR" to "France", "GB" to "United Kingdom", "GR" to "Greece", "HK" to "Hong Kong", "HR" to "Croatia",
+        "HU" to "Hungary", "IE" to "Ireland", "IL" to "Israel", "IN" to "India", "IS" to "Iceland",
+        "IT" to "Italy", "JP" to "Japan", "KR" to "South Korea", "LT" to "Lithuania", "LU" to "Luxembourg",
+        "LV" to "Latvia", "MD" to "Moldova", "MX" to "Mexico", "MY" to "Malaysia", "NL" to "Netherlands",
+        "NO" to "Norway", "NZ" to "New Zealand", "PH" to "Philippines", "PL" to "Poland", "PT" to "Portugal",
+        "RO" to "Romania", "RS" to "Serbia", "SE" to "Sweden", "SG" to "Singapore", "SK" to "Slovakia",
+        "TH" to "Thailand", "TR" to "Turkey", "TW" to "Taiwan", "UA" to "Ukraine", "US" to "United States",
+        "VN" to "Vietnam", "ZA" to "South Africa",
+    )
+    fun label(code: String): String {
+        val cc = code.trim().uppercase()
+        if (cc.isEmpty()) return "\uD83C\uDF10  Automatic"
+        val flag = cc.map { 0x1F1E6 + (it.code - 'A'.code) }.joinToString("") { String(Character.toChars(it)) }
+        return "$flag  ${names[cc] ?: cc}"
+    }
+    fun name(code: String): String = names[code.trim().uppercase()] ?: code.trim().uppercase().ifEmpty { "Automatic" }
+}
+
 /**
  * Anti-DPI obfuscation profile ("Amnezia"-style). Maps to the engine's
  * `--noize <profile>` option (see soildtunnelnoize.rs / noize.rs in the engine).
@@ -67,6 +98,7 @@ data class ConnectionProfile(
     val scanMode: ScanMode = ScanMode.BALANCED,
     val ipVersion: IpVersion = IpVersion.V4,
     val networkBackend: NetworkBackend = NetworkBackend.SOILDTUNNEL,
+    val psiphonExitRegion: String = "",
     val quickReconnect: Boolean = true,
     val masqueHttp2: Boolean = false,
     /**

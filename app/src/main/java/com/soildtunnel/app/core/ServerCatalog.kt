@@ -85,18 +85,19 @@ object ServerCatalog {
 
     fun probePort(): Int = PROBE_PORT
 
-    /**
-     * Resolves the node currently encoded in [profile]:
-     *  - EndpointMode.AUTO                     → [auto]
-     *  - EndpointMode.MANUAL_RANGE matching    → the matching node
-     *  - anything else (pinned peer, foreign
-     *    range typed in Advanced settings)     → null (the UI shows "custom")
-     */
     fun selectedIn(profile: ConnectionProfile): ServerNode? = when (profile.endpointMode) {
-        EndpointMode.AUTO -> auto
+        EndpointMode.AUTO -> {
+            val usePsiphon = profile.networkBackend == com.soildtunnel.app.model.NetworkBackend.SOILDTUNNEL_PSIPHON
+                    && profile.protocol != com.soildtunnel.app.model.Protocol.TOR
+            if (usePsiphon) null else auto
+        }
         EndpointMode.MANUAL_RANGE -> {
             val raw = profile.manualRange.split(',').map { it.trim() }.filter { it.isNotEmpty() }
-            (nodes + psiphonNodes).firstOrNull { node -> node.cidrs == raw }
+            val usePsiphon = profile.networkBackend == com.soildtunnel.app.model.NetworkBackend.SOILDTUNNEL_PSIPHON
+                    && profile.protocol != com.soildtunnel.app.model.Protocol.TOR
+            val pool = if (usePsiphon) psiphonNodes else nodes
+            pool.firstOrNull { node -> node.cidrs == raw }
+                ?: (if (usePsiphon) nodes else psiphonNodes).firstOrNull { node -> node.cidrs == raw }
         }
         else -> null
     }
