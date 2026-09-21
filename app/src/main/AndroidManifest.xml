@@ -61,6 +61,11 @@
                 android:value="Runs the SoildTunnel censorship-circumvention VPN tunnel while active" />
         </service>
 
+        <service
+            android:name=".transport.PsiphonService"
+            android:exported="false"
+            android:process=":psiphon" />
+
         <!-- Quick Settings tile: one-tap connect/disconnect from the shade. -->
         <service
             android:name=".vpn.SoildTunnelTileService"

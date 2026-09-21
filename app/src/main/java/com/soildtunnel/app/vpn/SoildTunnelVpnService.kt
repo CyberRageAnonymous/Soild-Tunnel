@@ -74,7 +74,6 @@ class SoildTunnelVpnService : VpnService() {
 
     /** Active userspace filter bridge (only when per-app blocking is on). */
     private var tunBridge: SocksTunBridge? = null
-    private var psiphonTransport: com.soildtunnel.app.transport.ExternalTransport? = null
 
     /** Last profile the service ran with (kill-switch decisions). */
     private var lastProfile: ConnectionProfile? = null
@@ -283,11 +282,13 @@ class SoildTunnelVpnService : VpnService() {
             throw IllegalStateException("WARP stage failed")
         }
         DiagnosticsLog.i(TAG, "WARP stage up, starting Psiphon through it")
-        val psiphon = com.soildtunnel.app.transport.ExternalTransportFactory.create(this, profile) ?: throw IllegalStateException("no psiphon transport")
-        psiphonTransport = psiphon
-        val psiphonPort = psiphon.start()
-        if (!PortProbe.awaitOpen(com.soildtunnel.app.core.TunnelConfig.SOCKS_HOST, psiphonPort, 180_000) { psiphon.isAlive() }) {
-            psiphon.stop()
+        val upstream = "socks5://${com.soildtunnel.app.core.TunnelConfig.SOCKS_HOST}:${com.soildtunnel.app.core.TunnelConfig.SOCKS_PORT}"
+        val psiphonPort = com.soildtunnel.app.transport.PsiphonServiceClient.start(
+            this, profile.psiphonExitRegion, upstream, 190_000,
+        )
+        if (!PortProbe.awaitOpen(com.soildtunnel.app.core.TunnelConfig.SOCKS_HOST, psiphonPort, 15_000)
+            { com.soildtunnel.app.transport.PsiphonServiceClient.isAlive() }) {
+            com.soildtunnel.app.transport.PsiphonServiceClient.stop(this)
             throw IllegalStateException("Psiphon failed")
         }
         try { HevTunnel.stop() } catch (_: Throwable) {}
@@ -302,21 +303,21 @@ class SoildTunnelVpnService : VpnService() {
         updateNotification(getString(R.string.state_verifying))
         val healthy = runCatching { Diagnostics.run(port = psiphonPort) }.getOrDefault(false)
         if (!healthy) {
-            psiphon.stop()
+            com.soildtunnel.app.transport.PsiphonServiceClient.stop(this)
             throw IllegalStateException(getString(R.string.err_selftest))
         }
         SoildTunnelController.setState(ConnectionState.Connected("${com.soildtunnel.app.core.TunnelConfig.SOCKS_HOST}:$psiphonPort"))
         updateNotification(getString(R.string.state_connected))
         UsageStore.startSession()
         registerNetworkWatch()
-        supervisePsiphon(profile, psiphon, psiphonPort)
+        supervisePsiphon(profile, psiphonPort)
     }
 
-    private suspend fun supervisePsiphon(profile: ConnectionProfile, psiphon: com.soildtunnel.app.transport.ExternalTransport, psiphonPort: Int) {
+    private suspend fun supervisePsiphon(profile: ConnectionProfile, psiphonPort: Int) {
         var probeFailures = 0
         while (currentScopeActive()) {
             delay(WATCHDOG_INTERVAL_MS)
-            if (engine?.isAlive() != true || !psiphon.isAlive()) {
+            if (engine?.isAlive() != true || !com.soildtunnel.app.transport.PsiphonServiceClient.isAlive()) {
                 throw IllegalStateException("tunnel died")
             }
             if (!probeTunnelCycle(psiphonPort)) {
@@ -1023,8 +1024,7 @@ class SoildTunnelVpnService : VpnService() {
         } catch (_: Throwable) {
         }
         runCatching { TorManager.stop() }
-        psiphonTransport?.let { runCatching { it.stop() } }
-        psiphonTransport = null
+        runCatching { com.soildtunnel.app.transport.PsiphonServiceClient.stop(this) }
         tunBridge?.let { runCatching { it.stop() } }
         tunBridge = null
         if (tunnelStarted) {
@@ -1065,8 +1065,7 @@ class SoildTunnelVpnService : VpnService() {
         } catch (_: Throwable) {
         }
         runCatching { TorManager.stop() }
-        psiphonTransport?.let { runCatching { it.stop() } }
-        psiphonTransport = null
+        runCatching { com.soildtunnel.app.transport.PsiphonServiceClient.stop(this) }
         tunBridge?.let { runCatching { it.stop() } }
         tunBridge = null
         if (tunnelStarted) {
