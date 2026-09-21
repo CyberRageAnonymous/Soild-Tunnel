@@ -144,7 +144,11 @@ class SocksTunBridge(
         readThread = Thread({
             val fis = FileInputStream(tunDescriptor.fileDescriptor)
             val buffer = ByteArray(mtu + 200)
-            waitForCore()
+            try {
+                waitForCore()
+            } catch (_: InterruptedException) {
+                return@Thread
+            }
             while (isRunning.get()) {
                 try {
                     val n = fis.read(buffer)
@@ -187,7 +191,12 @@ class SocksTunBridge(
                 ready = true
                 return@repeat
             } catch (_: Exception) {
-                Thread.sleep(200)
+                try {
+                    Thread.sleep(200)
+                } catch (ie: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return
+                }
             }
         }
         if (ready) LogRepository.i("Link synchronization complete")

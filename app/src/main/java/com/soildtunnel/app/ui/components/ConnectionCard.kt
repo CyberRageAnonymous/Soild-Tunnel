@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -39,6 +40,7 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -69,6 +71,7 @@ import com.soildtunnel.app.ui.theme.CardTextPrimary
 import com.soildtunnel.app.ui.theme.NeonCyan
 import com.soildtunnel.app.ui.theme.NeonMint
 import com.soildtunnel.app.ui.theme.NeonRed
+import com.soildtunnel.app.ui.theme.latencyColor
 
 /** Telemetry console — state, timer, IP, speeds, protocol info. */
 @Composable
@@ -93,22 +96,45 @@ fun ConnectionCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .neonPanel(CARD_SHAPE, edge = accent.copy(alpha = 0.28f))
+            .neonPanel(CARD_SHAPE, edge = accent.copy(alpha = 0.45f))
             .padding(horizontal = 18.dp, vertical = 16.dp),
     ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(120.dp)
+                .background(
+                    brush = Brush.verticalGradient(
+                        0f to accent.copy(alpha = 0.10f),
+                        1f to Color.Transparent,
+                    ),
+                    shape = CARD_SHAPE,
+                ),
+        )
         Column(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             ConsoleHeader(connected = connected, error = error)
             StatusBlock(title = statusTitle, caption = statusCaption, accent = accent)
+            SectionDivider()
             TimerBlock(connectedSince = connectedSince, connected = connected)
             ServerIpPill(connected = connected, ipInfo = ipInfo, ipLoading = ipLoading)
+            SectionDivider()
             SpeedStrip(connectedSince = connectedSince, connected = connected)
             ProtocolStrip(connected = connected, socksPort = socksPort)
         }
     }
+}
+
+@Composable
+private fun SectionDivider() {
+    HorizontalDivider(
+        modifier = Modifier.fillMaxWidth(0.92f),
+        thickness = 1.dp,
+        color = Color(0x1435E0FF),
+    )
 }
 
 // 0. header
@@ -152,12 +178,18 @@ private fun StatusBlock(title: String, caption: String, accent: Color) {
         ) { value ->
             Text(
                 text = value,
-                fontSize = 30.sp,
-                lineHeight = 34.sp,
+                fontSize = 32.sp,
+                lineHeight = 36.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = (-0.3).sp,
                 color = accent,
                 textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    shadow = androidx.compose.ui.graphics.Shadow(
+                        color = accent.copy(alpha = 0.55f),
+                        blurRadius = 18f,
+                    ),
+                ),
             )
         }
         Spacer(Modifier.height(4.dp))
@@ -218,8 +250,8 @@ private fun TimerBlock(connectedSince: Long?, connected: Boolean) {
             text = text,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold,
-            fontSize = 34.sp,
-            letterSpacing = 1.5.sp,
+            fontSize = 38.sp,
+            letterSpacing = 2.sp,
             color = if (connected) CardTextPrimary else CardTextDim,
         )
     }
@@ -242,11 +274,12 @@ private fun ServerIpPill(connected: Boolean, ipInfo: IpEndpoint?, ipLoading: Boo
 
     Row(
         modifier = Modifier
+            .fillMaxWidth()
             .background(color = CardSubSurface, shape = SUB_SHAPE)
             .subEdge(SUB_SHAPE)
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
     ) {
         Text(text = label, fontSize = 12.sp, color = CardTextMuted)
         if (ipInfo != null) {
@@ -391,12 +424,22 @@ private fun ProtocolStrip(connected: Boolean, socksPort: Int) {
         CellDivider()
         MetaCell(stringResource(R.string.meta_endpoint), endpoint, Modifier.weight(1f))
         CellDivider()
-        MetaCell(stringResource(R.string.meta_latency), latency, Modifier.weight(1f))
+        MetaCell(
+            stringResource(R.string.meta_latency),
+            latency,
+            Modifier.weight(1f),
+            valueColor = if (connected && ping.ms >= 0) latencyColor(ping.ms) else CardTextPrimary,
+        )
     }
 }
 
 @Composable
-private fun MetaCell(label: String, value: String, modifier: Modifier = Modifier) {
+private fun MetaCell(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    valueColor: Color = CardTextPrimary,
+) {
     Column(
         modifier = modifier.padding(horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -417,7 +460,7 @@ private fun MetaCell(label: String, value: String, modifier: Modifier = Modifier
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
             fontFamily = FontFamily.Monospace,
-            color = CardTextPrimary,
+            color = valueColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
