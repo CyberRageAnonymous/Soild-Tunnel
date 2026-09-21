@@ -15,6 +15,8 @@ class SoildTunnelApp : Application() {
     override fun onCreate() {
         super.onCreate()
 
+        if (isPsiphonProcess()) return
+
         // Wire the persistent diagnostics log FIRST, so anything logged during
         // startup (and any crash) is written to disk and survives process death.
         DiagnosticsLog.init(File(filesDir, "diagnostics.log"))
@@ -68,6 +70,15 @@ class SoildTunnelApp : Application() {
             previous?.uncaughtException(thread, throwable)
         }
     }
+
+    private fun isPsiphonProcess(): Boolean = runCatching {
+        if (Build.VERSION.SDK_INT >= 28) {
+            Application.getProcessName().endsWith(":psiphon")
+        } else {
+            val am = getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            am.runningAppProcesses?.any { it.pid == android.os.Process.myPid() && it.processName.endsWith(":psiphon") } == true
+        }
+    }.getOrDefault(false)
 
     companion object {
         const val CHANNEL_ID = "soildtunnel_vpn"

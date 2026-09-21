@@ -9,6 +9,7 @@ import android.os.Looper
 import android.os.Message
 import android.os.Messenger
 import android.util.Log
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,23 +20,37 @@ class PsiphonService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     @Volatile private var transport: PsiphonTransport? = null
     @Volatile private var frontPort: Int = -1
+    @Volatile private var starterReply: Messenger? = null
+
+    private fun sendLog(msg: String) {
+        Log.i(TAG, msg)
+        try {
+            starterReply?.send(Message.obtain(null, MSG_LOG).also {
+                it.setData(Bundle().apply { putString(KEY_MESSAGE, msg) })
+            })
+        } catch (_: Exception) {}
+    }
 
     private val handler = Handler(Looper.getMainLooper()) { msg ->
         when (msg.what) {
             MSG_START -> {
                 val data = msg.data
                 val replyTo = msg.replyTo
+                starterReply = replyTo
                 val region = data.getString(KEY_REGION).orEmpty()
                 val upstream = data.getString(KEY_UPSTREAM)
                 scope.launch {
                     try {
                         stopTransportQuietly()
+                        sendLog("native libs: " + nativeLibReport())
+                        sendLog("bridge classes: " + bridgeClassReport())
                         try {
                             System.loadLibrary("psiphoncore")
                         } catch (e: UnsatisfiedLinkError) {
                             throw IllegalStateException("psiphon native lib missing: ${e.message}")
                         }
-                        val t = PsiphonTransport(this@PsiphonService, region, upstream)
+                        sendLog("native lib loaded")
+                        val t = PsiphonTransport(this@PsiphonService, region, upstream, ::sendLog)
                         transport = t
                         frontPort = t.start()
                         replyTo?.send(Message.obtain(null, MSG_STARTED).also {
@@ -78,11 +93,26 @@ class PsiphonService : Service() {
         frontPort = -1
     }
 
+    private fun nativeLibReport(): String = runCatching {
+        val dir = File(applicationInfo.nativeLibraryDir)
+        dir.listFiles()
+            ?.filter { it.name.contains("psiphon") || it.name.contains("gojni") }
+            ?.joinToString(", ") { "${it.name}(${(it.length() / 1024 / 1024)}MB)" }
+            ?: "empty"
+    }.getOrDefault("unknown")
+
+    private fun bridgeClassReport(): String {
+        val pg = runCatching { Class.forName("pg.Seq"); "pg.Seq OK" }.getOrDefault("pg.Seq MISSING")
+        val go = runCatching { Class.forName("go.Seq"); "go.Seq present" }.getOrDefault("go.Seq absent")
+        return "$pg, $go"
+    }
+
     companion object {
         const val MSG_START = 1
         const val MSG_STOP = 2
         const val MSG_STARTED = 3
         const val MSG_ERROR = 4
+        const val MSG_LOG = 5
         const val KEY_REGION = "region"
         const val KEY_UPSTREAM = "upstream"
         const val KEY_PORT = "port"

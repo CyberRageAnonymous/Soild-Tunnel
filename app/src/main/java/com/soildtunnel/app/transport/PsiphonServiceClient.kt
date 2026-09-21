@@ -51,6 +51,13 @@ object PsiphonServiceClient {
         val result = CompletableDeferred<Int>()
         val reply = Messenger(Handler(Looper.getMainLooper()) { msg ->
             when (msg.what) {
+                PsiphonService.MSG_LOG -> {
+                    com.soildtunnel.app.core.DiagnosticsLog.i(
+                        "Psiphon",
+                        msg.data.getString(PsiphonService.KEY_MESSAGE).orEmpty(),
+                    )
+                    true
+                }
                 PsiphonService.MSG_STARTED -> {
                     if (!result.isCompleted) result.complete(msg.data.getInt(PsiphonService.KEY_PORT, -1))
                     true

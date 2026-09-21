@@ -16,6 +16,7 @@ class PsiphonTransport(
     private val context: Context,
     private val region: String,
     private val upstreamProxy: String?,
+    private val log: (String) -> Unit = {},
 ) : ExternalTransport, PsiphonTunnel.HostService {
     private var tunnel: PsiphonTunnel? = null
     private var ready = CompletableDeferred<Int>()
@@ -30,6 +31,7 @@ class PsiphonTransport(
             context.assets.open("server_entries.txt").bufferedReader().use { it.readText().trim() }
         }.getOrElse { throw IllegalStateException("Psiphon server list missing from assets") }
         check(entries.isNotEmpty()) { "Psiphon server list empty" }
+        log("entries=${entries.length} chars, wanted region='${wanted.ifEmpty { "auto" }}', upstream=${upstreamProxy ?: "direct"}")
         val attempts = if (wanted.isEmpty()) listOf("") else listOf(wanted, "")
         var lastError: Exception? = null
         for ((index, egress) in attempts.withIndex()) {
@@ -101,13 +103,17 @@ class PsiphonTransport(
         localPort = port
     }
     override fun onListeningHttpProxyPort(port: Int) = Unit
-    override fun onConnecting() = Unit
+    override fun onConnecting() {
+        log("psiphon connecting")
+    }
     override fun onConnected() {
         connected = true
+        log("psiphon connected on local port $localPort")
         if (!ready.isCompleted) ready.complete(localPort)
     }
     override fun onExiting() {
         connected = false
+        log("psiphon exiting")
         if (!ready.isCompleted) {
             ready.completeExceptionally(IllegalStateException("Psiphon stopped before it established"))
         }
