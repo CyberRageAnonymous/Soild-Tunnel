@@ -30,6 +30,11 @@ class PsiphonService : Service() {
                 scope.launch {
                     try {
                         stopTransportQuietly()
+                        try {
+                            System.loadLibrary("psiphoncore")
+                        } catch (e: UnsatisfiedLinkError) {
+                            throw IllegalStateException("psiphon native lib missing: ${e.message}")
+                        }
                         val t = PsiphonTransport(this@PsiphonService, region, upstream)
                         transport = t
                         frontPort = t.start()
