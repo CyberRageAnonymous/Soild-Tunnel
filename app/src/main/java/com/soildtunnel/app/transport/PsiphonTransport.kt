@@ -110,8 +110,6 @@ class PsiphonTransport(
     override fun onAvailableEgressRegions(regions: MutableList<String>?) {}
     override fun onConnectedServerRegion(region: String?) = Unit
     override fun onBytesTransferred(sent: Long, received: Long) = Unit
-    override fun onDiagnosticMessage(msg: String) {}
-    override fun getAppName(): String = "SoildTunnel"
     override fun getContext(): Context = context
     override fun getPsiphonConfig(): String = config
 
