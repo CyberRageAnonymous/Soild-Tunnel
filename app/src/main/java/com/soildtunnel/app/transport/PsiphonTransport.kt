@@ -36,6 +36,9 @@ class PsiphonTransport(
             if (index > 0) {
                 stopTunnelQuietly()
                 File(context.filesDir, "psiphon").deleteRecursively()
+                com.soildtunnel.app.core.PortProbe.awaitClosed(
+                    TunnelConfig.SOCKS_HOST, TunnelConfig.PSIPHON_SOCKS_PORT, 5_000,
+                )
             }
             try {
                 return@withContext establish(egress, entries)
@@ -58,9 +61,9 @@ class PsiphonTransport(
         created.setVpnMode(true)
         created.startTunneling(entries)
         val boundPort = try {
-            withTimeout(180_000) { deferred.await() }
+            withTimeout(200_000) { deferred.await() }
         } catch (e: TimeoutCancellationException) {
-            throw IllegalStateException("Psiphon found no usable server in 180s")
+            throw IllegalStateException("Psiphon found no usable server in 200s")
         }
         front = PsiphonSocksFront().also { it.start(TunnelConfig.CHAIN_SOCKS_PORT, boundPort) }
         return TunnelConfig.CHAIN_SOCKS_PORT
@@ -96,14 +99,19 @@ class PsiphonTransport(
     override fun bindToDevice(fd: Long) {}
     override fun onListeningSocksProxyPort(port: Int) {
         localPort = port
-        if (!ready.isCompleted) ready.complete(port)
     }
     override fun onListeningHttpProxyPort(port: Int) = Unit
     override fun onConnecting() = Unit
     override fun onConnected() {
         connected = true
+        if (!ready.isCompleted) ready.complete(localPort)
     }
-    override fun onExiting() { connected = false }
+    override fun onExiting() {
+        connected = false
+        if (!ready.isCompleted) {
+            ready.completeExceptionally(IllegalStateException("Psiphon stopped before it established"))
+        }
+    }
     override fun onClientAddress(address: String?) = Unit
     override fun onHomepage(homepage: String?) = Unit
     override fun onClientRegion(region: String?) = Unit
