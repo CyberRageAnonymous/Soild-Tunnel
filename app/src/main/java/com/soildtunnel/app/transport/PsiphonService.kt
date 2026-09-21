@@ -33,15 +33,15 @@ class PsiphonService : Service() {
                         val t = PsiphonTransport(this@PsiphonService, region, upstream)
                         transport = t
                         frontPort = t.start()
-                        replyTo?.send(Message.obtain(null, MSG_STARTED).apply {
-                            data = Bundle().apply { putInt(KEY_PORT, frontPort) }
+                        replyTo?.send(Message.obtain(null, MSG_STARTED).also {
+                            it.setData(Bundle().apply { putInt(KEY_PORT, frontPort) })
                         })
                     } catch (e: Exception) {
                         Log.w(TAG, "Psiphon start failed: ${e.message}")
                         stopTransportQuietly()
                         try {
-                            replyTo?.send(Message.obtain(null, MSG_ERROR).apply {
-                                data = Bundle().apply { putString(KEY_MESSAGE, e.message ?: "start failed") }
+                            replyTo?.send(Message.obtain(null, MSG_ERROR).also {
+                                it.setData(Bundle().apply { putString(KEY_MESSAGE, e.message ?: "start failed") })
                             })
                         } catch (_: Exception) {}
                     }

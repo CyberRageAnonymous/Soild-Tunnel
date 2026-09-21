@@ -67,12 +67,12 @@ object PsiphonServiceClient {
             }
         })
         val p = peer ?: throw IllegalStateException("Psiphon service not bound")
-        p.send(Message.obtain(null, PsiphonService.MSG_START).apply {
-            replyTo = reply
-            data = Bundle().apply {
+        p.send(Message.obtain(null, PsiphonService.MSG_START).also {
+            it.replyTo = reply
+            it.setData(Bundle().apply {
                 putString(PsiphonService.KEY_REGION, region)
                 if (!upstream.isNullOrBlank()) putString(PsiphonService.KEY_UPSTREAM, upstream)
-            }
+            })
         })
         return withTimeout(timeoutMs) { result.await().also { if (it <= 0) throw IllegalStateException("bad psiphon port") } }
     }
