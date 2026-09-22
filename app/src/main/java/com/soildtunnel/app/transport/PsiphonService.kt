@@ -95,11 +95,48 @@ class PsiphonService : Service() {
 
     private fun nativeLibReport(): String = runCatching {
         val dir = File(applicationInfo.nativeLibraryDir)
-        dir.listFiles()
+        val libs = dir.listFiles()
             ?.filter { it.name.contains("psiphon") || it.name.contains("gojni") }
-            ?.joinToString(", ") { "${it.name}(${(it.length() / 1024 / 1024)}MB)" }
-            ?: "empty"
+            .orEmpty()
+        val flat = libs.joinToString(", ") { "${it.name}(${(it.length() / 1024 / 1024)}MB)" }
+        val target = libs.firstOrNull { it.name == "libpsiphoncore.so" }
+            ?: libs.firstOrNull { it.name.contains("psiphon") }
+        if (target == null) return@runCatching "$flat | target MISSING"
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        var pgInit = 0
+        var goInit = 0
+        var overlap = ByteArray(0)
+        target.inputStream().buffered(1 shl 20).use { ins ->
+            val buf = ByteArray(1 shl 20)
+            while (true) {
+                val n = ins.read(buf)
+                if (n <= 0) break
+                digest.update(buf, 0, n)
+                val chunk = overlap + buf.copyOf(n)
+                pgInit += countBytes(chunk, "Java_pg_Seq_init".toByteArray())
+                goInit += countBytes(chunk, "Java_go_Seq_init".toByteArray())
+                overlap = chunk.takeLast(31).toByteArray()
+            }
+        }
+        val sha = digest.digest().joinToString("") { "%02x".format(it) }
+        "$flat | sha=$sha size=${target.length()} pgInit=$pgInit goInit=$goInit"
     }.getOrDefault("unknown")
+
+    private fun countBytes(haystack: ByteArray, needle: ByteArray): Int {
+        if (needle.isEmpty() || haystack.size < needle.size) return 0
+        var c = 0
+        var i = 0
+        while (i <= haystack.size - needle.size) {
+            var j = 0
+            while (j < needle.size && haystack[i + j] == needle[j]) j++
+            if (j == needle.size) {
+                c++
+                i += needle.size
+            } else i++
+        }
+        // discount a match fully inside the carried overlap tail handled next round
+        return c
+    }
 
     private fun bridgeClassReport(): String {
         val pgBare = runCatching { Class.forName("pg.Seq", false, PsiphonService::class.java.classLoader); "present" }.getOrDefault("absent")
