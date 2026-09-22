@@ -146,11 +146,12 @@ fun ConnectButton(
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.padding(horizontal = 16.dp),
             ) {
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
-                        .size(38.dp)
+                        .size(34.dp)
                         .background(
                             color = animatedAccent.copy(alpha = 0.16f),
                             shape = CircleShape,
@@ -168,17 +169,17 @@ fun ConnectButton(
                             imageVector = glyph,
                             contentDescription = null,
                             tint = animatedAccent,
-                            modifier = Modifier.size(20.dp),
+                            modifier = Modifier.size(18.dp),
                         )
                     }
                 }
-                androidx.compose.foundation.layout.Spacer(Modifier.width(12.dp))
+                androidx.compose.foundation.layout.Spacer(Modifier.width(10.dp))
                 Text(
                     text = label,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    letterSpacing = 0.6.sp,
+                    fontSize = 13.sp,
+                    letterSpacing = 0.4.sp,
                     color = MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.titleMedium.copy(
                         shadow = Shadow(
@@ -189,6 +190,7 @@ fun ConnectButton(
                         ),
                     ),
                     maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
             }
         }
@@ -252,7 +254,7 @@ private fun SpinningGlyph(glyph: ImageVector, tint: Color) {
         contentDescription = null,
         tint = tint,
         modifier = Modifier
-            .size(20.dp)
+            .size(18.dp)
             .rotate(rotation.value),
     )
 }

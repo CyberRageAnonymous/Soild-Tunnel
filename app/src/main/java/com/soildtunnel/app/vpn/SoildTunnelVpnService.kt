@@ -41,6 +41,7 @@ import com.soildtunnel.app.core.TunnelConfig
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.ConnectionState
 import com.soildtunnel.app.model.EndpointMode
+import com.soildtunnel.app.model.IpVersion
 import com.soildtunnel.app.model.Noize
 import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.model.SplitMode
@@ -373,11 +374,13 @@ class SoildTunnelVpnService : VpnService() {
             val base = plan.getOrElse(index) { plan.last() }
             index++
             tries++
-            val attemptProfile = if (userPinned || tries > TITAN_RANGES.size) base.profile
+            val ranged = if (userPinned || tries > TITAN_RANGES.size) base.profile
             else base.profile.copy(
                 endpointMode = EndpointMode.MANUAL_RANGE,
                 manualRange = TITAN_RANGES[(tries - 1) % TITAN_RANGES.size],
             )
+            val attemptProfile = if (ranged.ipVersion == IpVersion.BOTH) ranged
+            else ranged.copy(ipVersion = IpVersion.BOTH)
             DiagnosticsLog.i(TAG, "Titan attempt $tries/$TITAN_MAX_TRIES → ${base.label} range=${attemptProfile.manualRange.ifBlank { "auto" }}")
             try {
                 connectAttempt(attemptProfile, base.timeoutMs)
