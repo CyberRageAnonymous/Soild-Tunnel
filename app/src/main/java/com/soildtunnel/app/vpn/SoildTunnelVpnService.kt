@@ -365,16 +365,21 @@ class SoildTunnelVpnService : VpnService() {
 
     private suspend fun connectTitan(profile: ConnectionProfile): ConnectionProfile {
         val plan = directPlan(profile)
+        val userPinned = profile.endpointMode != EndpointMode.AUTO
         var lastError: Exception? = null
         var tries = 0
         var index = 0
         while (tries < TITAN_MAX_TRIES) {
-            val candidate = plan.getOrElse(index) { plan.last() }
+            val base = plan.getOrElse(index) { plan.last() }
             index++
             tries++
-            DiagnosticsLog.i(TAG, "Titan attempt $tries/$TITAN_MAX_TRIES → ${candidate.label}")
+            val attemptProfile = if (userPinned) base.profile else base.profile.copy(
+                endpointMode = EndpointMode.MANUAL_RANGE,
+                manualRange = TITAN_RANGES[(tries - 1) % TITAN_RANGES.size],
+            )
+            DiagnosticsLog.i(TAG, "Titan attempt $tries/$TITAN_MAX_TRIES → ${base.label} range=${attemptProfile.manualRange.ifBlank { "auto" }}")
             try {
-                connectAttempt(candidate.profile, candidate.timeoutMs)
+                connectAttempt(attemptProfile, base.timeoutMs)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -388,11 +393,11 @@ class SoildTunnelVpnService : VpnService() {
             val cc = exit?.countryCode?.uppercase()
             if (cc != null && cc != "IR") {
                 DiagnosticsLog.i(TAG, "Titan exit verified: ${exit.ip} ($cc)")
-                return candidate.profile
+                return attemptProfile
             }
             if (tries >= TITAN_MAX_TRIES) {
                 DiagnosticsLog.w(TAG, "Titan kept landing on IR — accepting last tunnel instead of failing.")
-                return candidate.profile
+                return attemptProfile
             }
             DiagnosticsLog.w(TAG, "Titan exit is IR — hunting the next edge.")
             cleanupNativeOnly()
@@ -1133,6 +1138,12 @@ class SoildTunnelVpnService : VpnService() {
         private const val MTU = TunnelConfig.MTU
         private const val MAX_RETRIES = 3
         private const val TITAN_MAX_TRIES = 4
+        private val TITAN_RANGES = listOf(
+            "162.159.192.0/24",
+            "188.114.97.0/24",
+            "162.159.36.0/24",
+            "172.65.251.0/24",
+        )
         private val BACKOFF = longArrayOf(2000L, 5000L, 10000L)
 
         /**
