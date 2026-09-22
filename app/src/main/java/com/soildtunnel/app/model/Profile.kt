@@ -305,8 +305,8 @@ data class ConnectionProfile(
             args += manualPeer.trim()
         }
 
-        if (fragment) args += "--fragment"
-        if (ech) { args += "--ech"; args += "auto" }
+        if (fragment && protocol != Protocol.TITAN) args += "--fragment"
+        if (ech && protocol != Protocol.TITAN) { args += "--ech"; args += "auto" }
         if (keepalive > 0) { args += "--keepalive"; args += keepalive.toString() }
 
 

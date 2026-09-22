@@ -95,12 +95,6 @@ fun ConnectButton(
             if (mode == ButtonMode.CONNECTED) {
                 ShimmerRing(accent = animatedAccent)
             }
-            if (mode == ButtonMode.BUSY || mode == ButtonMode.CONNECTED) {
-                OrbitDot(
-                    accent = animatedAccent,
-                    periodMs = if (mode == ButtonMode.BUSY) 1_600 else 4_000,
-                )
-            }
         }
 
         // Corner targeting brackets around the whole stage.
@@ -308,35 +302,6 @@ private fun ShimmerRing(accent: Color) {
             useCenter = false,
             style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
         )
-    }
-}
-
-@Composable
-private fun OrbitDot(accent: Color, periodMs: Int) {
-    val angle = rememberInfiniteTransition(label = "coreOrbit").animateFloat(
-        initialValue = 0f,
-        targetValue = (Math.PI * 2).toFloat(),
-        animationSpec = infiniteRepeatable(tween(periodMs, easing = LinearEasing)),
-        label = "angle",
-    )
-    Canvas(modifier = Modifier.size(RING)) {
-        val radius = size.minDimension / 2f
-        val center = Offset(size.width / 2f, size.height / 2f)
-        val dot = Offset(
-            center.x + cos(angle.value) * radius,
-            center.y + sin(angle.value) * radius,
-        )
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(accent.copy(alpha = 0.5f), Color.Transparent),
-                center = dot,
-                radius = 14.dp.toPx(),
-            ),
-            radius = 14.dp.toPx(),
-            center = dot,
-        )
-        drawCircle(color = accent, radius = 4.dp.toPx(), center = dot)
-        drawCircle(color = Color.White, radius = 1.6.dp.toPx(), center = dot)
     }
 }
 

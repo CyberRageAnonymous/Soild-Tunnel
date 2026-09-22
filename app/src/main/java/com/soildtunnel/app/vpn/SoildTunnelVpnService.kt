@@ -433,10 +433,12 @@ class SoildTunnelVpnService : VpnService() {
                 AutoCandidate(profile, fullBudget, "${profile.protocol.name} · as configured"),
             )
         }
+        val firstBudget = if (profile.protocol == Protocol.TITAN) fullBudget
+        else fullBudget.coerceAtMost(FIRST_PASS_MAX_MS)
         return listOf(
             AutoCandidate(
                 profile,
-                fullBudget.coerceAtMost(FIRST_PASS_MAX_MS),
+                firstBudget,
                 "${profile.protocol.name} · as configured",
             ),
             AutoCandidate(
