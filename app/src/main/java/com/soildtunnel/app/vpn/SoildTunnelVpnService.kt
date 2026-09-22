@@ -374,13 +374,15 @@ class SoildTunnelVpnService : VpnService() {
             val base = plan.getOrElse(index) { plan.last() }
             index++
             tries++
-            val ranged = if (userPinned || tries > TITAN_RANGES.size) base.profile
-            else base.profile.copy(
-                endpointMode = EndpointMode.MANUAL_RANGE,
-                manualRange = TITAN_RANGES[(tries - 1) % TITAN_RANGES.size],
-            )
-            val attemptProfile = if (ranged.ipVersion == IpVersion.BOTH) ranged
-            else ranged.copy(ipVersion = IpVersion.BOTH)
+            val attemptProfile = when {
+                userPinned -> base.profile
+                tries == 1 -> base.profile.copy(ipVersion = IpVersion.V6)
+                tries - 1 <= TITAN_RANGES.size -> base.profile.copy(
+                    endpointMode = EndpointMode.MANUAL_RANGE,
+                    manualRange = TITAN_RANGES[(tries - 2) % TITAN_RANGES.size],
+                )
+                else -> base.profile.copy(ipVersion = IpVersion.BOTH)
+            }
             DiagnosticsLog.i(TAG, "Titan attempt $tries/$TITAN_MAX_TRIES → ${base.label} range=${attemptProfile.manualRange.ifBlank { "auto" }}")
             try {
                 connectAttempt(attemptProfile, base.timeoutMs)
