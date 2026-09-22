@@ -102,9 +102,11 @@ class PsiphonService : Service() {
     }.getOrDefault("unknown")
 
     private fun bridgeClassReport(): String {
-        val pg = runCatching { Class.forName("pg.Seq"); "pg.Seq OK" }.getOrDefault("pg.Seq MISSING")
+        val pgBare = runCatching { Class.forName("pg.Seq", false, java.lang.ClassLoader.getSystemClassLoader()); "present" }.getOrDefault("absent")
         val go = runCatching { Class.forName("go.Seq"); "go.Seq present" }.getOrDefault("go.Seq absent")
-        return "$pg, $go"
+        val arch = android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown"
+        val libDir = applicationInfo.nativeLibraryDir
+        return "pg.Seq class=$pgBare, $go, arch=$arch, libDir=$libDir"
     }
 
     companion object {
