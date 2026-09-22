@@ -140,7 +140,7 @@ class PsiphonService : Service() {
 
     private fun bridgeClassReport(): String {
         val pgBare = runCatching { Class.forName("pg.Seq", false, PsiphonService::class.java.classLoader); "present" }.getOrDefault("absent")
-        val go = runCatching { Class.forName("go.Seq"); "go.Seq present" }.getOrDefault("go.Seq absent")
+        val go = runCatching { Class.forName("go.Seq", false, PsiphonService::class.java.classLoader); "present" }.getOrDefault("absent")
         val arch = android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown"
         val libDir = applicationInfo.nativeLibraryDir
         return "pg.Seq class=$pgBare, $go, arch=$arch, libDir=$libDir"
