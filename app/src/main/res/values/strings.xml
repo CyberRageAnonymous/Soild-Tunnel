@@ -10,6 +10,8 @@
     <string name="protocol_masque">MASQUE</string>
     <string name="protocol_wireguard">WireGuard</string>
     <string name="protocol_gool">WARP×2</string>
+    <string name="protocol_titan">Titan</string>
+    <string name="protocol_titan_desc">MASQUE inside ordinary HTTPS with fragmentation, ECH and aggressive obfuscation. Keeps retrying edges until the exit is outside Iran.</string>
 
     <string name="scan_mode">Scan mode</string>
     <string name="scan_turbo">Turbo</string>
@@ -236,9 +238,6 @@
     <string name="onboarding_body_2">Smart mode analyzes your network and picks the protocol that actually works, with anti-DPI obfuscation when needed.</string>
     <string name="onboarding_title_3">Private by design</string>
     <string name="onboarding_body_3">No accounts, no logs, no trackers. Android will ask for VPN permission on your first connect; that is the system keeping you in control.</string>
-    <string name="network_backend_title">Network backend</string>
-    <string name="network_backend_soildtunnel">soildtunnel</string>
-    <string name="network_backend_psiphon">soildtunnel + Psiphon</string>
     <string name="crash_title">SoildTunnel stopped unexpectedly</string>
     <string name="crash_subtitle">The details below were saved by the crash handler. You can copy them into a bug report.</string>
     <string name="crash_copy">Copy details</string>
@@ -330,7 +329,6 @@
     <string name="tor_exit_sub_live">Tap a country — the live session switches over in a few seconds.</string>
     <string name="err_tor_socks">Tor did not open its local port in time.</string>
     <string name="err_tor_died">Tor stopped unexpectedly.</string>
-    <string name="psiphon_need_plugin">Install the SoildTunnel Psiphon Plugin from GitHub releases first.</string>
     <string name="proxy_mode_tor_note">Not available in Tor mode — Tor always drives the whole device.</string>
 
     <!-- Theme -->

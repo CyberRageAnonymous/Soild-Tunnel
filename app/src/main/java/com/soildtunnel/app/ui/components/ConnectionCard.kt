@@ -2,6 +2,8 @@ package com.soildtunnel.app.ui.components
 
 import android.os.SystemClock
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -43,6 +45,7 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
@@ -253,6 +256,16 @@ private fun TimerBlock(connectedSince: Long?, connected: Boolean) {
             fontSize = 38.sp,
             letterSpacing = 2.sp,
             color = if (connected) CardTextPrimary else CardTextDim,
+            style = if (connected) {
+                MaterialTheme.typography.headlineLarge.copy(
+                    shadow = Shadow(
+                        color = NeonCyan.copy(alpha = 0.35f),
+                        blurRadius = 16f,
+                    ),
+                )
+            } else {
+                MaterialTheme.typography.headlineLarge
+            },
         )
     }
 }
@@ -319,12 +332,14 @@ private fun SpeedStrip(connectedSince: Long?, connected: Boolean) {
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        val sum = (stats.downRate + stats.upRate).coerceAtLeast(1L)
         SpeedCell(
             icon = Icons.Rounded.ArrowDownward,
             tint = NeonMint,
             label = stringResource(R.string.traffic_download),
             rate = stats.downRate,
             total = stats.downTotal,
+            fraction = stats.downRate.toFloat() / sum,
             modifier = Modifier.weight(1f),
         )
         CellDivider()
@@ -334,6 +349,7 @@ private fun SpeedStrip(connectedSince: Long?, connected: Boolean) {
             label = stringResource(R.string.traffic_upload),
             rate = stats.upRate,
             total = stats.upTotal,
+            fraction = stats.upRate.toFloat() / sum,
             modifier = Modifier.weight(1f),
         )
     }
@@ -346,8 +362,14 @@ private fun SpeedCell(
     label: String,
     rate: Long,
     total: Long,
+    fraction: Float,
     modifier: Modifier = Modifier,
 ) {
+    val animatedFraction by animateFloatAsState(
+        targetValue = fraction.coerceIn(0f, 1f),
+        animationSpec = tween(600),
+        label = "speedShare",
+    )
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
@@ -382,6 +404,20 @@ private fun SpeedCell(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            Spacer(Modifier.height(5.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .background(color = tint.copy(alpha = 0.14f), shape = CircleShape),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(animatedFraction)
+                        .height(3.dp)
+                        .background(color = tint, shape = CircleShape),
+                )
+            }
         }
     }
 }
@@ -429,6 +465,7 @@ private fun ProtocolStrip(connected: Boolean, socksPort: Int) {
             latency,
             Modifier.weight(1f),
             valueColor = if (connected && ping.ms >= 0) latencyColor(ping.ms) else CardTextPrimary,
+            dotColor = if (connected && ping.ms >= 0) latencyColor(ping.ms) else null,
         )
     }
 }
@@ -439,6 +476,7 @@ private fun MetaCell(
     value: String,
     modifier: Modifier = Modifier,
     valueColor: Color = CardTextPrimary,
+    dotColor: Color? = null,
 ) {
     Column(
         modifier = modifier.padding(horizontal = 4.dp),
@@ -455,17 +493,23 @@ private fun MetaCell(
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(3.dp))
-        Text(
-            text = value,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            fontFamily = FontFamily.Monospace,
-            color = valueColor,
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (dotColor != null) {
+                LedDot(color = dotColor, size = 8.dp, glowing = true)
+                Spacer(Modifier.width(5.dp))
+            }
+            Text(
+                text = value,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = FontFamily.Monospace,
+                color = valueColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Ltr),
-        )
+            )
+        }
     }
 }
 

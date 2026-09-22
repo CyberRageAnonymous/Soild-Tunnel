@@ -92,14 +92,28 @@ fun ConnectButton(
             if (mode == ButtonMode.BUSY) {
                 BusyArc(accent = animatedAccent)
             }
+            if (mode == ButtonMode.CONNECTED) {
+                ShimmerRing(accent = animatedAccent)
+            }
+            if (mode == ButtonMode.BUSY || mode == ButtonMode.CONNECTED) {
+                OrbitDot(
+                    accent = animatedAccent,
+                    periodMs = if (mode == ButtonMode.BUSY) 1_600 else 4_000,
+                )
+            }
         }
 
         // Corner targeting brackets around the whole stage.
+        val bracketAlpha = if (mode == ButtonMode.ERROR) {
+            ErrorBlink()
+        } else {
+            if (mode == ButtonMode.IDLE) 0.45f else 0.8f
+        }
         Box(
             modifier = Modifier
                 .size(BRACKETS)
                 .neonBrackets(
-                    color = animatedAccent.copy(alpha = if (mode == ButtonMode.IDLE) 0.45f else 0.8f),
+                    color = animatedAccent.copy(alpha = bracketAlpha),
                     length = 18.dp,
                     inset = 2.dp,
                     strokeWidth = 2.dp,
@@ -266,6 +280,78 @@ private fun BusyArc(accent: Color) {
             style = Stroke(width = 3.5.dp.toPx(), cap = StrokeCap.Round),
         )
     }
+}
+
+@Composable
+private fun ShimmerRing(accent: Color) {
+    val rotation = rememberInfiniteTransition(label = "coreShimmer").animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(3_600, easing = LinearEasing)),
+        label = "rotation",
+    )
+    Canvas(
+        modifier = Modifier
+            .size(RING)
+            .rotate(rotation.value),
+    ) {
+        drawArc(
+            brush = Brush.sweepGradient(
+                colors = listOf(
+                    Color.Transparent,
+                    accent.copy(alpha = 0.55f),
+                    Color.Transparent,
+                ),
+            ),
+            startAngle = 0f,
+            sweepAngle = 360f,
+            useCenter = false,
+            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
+        )
+    }
+}
+
+@Composable
+private fun OrbitDot(accent: Color, periodMs: Int) {
+    val angle = rememberInfiniteTransition(label = "coreOrbit").animateFloat(
+        initialValue = 0f,
+        targetValue = (Math.PI * 2).toFloat(),
+        animationSpec = infiniteRepeatable(tween(periodMs, easing = LinearEasing)),
+        label = "angle",
+    )
+    Canvas(modifier = Modifier.size(RING)) {
+        val radius = size.minDimension / 2f
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val dot = Offset(
+            center.x + cos(angle.value) * radius,
+            center.y + sin(angle.value) * radius,
+        )
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(accent.copy(alpha = 0.5f), Color.Transparent),
+                center = dot,
+                radius = 14.dp.toPx(),
+            ),
+            radius = 14.dp.toPx(),
+            center = dot,
+        )
+        drawCircle(color = accent, radius = 4.dp.toPx(), center = dot)
+        drawCircle(color = Color.White, radius = 1.6.dp.toPx(), center = dot)
+    }
+}
+
+@Composable
+private fun ErrorBlink(): Float {
+    val blink = rememberInfiniteTransition(label = "coreErrorBlink").animateFloat(
+        initialValue = 0.85f,
+        targetValue = 0.25f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "blink",
+    )
+    return blink.value
 }
 
 @Composable

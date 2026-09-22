@@ -57,9 +57,7 @@ import com.soildtunnel.app.model.CoreLogLevel
 import com.soildtunnel.app.model.EndpointMode
 import com.soildtunnel.app.model.IpVersion
 import com.soildtunnel.app.model.Noize
-import com.soildtunnel.app.model.NetworkBackend
 import com.soildtunnel.app.model.Protocol
-import com.soildtunnel.app.model.PsiphonExitRegions
 import com.soildtunnel.app.model.ScanMode
 import com.soildtunnel.app.model.TorTransport
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -160,31 +158,14 @@ fun AdvancedPanel(
                         label = { protocolLabel(it) },
                         enabled = enabled,
                     )
+                    if (profile.protocol == Protocol.TITAN) {
+                        HelperText(stringResource(R.string.protocol_titan_desc))
+                    }
                     Spacer(Modifier.height(16.dp))
 
+                    // Scan mode and IP version only steer the WARP engine —
+                    // Tor finds its own path, so both hide in Tor mode.
                     if (profile.protocol != Protocol.TOR) {
-                        SettingLabel(stringResource(R.string.network_backend_title))
-                        SegmentedSelector(
-                            options = NetworkBackend.entries,
-                            selected = profile.networkBackend,
-                            onSelect = { onProfileChange(profile.copy(networkBackend = it)) },
-                            label = { networkBackendLabel(it) },
-                            enabled = enabled,
-                        )
-                        Spacer(Modifier.height(16.dp))
-
-                        if (profile.networkBackend == NetworkBackend.SOILDTUNNEL_PSIPHON) {
-                            SettingLabel("Psiphon exit country")
-                            DropdownSelector(
-                                options = PsiphonExitRegions.values,
-                                selected = profile.psiphonExitRegion.uppercase(),
-                                onSelect = { onProfileChange(profile.copy(psiphonExitRegion = it.uppercase())) },
-                                label = { PsiphonExitRegions.label(it) },
-                                enabled = enabled,
-                            )
-                            Spacer(Modifier.height(16.dp))
-                        }
-
                         SettingLabel(stringResource(R.string.scan_mode))
                         DropdownSelector(
                             options = ScanMode.entries,
@@ -934,6 +915,7 @@ private fun protocolLabel(protocol: Protocol): String = when (protocol) {
     Protocol.MASQUE -> stringResource(R.string.protocol_masque)
     Protocol.WIREGUARD -> stringResource(R.string.protocol_wireguard)
     Protocol.GOOL -> stringResource(R.string.protocol_gool)
+    Protocol.TITAN -> stringResource(R.string.protocol_titan)
     Protocol.TOR -> stringResource(R.string.protocol_tor)
 }
 
@@ -960,12 +942,6 @@ private fun ipLabel(ip: IpVersion): String = when (ip) {
     IpVersion.V4 -> stringResource(R.string.ip_v4)
     IpVersion.V6 -> stringResource(R.string.ip_v6)
     IpVersion.BOTH -> stringResource(R.string.ip_both)
-}
-
-@Composable
-private fun networkBackendLabel(backend: NetworkBackend): String = when (backend) {
-    NetworkBackend.SOILDTUNNEL -> stringResource(R.string.network_backend_soildtunnel)
-    NetworkBackend.SOILDTUNNEL_PSIPHON -> stringResource(R.string.network_backend_psiphon)
 }
 
 @Composable

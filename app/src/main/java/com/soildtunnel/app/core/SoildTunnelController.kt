@@ -12,7 +12,6 @@ import com.soildtunnel.app.model.CoreLogLevel
 import com.soildtunnel.app.model.ConnectionState
 import com.soildtunnel.app.model.EndpointMode
 import com.soildtunnel.app.model.IpVersion
-import com.soildtunnel.app.model.NetworkBackend
 import com.soildtunnel.app.model.Noize
 import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.model.ScanMode
@@ -135,8 +134,6 @@ object ProfileCodec {
         add("torTransport=${p.torTransport.name}")
         add("torBridges=${p.torBridges.replace("\n", "\\n")}")
         add("torExit=${p.torExitCountry}")
-        add("backend=${p.networkBackend.name}")
-        add("psiphonExit=${p.psiphonExitRegion}")
     }.joinToString("\n")
 
     fun decode(raw: String?): ConnectionProfile {
@@ -190,8 +187,6 @@ object ProfileCodec {
                 torTransport = map["torTransport"]?.let { enumOr<TorTransport>(it) } ?: d.torTransport,
                 torBridges = map["torBridges"]?.replace("\\n", "\n") ?: d.torBridges,
                 torExitCountry = map["torExit"]?.trim()?.take(2)?.uppercase() ?: d.torExitCountry,
-                networkBackend = map["backend"]?.let { enumOr<NetworkBackend>(it) } ?: d.networkBackend,
-                psiphonExitRegion = map["psiphonExit"]?.trim()?.take(2)?.uppercase() ?: d.psiphonExitRegion,
             )
         }.getOrDefault(d)
     }

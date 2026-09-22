@@ -124,7 +124,7 @@ fun ServerPickerSheet(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.height(430.dp),
             ) {
-                itemsIndexed(ServerCatalog.allFor(profile), key = { _, node -> node.id }) { _, node ->
+                itemsIndexed(ServerCatalog.all, key = { _, node -> node.id }) { _, node ->
                     ServerRow(
                         node = node,
                         selected = selected?.id == node.id,

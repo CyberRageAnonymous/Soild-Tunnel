@@ -37,7 +37,6 @@ import com.soildtunnel.app.core.SmartAuto
 import com.soildtunnel.app.core.SocksTunBridge
 import com.soildtunnel.app.core.TorDefaults
 import com.soildtunnel.app.core.TorManager
-import com.soildtunnel.app.model.NetworkBackend
 import com.soildtunnel.app.core.TunnelConfig
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.ConnectionState
@@ -182,26 +181,22 @@ class SoildTunnelVpnService : VpnService() {
         }
         DiagnosticsLog.i(TAG, "Connect requested — protocol=${profile.protocol} scan=${profile.scanMode} ip=${profile.ipVersion}")
 
+        // Tor mode runs its own flow start to finish (no WARP engine, no
+        // ladder): it only returns via exception or cancellation.
         if (profile.protocol == Protocol.TOR) {
             connectTor(profile)
-            return
-        }
-
-        if (profile.networkBackend == NetworkBackend.SOILDTUNNEL_PSIPHON) {
-            if (profile.protocol == Protocol.AUTO) {
-                connectSmartAuto(profile, stageOnly = true)
-            } else {
-                SoildTunnelController.setState(ConnectionState.Launching)
-                runLadder(directPlan(profile), getString(R.string.err_protocol_failed), stageOnly = true)
-            }
-            connectPsiphon(profile)
             return
         }
 
         val resolved: ConnectionProfile =
             if (profile.protocol == Protocol.AUTO) {
                 connectSmartAuto(profile)
+            } else if (profile.protocol == Protocol.TITAN) {
+                SoildTunnelController.setState(ConnectionState.Launching)
+                connectTitan(profile)
             } else {
+                // An explicitly chosen protocol keeps that protocol; the
+                // engine still selects its own endpoint (see [directPlan]).
                 SoildTunnelController.setState(ConnectionState.Launching)
                 runLadder(directPlan(profile), getString(R.string.err_protocol_failed))
             }
@@ -271,52 +266,6 @@ class SoildTunnelVpnService : VpnService() {
         registerNetworkWatch()
 
         superviseTor(profile)
-    }
-
-    private suspend fun connectPsiphon(profile: ConnectionProfile) {
-        SoildTunnelController.setState(ConnectionState.Connecting)
-        updateNotification(getString(R.string.state_connecting))
-        DiagnosticsLog.i(TAG, "Psiphon mode — WARP first hop then Psiphon via ${profile.psiphonExitRegion.ifBlank { "auto" }}")
-        if (!PortProbe.awaitOpen(com.soildtunnel.app.core.TunnelConfig.SOCKS_HOST, com.soildtunnel.app.core.TunnelConfig.SOCKS_PORT, 10_000) { engine?.isAlive() == true }) {
-            throw IllegalStateException("WARP stage failed")
-        }
-        DiagnosticsLog.i(TAG, "WARP stage up, starting Psiphon through it")
-        val upstream = "socks5://${com.soildtunnel.app.core.TunnelConfig.SOCKS_HOST}:${com.soildtunnel.app.core.TunnelConfig.SOCKS_PORT}"
-        val psiphonPort = com.soildtunnel.app.transport.PsiphonServiceClient.start(
-            this, profile.psiphonExitRegion, upstream, 190_000,
-        )
-        if (!PortProbe.awaitOpen(com.soildtunnel.app.core.TunnelConfig.SOCKS_HOST, psiphonPort, 15_000)
-            { com.soildtunnel.app.transport.PsiphonServiceClient.isAlive() }) {
-            com.soildtunnel.app.transport.PsiphonServiceClient.stop(this)
-            throw IllegalStateException("Psiphon failed")
-        }
-        establishTun(profile)
-        startTun2Socks(profile, psiphonPort)
-        SoildTunnelController.setState(ConnectionState.Verifying)
-        updateNotification(getString(R.string.state_verifying))
-        val healthy = runCatching { Diagnostics.run(port = psiphonPort) }.getOrDefault(false)
-        if (!healthy) {
-            com.soildtunnel.app.transport.PsiphonServiceClient.stop(this)
-            throw IllegalStateException(getString(R.string.err_selftest))
-        }
-        SoildTunnelController.setState(ConnectionState.Connected("${com.soildtunnel.app.core.TunnelConfig.SOCKS_HOST}:$psiphonPort"))
-        updateNotification(getString(R.string.state_connected))
-        UsageStore.startSession()
-        registerNetworkWatch()
-        supervisePsiphon(profile, psiphonPort)
-    }
-
-    private suspend fun supervisePsiphon(profile: ConnectionProfile, psiphonPort: Int) {
-        var probeFailures = 0
-        while (currentScopeActive()) {
-            delay(WATCHDOG_INTERVAL_MS)
-            if (engine?.isAlive() != true || !com.soildtunnel.app.transport.PsiphonServiceClient.isAlive()) {
-                throw IllegalStateException("tunnel died")
-            }
-            if (!probeTunnelCycle(psiphonPort)) {
-                if (++probeFailures >= WATCHDOG_FAIL_CYCLES) throw IllegalStateException("tunnel failed")
-            } else probeFailures = 0
-        }
     }
 
     /**
@@ -391,10 +340,7 @@ class SoildTunnelVpnService : VpnService() {
      * self-test. Returns the strategy that won so the supervisor restarts the
      * engine with the SAME working configuration.
      */
-    private suspend fun connectSmartAuto(
-        userProfile: ConnectionProfile,
-        stageOnly: Boolean = false,
-    ): ConnectionProfile {
+    private suspend fun connectSmartAuto(userProfile: ConnectionProfile): ConnectionProfile {
         SoildTunnelController.setState(ConnectionState.Launching)
         updateNotification(getString(R.string.state_analyzing))
         // 24h sticky pin: reuse the range that won last time so the exit
@@ -402,7 +348,7 @@ class SoildTunnelVpnService : VpnService() {
         val sticky = StickyServer.usable(this)
         val fingerprint = SmartAuto.fingerprint(this)
         val plan = SmartAuto.buildPlan(userProfile, fingerprint, sticky?.range)
-        val won = runLadder(plan, getString(R.string.err_auto_failed), stageOnly)
+        val won = runLadder(plan, getString(R.string.err_auto_failed))
         val userOwnsEndpoint = userProfile.endpointMode != EndpointMode.AUTO
         if (!userOwnsEndpoint && won.manualRange.isNotBlank()) {
             if (sticky != null) {
@@ -415,6 +361,44 @@ class SoildTunnelVpnService : VpnService() {
             }
         }
         return won
+    }
+
+    private suspend fun connectTitan(profile: ConnectionProfile): ConnectionProfile {
+        val plan = directPlan(profile)
+        var lastError: Exception? = null
+        var tries = 0
+        var index = 0
+        while (tries < TITAN_MAX_TRIES) {
+            val candidate = plan.getOrElse(index) { plan.last() }
+            index++
+            tries++
+            DiagnosticsLog.i(TAG, "Titan attempt $tries/$TITAN_MAX_TRIES → ${candidate.label}")
+            try {
+                connectAttempt(candidate.profile, candidate.timeoutMs)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                lastError = e
+                DiagnosticsLog.w(TAG, "Titan attempt $tries failed (${e.message}) — rescanning.")
+                cleanupNativeOnly()
+                Diagnostics.resetChecks()
+                continue
+            }
+            val exit = SoildTunnelController.ipInfo.value?.takeIf { it.viaTunnel }
+            val cc = exit?.countryCode?.uppercase()
+            if (cc != null && cc != "IR") {
+                DiagnosticsLog.i(TAG, "Titan exit verified: ${exit.ip} ($cc)")
+                return candidate.profile
+            }
+            if (tries >= TITAN_MAX_TRIES) {
+                DiagnosticsLog.w(TAG, "Titan kept landing on IR — accepting last tunnel instead of failing.")
+                return candidate.profile
+            }
+            DiagnosticsLog.w(TAG, "Titan exit is IR — hunting the next edge.")
+            cleanupNativeOnly()
+            Diagnostics.resetChecks()
+        }
+        throw IllegalStateException(getString(R.string.err_protocol_failed), lastError)
     }
 
     /**
@@ -437,7 +421,7 @@ class SoildTunnelVpnService : VpnService() {
     private fun directPlan(profile: ConnectionProfile): List<AutoCandidate> {
         val fullBudget = profile.connectTimeoutMs()
         val hardenedNoize = if (profile.noize == Noize.OFF) Noize.FIREWALL else profile.noize
-        val masque = profile.protocol == Protocol.MASQUE
+        val masque = profile.protocol == Protocol.MASQUE || profile.protocol == Protocol.TITAN
         val hardened = profile.copy(
             noize = hardenedNoize,
             masqueHttp2 = profile.masqueHttp2 || masque,
@@ -471,14 +455,13 @@ class SoildTunnelVpnService : VpnService() {
     private suspend fun runLadder(
         plan: List<AutoCandidate>,
         failureMessage: String,
-        stageOnly: Boolean = false,
     ): ConnectionProfile {
         var lastError: Exception? = null
 
         plan.forEachIndexed { index, candidate ->
             DiagnosticsLog.i(TAG, "Attempt ${index + 1}/${plan.size} → ${candidate.label}")
             try {
-                connectAttempt(candidate.profile, candidate.timeoutMs, stageOnly)
+                connectAttempt(candidate.profile, candidate.timeoutMs)
                 DiagnosticsLog.i(TAG, "Connected using ${candidate.label}")
                 return candidate.profile
             } catch (e: CancellationException) {
@@ -502,46 +485,9 @@ class SoildTunnelVpnService : VpnService() {
      * for SOCKS5, bring up TUN/proxy, and gate on the 4-step self-test.
      * Throws on any failure; the caller decides whether to retry differently.
      */
-    private fun stageCheckSocksTcp(): Boolean = runCatching {
-        java.net.Socket().use { s ->
-            s.connect(java.net.InetSocketAddress(SOCKS_HOST, SOCKS_PORT), 5_000)
-            s.soTimeout = 8_000
-            val ins = s.getInputStream()
-            val out = s.getOutputStream()
-            out.write(byteArrayOf(0x05, 0x01, 0x00))
-            out.flush()
-            if (ins.read() != 0x05 || ins.read() != 0x00) return false
-            out.write(byteArrayOf(0x05, 0x01, 0x00, 0x01, 1, 1, 1, 1, 0x01, 0xBB.toByte()))
-            out.flush()
-            if (ins.read() != 0x05 || ins.read() != 0x00) return false
-            ins.read()
-            when (ins.read()) {
-                0x01 -> {
-                    ins.read(ByteArray(4))
-                    ins.read()
-                    ins.read()
-                }
-                0x03 -> {
-                    val l = ins.read()
-                    ins.read(ByteArray(l))
-                    ins.read()
-                    ins.read()
-                }
-                0x04 -> {
-                    ins.read(ByteArray(16))
-                    ins.read()
-                    ins.read()
-                }
-                else -> return false
-            }
-            true
-        }
-    }.getOrDefault(false)
-
     private suspend fun connectAttempt(
         profile: ConnectionProfile,
         timeoutMs: Long,
-        stageOnly: Boolean = false,
     ) {
         SoildTunnelController.setState(ConnectionState.Launching)
         updateNotification(getString(R.string.state_launching))
@@ -581,16 +527,6 @@ class SoildTunnelVpnService : VpnService() {
             throw IllegalStateException(getString(R.string.err_engine_timeout))
         }
         DiagnosticsLog.i(TAG, "SOCKS5 port is up.")
-
-        if (stageOnly) {
-            DiagnosticsLog.i(TAG, "Stage 1 check: outbound TCP via $SOCKS_HOST:$SOCKS_PORT…")
-            if (!stageCheckSocksTcp()) {
-                DiagnosticsLog.e(TAG, "Stage 1 proxy cannot carry TCP — trying next strategy.")
-                throw IllegalStateException(getString(R.string.err_selftest))
-            }
-            DiagnosticsLog.i(TAG, "Stage 1 up — handing the exit to stage 2.")
-            return
-        }
 
         if (profile.proxyMode) {
             // Proxy mode: DON'T capture the whole device through a system TUN.
@@ -875,15 +811,13 @@ class SoildTunnelVpnService : VpnService() {
         }
     }
 
-    private fun startTun2Socks(profile: ConnectionProfile, overrideSocksPort: Int? = null) {
+    private fun startTun2Socks(profile: ConnectionProfile) {
+        // Tor mode always rides the userspace bridge, even with no blocked
+        // apps: hev forwards UDP through SOCKS5 UDP ASSOCIATE, which tor
+        // does not implement, so DNS would silently die on the hev path.
+        // The bridge answers DNS through tor's own resolver instead.
         val torMode = profile.protocol == Protocol.TOR
-        val psiphonMode = profile.networkBackend == NetworkBackend.SOILDTUNNEL_PSIPHON && !torMode
-        val effectivePort = overrideSocksPort ?: when {
-            psiphonMode -> com.soildtunnel.app.core.TunnelConfig.CHAIN_SOCKS_PORT
-            torMode -> TorDefaults.SOCKS_PORT
-            else -> SOCKS_PORT
-        }
-        if (torMode || psiphonMode || profile.blockedApps.isNotEmpty()) {
+        if (torMode || profile.blockedApps.isNotEmpty()) {
             // PER-APP BLOCKING : hev-socks5-tunnel cannot filter per
             // UID, so a userspace filter bridge (merged into SoildTunnel's
             // SocksTunBridge) reads the TUN itself, resolves each flow's
@@ -895,7 +829,7 @@ class SoildTunnelVpnService : VpnService() {
                 vpnService = this,
                 tunDescriptor = pfd,
                 socksHost = SOCKS_HOST,
-                socksPort = effectivePort,
+                socksPort = if (torMode) TorDefaults.SOCKS_PORT else SOCKS_PORT,
                 mtu = profile.mtu.coerceIn(576, 9000),
                 blockedPackagesProvider = { profile.blockedApps.toSet() },
                 routingEngine = RoutingEngine(emptyList()),
@@ -937,11 +871,9 @@ class SoildTunnelVpnService : VpnService() {
             if (isV4) appendLine("  ipv4: ${TunnelConfig.TUN_IPV4}")
             if (isV6) appendLine("  ipv6: '${TunnelConfig.TUN_IPV6}'")
             if (!isV4 && !isV6) appendLine("  ipv4: ${TunnelConfig.TUN_IPV4}")
-            val psiphonMode = lastProfile?.networkBackend == NetworkBackend.SOILDTUNNEL_PSIPHON && lastProfile?.protocol != com.soildtunnel.app.model.Protocol.TOR
-            val hevPort = if (psiphonMode) com.soildtunnel.app.core.TunnelConfig.CHAIN_SOCKS_PORT else SOCKS_PORT
             appendLine("socks5:")
             appendLine("  address: $SOCKS_HOST")
-            appendLine("  port: $hevPort")
+            appendLine("  port: $SOCKS_PORT")
             appendLine("  udp: 'udp'")
             appendLine("misc:")
             appendLine("  task-stack-size: 86016")
@@ -1068,7 +1000,6 @@ class SoildTunnelVpnService : VpnService() {
         } catch (_: Throwable) {
         }
         runCatching { TorManager.stop() }
-        runCatching { com.soildtunnel.app.transport.PsiphonServiceClient.stop(this) }
         tunBridge?.let { runCatching { it.stop() } }
         tunBridge = null
         if (tunnelStarted) {
@@ -1109,7 +1040,6 @@ class SoildTunnelVpnService : VpnService() {
         } catch (_: Throwable) {
         }
         runCatching { TorManager.stop() }
-        runCatching { com.soildtunnel.app.transport.PsiphonServiceClient.stop(this) }
         tunBridge?.let { runCatching { it.stop() } }
         tunBridge = null
         if (tunnelStarted) {
@@ -1200,6 +1130,7 @@ class SoildTunnelVpnService : VpnService() {
         private const val SOCKS_PORT = TunnelConfig.SOCKS_PORT
         private const val MTU = TunnelConfig.MTU
         private const val MAX_RETRIES = 3
+        private const val TITAN_MAX_TRIES = 4
         private val BACKOFF = longArrayOf(2000L, 5000L, 10000L)
 
         /**

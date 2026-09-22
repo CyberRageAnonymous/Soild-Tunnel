@@ -136,9 +136,10 @@ fun HomeScreen(
     var showAdvancedSheet by remember { mutableStateOf(false) }
     val advancedSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    // The server console.
     var showServerSheet by remember { mutableStateOf(false) }
+    // Tor exit picker (replaces the server console in Tor mode).
     var showTorSheet by remember { mutableStateOf(false) }
-    var showPsiphonSheet by remember { mutableStateOf(false) }
     var updateResult by remember { mutableStateOf(UpdateChecker.getCachedResult()) }
     val settingsEnabled = state is ConnectionState.Idle || state is ConnectionState.Error
 
@@ -163,6 +164,7 @@ fun HomeScreen(
                         .statusBarsPadding()
                         .padding(horizontal = 16.dp, vertical = 20.dp),
                 ) {
+                    // Brand header: logo + name + console tagline.
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             contentAlignment = Alignment.Center,
@@ -227,11 +229,11 @@ fun HomeScreen(
                     if (drawerVisible) {
                         DiagnosticsPanel()
 
-                        Spacer(Modifier.height(16.dp))
+                        DrawerDivider()
 
                         UsagePanel()
 
-                        Spacer(Modifier.height(16.dp))
+                        DrawerDivider()
 
                         SharePanel(
                             state = state,
@@ -239,15 +241,15 @@ fun HomeScreen(
                             onProfileChange = onProfileChange,
                         )
 
-                        Spacer(Modifier.height(16.dp))
+                        DrawerDivider()
 
                         LanguagePanel()
 
-                        Spacer(Modifier.height(16.dp))
+                        DrawerDivider()
 
                         ThemePanel()
 
-                        Spacer(Modifier.height(16.dp))
+                        DrawerDivider()
 
                         AboutPanel()
                     }
@@ -310,18 +312,14 @@ fun HomeScreen(
 
                 Spacer(Modifier.height(22.dp))
 
+                // Server pill — only WARP×2 has a real node console. Smart picks its
+                // own gateway, MASQUE and WireGuard dial the same Cloudflare anycast
+                // edge, and Tor shows its exit pill above.
                 if (profile.protocol == Protocol.TOR) {
                     TorExitPill(
                         exitCountry = profile.torExitCountry,
                         enabled = state.isConnected,
                         onClick = { if (state.isConnected) showTorSheet = true },
-                    )
-                } else if (profile.networkBackend == com.soildtunnel.app.model.NetworkBackend.SOILDTUNNEL_PSIPHON
-                    && profile.protocol != com.soildtunnel.app.model.Protocol.TOR) {
-                    PsiphonExitPill(
-                        exitCountry = profile.psiphonExitRegion,
-                        enabled = settingsEnabled,
-                        onClick = { if (settingsEnabled) showPsiphonSheet = true },
                     )
                 } else if (profile.protocol == Protocol.GOOL) {
                     ServerSelectorPill(
@@ -417,15 +415,6 @@ fun HomeScreen(
             connected = state.isConnected,
             onSelect = { onTorExitSelected(it) },
             onDismiss = { showTorSheet = false },
-        )
-    }
-
-    if (showPsiphonSheet) {
-        com.soildtunnel.app.ui.components.PsiphonExitSheet(
-            selected = profile.psiphonExitRegion,
-            connected = state.isConnected,
-            onSelect = { onProfileChange(profile.copy(psiphonExitRegion = it.uppercase())) },
-            onDismiss = { showPsiphonSheet = false },
         )
     }
 
@@ -603,57 +592,6 @@ private fun TorExitPill(
     }
 }
 
-@Composable
-private fun PsiphonExitPill(
-    exitCountry: String,
-    enabled: Boolean,
-    onClick: () -> Unit,
-) {
-    val shape = RoundedCornerShape(16.dp)
-    val name = if (exitCountry.isBlank()) "Automatic" else com.soildtunnel.app.model.PsiphonExitRegions.name(exitCountry)
-    val flag = if (exitCountry.isBlank()) "\uD83C\uDF10" else com.soildtunnel.app.core.NetProbe.flagEmoji(exitCountry)
-    val alpha = if (enabled) 1f else 0.55f
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .alpha(alpha)
-            .background(color = com.soildtunnel.app.ui.theme.CardSubSurface, shape = shape)
-            .border(1.dp, com.soildtunnel.app.ui.theme.EdgeNeon, shape)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 11.dp),
-    ) {
-        Text(
-            text = "PSIPHON",
-            fontFamily = FontFamily.Monospace,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.6.sp,
-            color = com.soildtunnel.app.ui.theme.CardTextDim,
-        )
-        Spacer(Modifier.width(2.dp))
-        if (flag.isNotEmpty()) {
-            Text(text = flag, fontSize = 13.sp)
-        }
-        Text(
-            text = name,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Bold,
-            fontSize = 14.sp,
-            letterSpacing = 1.4.sp,
-            color = com.soildtunnel.app.ui.theme.NeonMint,
-        )
-        Spacer(Modifier.weight(1f))
-        Icon(
-            imageVector = Icons.Rounded.KeyboardArrowDown,
-            contentDescription = null,
-            tint = com.soildtunnel.app.ui.theme.CardTextMuted,
-            modifier = Modifier.size(20.dp),
-        )
-    }
-}
-
 /** Lightweight copy of the picker badge for the home-screen pill. */
 @Composable
 private fun HomePingBadge(nodeId: String) {
@@ -753,11 +691,30 @@ private fun UpdateBanner(
             )
         }
         Text(
-            text = "\u00D7",
+            text = "×",
             color = CardTextMuted,
             modifier = Modifier
                 .clickable { onDismiss() }
                 .padding(4.dp),
         )
     }
+}
+
+@Composable
+private fun DrawerDivider() {
+    Spacer(Modifier.height(14.dp))
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(
+                brush = Brush.horizontalGradient(
+                    0f to Color.Transparent,
+                    0.5f to NeonCyan.copy(alpha = 0.30f),
+                    1f to Color.Transparent,
+                ),
+            ),
+    )
+    Spacer(Modifier.height(14.dp))
+}
 }
