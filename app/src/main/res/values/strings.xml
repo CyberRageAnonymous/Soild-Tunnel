@@ -330,6 +330,7 @@
     <string name="tor_exit_sub_live">Tap a country — the live session switches over in a few seconds.</string>
     <string name="err_tor_socks">Tor did not open its local port in time.</string>
     <string name="err_tor_died">Tor stopped unexpectedly.</string>
+    <string name="psiphon_need_plugin">Install the SoildTunnel Psiphon Plugin from GitHub releases first.</string>
     <string name="proxy_mode_tor_note">Not available in Tor mode — Tor always drives the whole device.</string>
 
     <!-- Theme -->

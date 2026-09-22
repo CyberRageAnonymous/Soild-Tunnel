@@ -227,7 +227,7 @@ jobs:
           LOG="${RUNNER_TEMP:-/tmp}/gradle-release-build.log"
           for attempt in 1 2 3; do
             set +e
-            gradle :app:assembleRelease --no-daemon --stacktrace 2>&1 | tee "$LOG"
+            gradle :app:assembleRelease :psiphon-plugin:assembleRelease --no-daemon --stacktrace 2>&1 | tee "$LOG"
             status=${PIPESTATUS[0]}
             set -e
             if [ "$status" -eq 0 ]; then
@@ -457,6 +457,11 @@ jobs:
               cp "$src" "${OUT}/SoildTunnel-${VERSION_NAME}-${MAP[$key]}.apk"
             fi
           done
+          PLUGIN_VERSION="$(grep -m1 -E '^[[:space:]]*versionName[[:space:]]*=' psiphon-plugin/build.gradle.kts | sed -E 's/.*"([^"]+)".*/\1/')"
+          [ -n "$PLUGIN_VERSION" ] || { echo "ERROR: could not read plugin versionName"; exit 1; }
+          plugin_src="$(find psiphon-plugin/build/outputs/apk/release -iname "*.apk" | head -n1)"
+          [ -n "$plugin_src" ] || { echo "ERROR: no plugin APK built"; exit 1; }
+          cp "$plugin_src" "${OUT}/SoildTunnel-PsiphonPlugin-${PLUGIN_VERSION}.apk"
           echo "Built APKs:"
           ls -la "$OUT"
 
@@ -504,4 +509,12 @@ jobs:
         with:
           name: SoildTunnel-test-universal
           path: artifacts/*universal*.apk
+          retention-days: 14
+
+      - name: Upload psiphon plugin test APK
+        if: github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoildTunnel-test-plugin
+          path: artifacts/*PsiphonPlugin*.apk
           retention-days: 14

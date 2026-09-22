@@ -10,10 +10,24 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.Message
 import android.os.Messenger
+import com.soildtunnel.app.R
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeout
 
 object PsiphonServiceClient {
+    const val PLUGIN_PACKAGE = "com.soildtunnel.psiphon"
+    const val PLUGIN_SERVICE = "com.soildtunnel.psiphon.PsiphonPluginService"
+
+    const val MSG_START = 1
+    const val MSG_STOP = 2
+    const val MSG_STARTED = 3
+    const val MSG_ERROR = 4
+    const val MSG_LOG = 5
+    const val KEY_REGION = "region"
+    const val KEY_UPSTREAM = "upstream"
+    const val KEY_PORT = "port"
+    const val KEY_MESSAGE = "message"
+
     @Volatile private var peer: Messenger? = null
     @Volatile private var bound = false
     private var boundContext: Context? = null
@@ -30,24 +44,32 @@ object PsiphonServiceClient {
         override fun onServiceDisconnected(name: ComponentName?) {
             peer = null
             bound = false
-            pending?.completeExceptionally(IllegalStateException("psiphon process died"))
+            pending?.completeExceptionally(IllegalStateException("psiphon plugin died"))
             pending = null
         }
     }
 
+    private fun pluginIntent(): Intent =
+        Intent().setComponent(ComponentName(PLUGIN_PACKAGE, PLUGIN_SERVICE))
+
     private fun ensureBound(context: Context) {
         if (bound && peer != null) return
-        val intent = Intent(context.applicationContext, PsiphonService::class.java)
-        context.applicationContext.bindService(intent, connection, Context.BIND_AUTO_CREATE)
+        val app = context.applicationContext
+        val ok = try {
+            app.bindService(pluginIntent(), connection, Context.BIND_AUTO_CREATE)
+        } catch (_: Exception) {
+            false
+        }
+        if (!ok) throw IllegalStateException(app.getString(R.string.psiphon_need_plugin))
         val deadline = System.currentTimeMillis() + 15_000
         synchronized(this) {
             while (peer == null && System.currentTimeMillis() < deadline) {
                 (this as java.lang.Object).wait(500)
             }
         }
-        if (peer == null) throw IllegalStateException("Psiphon service did not bind")
+        if (peer == null) throw IllegalStateException(app.getString(R.string.psiphon_need_plugin))
         bound = true
-        boundContext = context.applicationContext
+        boundContext = app
     }
 
     suspend fun start(context: Context, region: String, upstream: String?, timeoutMs: Long = 190_000): Int {
@@ -70,21 +92,21 @@ object PsiphonServiceClient {
     ): Int {
         val reply = Messenger(Handler(Looper.getMainLooper()) { msg ->
             when (msg.what) {
-                PsiphonService.MSG_LOG -> {
+                MSG_LOG -> {
                     com.soildtunnel.app.core.DiagnosticsLog.i(
                         "Psiphon",
-                        msg.data.getString(PsiphonService.KEY_MESSAGE).orEmpty(),
+                        msg.data.getString(KEY_MESSAGE).orEmpty(),
                     )
                     true
                 }
-                PsiphonService.MSG_STARTED -> {
-                    if (!result.isCompleted) result.complete(msg.data.getInt(PsiphonService.KEY_PORT, -1))
+                MSG_STARTED -> {
+                    if (!result.isCompleted) result.complete(msg.data.getInt(KEY_PORT, -1))
                     true
                 }
-                PsiphonService.MSG_ERROR -> {
+                MSG_ERROR -> {
                     if (!result.isCompleted) {
                         result.completeExceptionally(
-                            IllegalStateException(msg.data.getString(PsiphonService.KEY_MESSAGE) ?: "psiphon failed"),
+                            IllegalStateException(msg.data.getString(KEY_MESSAGE) ?: "psiphon failed"),
                         )
                     }
                     true
@@ -92,26 +114,25 @@ object PsiphonServiceClient {
                 else -> false
             }
         })
-        val p = peer ?: throw IllegalStateException("Psiphon service not bound")
-        p.send(Message.obtain(null, PsiphonService.MSG_START).also {
+        val p = peer ?: throw IllegalStateException("Psiphon plugin not bound")
+        p.send(Message.obtain(null, MSG_START).also {
             it.replyTo = reply
             it.setData(Bundle().apply {
-                putString(PsiphonService.KEY_REGION, region)
-                if (!upstream.isNullOrBlank()) putString(PsiphonService.KEY_UPSTREAM, upstream)
+                putString(KEY_REGION, region)
+                if (!upstream.isNullOrBlank()) putString(KEY_UPSTREAM, upstream)
             })
         })
         return withTimeout(timeoutMs) { result.await().also { if (it <= 0) throw IllegalStateException("bad psiphon port") } }
     }
 
     fun stop(context: Context) {
-        try { peer?.send(Message.obtain(null, PsiphonService.MSG_STOP)) } catch (_: Exception) {}
+        try { peer?.send(Message.obtain(null, MSG_STOP)) } catch (_: Exception) {}
         peer = null
         bound = false
         try {
             (boundContext ?: context.applicationContext).unbindService(connection)
         } catch (_: Exception) {}
         boundContext = null
-        try { context.applicationContext.stopService(Intent(context.applicationContext, PsiphonService::class.java)) } catch (_: Exception) {}
     }
 
     fun isAlive(): Boolean = bound && peer != null

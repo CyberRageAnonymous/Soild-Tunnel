@@ -330,6 +330,7 @@
     <string name="tor_exit_sub_live">یک کشور بزن — اتصال فعلی ظرف چند ثانیه عوض می‌شود.</string>
     <string name="err_tor_socks">تور نتوانست به‌موقع آماده شود.</string>
     <string name="err_tor_died">تور ناگهان متوقف شد.</string>
+    <string name="psiphon_need_plugin">اول پلاگین Psiphon سایلدتانل را از صفحه ریلیزهای گیت‌هاب نصب کن.</string>
     <string name="proxy_mode_tor_note">در حالت تور در دسترس نیست — تور همیشه کل گوشی را می‌گیرد.</string>
 
     <!-- Theme -->

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <permission
+        android:name="com.soildtunnel.psiphon.ACCESS"
+        android:protectionLevel="signature" />
+
+    <application
+        android:label="SoildTunnel Psiphon Plugin"
+        android:allowBackup="false">
+        <service
+            android:name=".PsiphonPluginService"
+            android:exported="true"
+            android:permission="com.soildtunnel.psiphon.ACCESS" />
+    </application>
+</manifest>

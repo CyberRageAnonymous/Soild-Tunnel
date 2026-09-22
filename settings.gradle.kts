@@ -55,8 +55,10 @@ dependencyResolutionManagement {
             url = uri("https://maven-central.storage-download.googleapis.com/maven2/")
         }
         flatDir { dirs("app/libs") }
+        flatDir { dirs("psiphon-plugin/libs") }
     }
 }
 
 rootProject.name = "SoildTunnel"
 include(":app")
+include(":psiphon-plugin")
