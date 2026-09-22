@@ -58,10 +58,13 @@ class PsiphonTransport(
         ready = deferred
         localPort = TunnelConfig.PSIPHON_SOCKS_PORT
         config = buildConfig(egress)
+        log("creating tunnel, exit=${egress.ifEmpty { "auto" }}")
         val created = PsiphonTunnel.newPsiphonTunnel(this)
         tunnel = created
         created.setVpnMode(true)
+        log("starting tunneling")
         created.startTunneling(entries)
+        log("tunneling started, waiting for connect")
         val boundPort = try {
             withTimeout(200_000) { deferred.await() }
         } catch (e: TimeoutCancellationException) {

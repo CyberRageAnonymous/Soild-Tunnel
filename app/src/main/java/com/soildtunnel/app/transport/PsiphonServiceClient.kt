@@ -18,6 +18,8 @@ object PsiphonServiceClient {
     @Volatile private var bound = false
     private var boundContext: Context? = null
 
+    @Volatile private var pending: CompletableDeferred<Int>? = null
+
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             peer = Messenger(service)
@@ -28,6 +30,8 @@ object PsiphonServiceClient {
         override fun onServiceDisconnected(name: ComponentName?) {
             peer = null
             bound = false
+            pending?.completeExceptionally(IllegalStateException("psiphon process died"))
+            pending = null
         }
     }
 
@@ -49,6 +53,21 @@ object PsiphonServiceClient {
     suspend fun start(context: Context, region: String, upstream: String?, timeoutMs: Long = 190_000): Int {
         ensureBound(context)
         val result = CompletableDeferred<Int>()
+        pending = result
+        try {
+            return startInner(context, region, upstream, result, timeoutMs)
+        } finally {
+            if (pending === result) pending = null
+        }
+    }
+
+    private suspend fun startInner(
+        context: Context,
+        region: String,
+        upstream: String?,
+        result: CompletableDeferred<Int>,
+        timeoutMs: Long,
+    ): Int {
         val reply = Messenger(Handler(Looper.getMainLooper()) { msg ->
             when (msg.what) {
                 PsiphonService.MSG_LOG -> {
