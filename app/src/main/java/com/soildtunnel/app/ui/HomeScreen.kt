@@ -717,4 +717,3 @@ private fun DrawerDivider() {
     )
     Spacer(Modifier.height(14.dp))
 }
-}
