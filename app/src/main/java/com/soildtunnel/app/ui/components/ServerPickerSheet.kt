@@ -185,10 +185,11 @@ private fun ServerRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier
             .fillMaxWidth()
+            .height(68.dp)
             .background(color = CardSubSurface, shape = shape)
             .border(1.dp, border, shape)
             .clickable(onClick = onSelect)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = 14.dp, vertical = 10.dp),
     ) {
         NodeGlyph(isAuto = isAuto, selected = selected)
 
@@ -205,8 +206,10 @@ private fun ServerRow(
                     text = title,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    letterSpacing = 1.2.sp,
+                    fontSize = 13.sp,
+                    letterSpacing = 0.8.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     color = if (selected) NeonMint else CardTextPrimary,
                 )
                 if (!isAuto) {

@@ -2,6 +2,8 @@ package com.soildtunnel.app.ui.components
 
 import android.os.SystemClock
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -22,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -39,8 +42,10 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
@@ -69,6 +74,7 @@ import com.soildtunnel.app.ui.theme.CardTextPrimary
 import com.soildtunnel.app.ui.theme.NeonCyan
 import com.soildtunnel.app.ui.theme.NeonMint
 import com.soildtunnel.app.ui.theme.NeonRed
+import com.soildtunnel.app.ui.theme.latencyColor
 
 /** Telemetry console — state, timer, IP, speeds, protocol info. */
 @Composable
@@ -93,22 +99,45 @@ fun ConnectionCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .neonPanel(CARD_SHAPE, edge = accent.copy(alpha = 0.28f))
+            .neonPanel(CARD_SHAPE, edge = accent.copy(alpha = 0.45f))
             .padding(horizontal = 18.dp, vertical = 16.dp),
     ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(120.dp)
+                .background(
+                    brush = Brush.verticalGradient(
+                        0f to accent.copy(alpha = 0.10f),
+                        1f to Color.Transparent,
+                    ),
+                    shape = CARD_SHAPE,
+                ),
+        )
         Column(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             ConsoleHeader(connected = connected, error = error)
             StatusBlock(title = statusTitle, caption = statusCaption, accent = accent)
+            SectionDivider()
             TimerBlock(connectedSince = connectedSince, connected = connected)
             ServerIpPill(connected = connected, ipInfo = ipInfo, ipLoading = ipLoading)
+            SectionDivider()
             SpeedStrip(connectedSince = connectedSince, connected = connected)
             ProtocolStrip(connected = connected, socksPort = socksPort)
         }
     }
+}
+
+@Composable
+private fun SectionDivider() {
+    HorizontalDivider(
+        modifier = Modifier.fillMaxWidth(0.92f),
+        thickness = 1.dp,
+        color = Color(0x1435E0FF),
+    )
 }
 
 // 0. header
@@ -152,12 +181,18 @@ private fun StatusBlock(title: String, caption: String, accent: Color) {
         ) { value ->
             Text(
                 text = value,
-                fontSize = 30.sp,
-                lineHeight = 34.sp,
+                fontSize = 32.sp,
+                lineHeight = 36.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = (-0.3).sp,
                 color = accent,
                 textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    shadow = androidx.compose.ui.graphics.Shadow(
+                        color = accent.copy(alpha = 0.55f),
+                        blurRadius = 18f,
+                    ),
+                ),
             )
         }
         Spacer(Modifier.height(4.dp))
@@ -218,9 +253,19 @@ private fun TimerBlock(connectedSince: Long?, connected: Boolean) {
             text = text,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold,
-            fontSize = 34.sp,
-            letterSpacing = 1.5.sp,
+            fontSize = 38.sp,
+            letterSpacing = 2.sp,
             color = if (connected) CardTextPrimary else CardTextDim,
+            style = if (connected) {
+                MaterialTheme.typography.headlineLarge.copy(
+                    shadow = Shadow(
+                        color = NeonCyan.copy(alpha = 0.35f),
+                        blurRadius = 16f,
+                    ),
+                )
+            } else {
+                MaterialTheme.typography.headlineLarge
+            },
         )
     }
 }
@@ -242,11 +287,12 @@ private fun ServerIpPill(connected: Boolean, ipInfo: IpEndpoint?, ipLoading: Boo
 
     Row(
         modifier = Modifier
+            .fillMaxWidth()
             .background(color = CardSubSurface, shape = SUB_SHAPE)
             .subEdge(SUB_SHAPE)
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
     ) {
         Text(text = label, fontSize = 12.sp, color = CardTextMuted)
         if (ipInfo != null) {
@@ -286,12 +332,14 @@ private fun SpeedStrip(connectedSince: Long?, connected: Boolean) {
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        val sum = (stats.downRate + stats.upRate).coerceAtLeast(1L)
         SpeedCell(
             icon = Icons.Rounded.ArrowDownward,
             tint = NeonMint,
             label = stringResource(R.string.traffic_download),
             rate = stats.downRate,
             total = stats.downTotal,
+            fraction = stats.downRate.toFloat() / sum,
             modifier = Modifier.weight(1f),
         )
         CellDivider()
@@ -301,6 +349,7 @@ private fun SpeedStrip(connectedSince: Long?, connected: Boolean) {
             label = stringResource(R.string.traffic_upload),
             rate = stats.upRate,
             total = stats.upTotal,
+            fraction = stats.upRate.toFloat() / sum,
             modifier = Modifier.weight(1f),
         )
     }
@@ -313,8 +362,14 @@ private fun SpeedCell(
     label: String,
     rate: Long,
     total: Long,
+    fraction: Float,
     modifier: Modifier = Modifier,
 ) {
+    val animatedFraction by animateFloatAsState(
+        targetValue = fraction.coerceIn(0f, 1f),
+        animationSpec = tween(600),
+        label = "speedShare",
+    )
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
@@ -349,6 +404,20 @@ private fun SpeedCell(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            Spacer(Modifier.height(5.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .background(color = tint.copy(alpha = 0.14f), shape = CircleShape),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(animatedFraction)
+                        .height(3.dp)
+                        .background(color = tint, shape = CircleShape),
+                )
+            }
         }
     }
 }
@@ -391,12 +460,24 @@ private fun ProtocolStrip(connected: Boolean, socksPort: Int) {
         CellDivider()
         MetaCell(stringResource(R.string.meta_endpoint), endpoint, Modifier.weight(1f))
         CellDivider()
-        MetaCell(stringResource(R.string.meta_latency), latency, Modifier.weight(1f))
+        MetaCell(
+            stringResource(R.string.meta_latency),
+            latency,
+            Modifier.weight(1f),
+            valueColor = if (connected && ping.ms >= 0) latencyColor(ping.ms) else CardTextPrimary,
+            dotColor = if (connected && ping.ms >= 0) latencyColor(ping.ms) else null,
+        )
     }
 }
 
 @Composable
-private fun MetaCell(label: String, value: String, modifier: Modifier = Modifier) {
+private fun MetaCell(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    valueColor: Color = CardTextPrimary,
+    dotColor: Color? = null,
+) {
     Column(
         modifier = modifier.padding(horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -412,17 +493,23 @@ private fun MetaCell(label: String, value: String, modifier: Modifier = Modifier
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(3.dp))
-        Text(
-            text = value,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            fontFamily = FontFamily.Monospace,
-            color = CardTextPrimary,
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (dotColor != null) {
+                LedDot(color = dotColor, size = 8.dp, glowing = true)
+                Spacer(Modifier.width(5.dp))
+            }
+            Text(
+                text = value,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = FontFamily.Monospace,
+                color = valueColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Ltr),
-        )
+            )
+        }
     }
 }
 

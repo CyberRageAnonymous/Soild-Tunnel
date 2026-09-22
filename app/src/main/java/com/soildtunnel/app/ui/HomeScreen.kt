@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -49,7 +50,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
@@ -163,11 +166,26 @@ fun HomeScreen(
                 ) {
                     // Brand header: logo + name + console tagline.
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Image(
-                            painter = painterResource(R.drawable.ic_logo),
-                            contentDescription = null,
-                            modifier = Modifier.size(44.dp),
-                        )
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(52.dp)
+                                .background(
+                                    color = NeonCyan.copy(alpha = 0.10f),
+                                    shape = CircleShape,
+                                )
+                                .border(
+                                    1.dp,
+                                    NeonCyan.copy(alpha = 0.35f),
+                                    CircleShape,
+                                ),
+                        ) {
+                            Image(
+                                painter = painterResource(R.drawable.ic_logo),
+                                contentDescription = null,
+                                modifier = Modifier.size(38.dp),
+                            )
+                        }
                         Spacer(Modifier.width(12.dp))
                         Column {
                             Text(
@@ -176,12 +194,18 @@ fun HomeScreen(
                                     fontFamily = FontFamily.Monospace,
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = 1.sp,
+                                    shadow = Shadow(
+                                        color = NeonCyan.copy(alpha = 0.45f),
+                                        blurRadius = 14f,
+                                    ),
                                 ),
                                 color = MaterialTheme.colorScheme.onBackground,
                             )
                             Text(
                                 text = stringResource(R.string.tagline),
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    letterSpacing = 0.4.sp,
+                                ),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -192,18 +216,24 @@ fun HomeScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(1.dp)
-                            .background(NeonCyan.copy(alpha = 0.18f)),
+                            .background(
+                                brush = Brush.horizontalGradient(
+                                    0f to Color.Transparent,
+                                    0.5f to NeonCyan.copy(alpha = 0.45f),
+                                    1f to Color.Transparent,
+                                ),
+                            ),
                     )
                     Spacer(Modifier.height(18.dp))
 
                     if (drawerVisible) {
                         DiagnosticsPanel()
 
-                        Spacer(Modifier.height(16.dp))
+                        DrawerDivider()
 
                         UsagePanel()
 
-                        Spacer(Modifier.height(16.dp))
+                        DrawerDivider()
 
                         SharePanel(
                             state = state,
@@ -211,23 +241,15 @@ fun HomeScreen(
                             onProfileChange = onProfileChange,
                         )
 
-                        Spacer(Modifier.height(16.dp))
-
-                        AdvancedPanel(
-                            profile = profile,
-                            onProfileChange = onProfileChange,
-                            enabled = settingsEnabled,
-                        )
-
-                        Spacer(Modifier.height(16.dp))
+                        DrawerDivider()
 
                         LanguagePanel()
 
-                        Spacer(Modifier.height(16.dp))
+                        DrawerDivider()
 
                         ThemePanel()
 
-                        Spacer(Modifier.height(16.dp))
+                        DrawerDivider()
 
                         AboutPanel()
                     }
@@ -669,11 +691,29 @@ private fun UpdateBanner(
             )
         }
         Text(
-            text = "\u00D7",
+            text = "×",
             color = CardTextMuted,
             modifier = Modifier
                 .clickable { onDismiss() }
                 .padding(4.dp),
         )
     }
+}
+
+@Composable
+private fun DrawerDivider() {
+    Spacer(Modifier.height(14.dp))
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(
+                brush = Brush.horizontalGradient(
+                    0f to Color.Transparent,
+                    0.5f to NeonCyan.copy(alpha = 0.30f),
+                    1f to Color.Transparent,
+                ),
+            ),
+    )
+    Spacer(Modifier.height(14.dp))
 }

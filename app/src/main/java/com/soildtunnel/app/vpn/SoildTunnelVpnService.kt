@@ -670,21 +670,24 @@ class SoildTunnelVpnService : VpnService() {
         // User-tunable MTU (defaults to 1280 — safe for Iranian mobile/DPI).
         // Clamped to a sane range so a bad saved value can't break establish.
         val mtu = profile.mtu.coerceIn(576, 9000)
+        val isV4 = profile.ipVersion == com.soildtunnel.app.model.IpVersion.V4 || profile.ipVersion == com.soildtunnel.app.model.IpVersion.BOTH
+        val isV6 = profile.ipVersion == com.soildtunnel.app.model.IpVersion.V6 || profile.ipVersion == com.soildtunnel.app.model.IpVersion.BOTH
         val builder = Builder()
             .setSession("SoildTunnel")
             .setMtu(mtu)
-            // The TUN address MUST match hev's tunnel.ipv4/ipv6 (see writeHevConfig).
-            .addAddress(TunnelConfig.TUN_IPV4, TunnelConfig.TUN_IPV4_PREFIX)
-            .addAddress(TunnelConfig.TUN_IPV6, TunnelConfig.TUN_IPV6_PREFIX)
-            .addRoute("0.0.0.0", 0)
+            // The TUN addresses MUST match hev's tunnel.ipv4/ipv6 (see writeHevConfig).
+            // Now tied to the IP version setting: V4 only gets v4, V6 only v6, BOTH gets both.
+            .apply {
+                if (isV4) addAddress(TunnelConfig.TUN_IPV4, TunnelConfig.TUN_IPV4_PREFIX)
+                if (isV6) addAddress(TunnelConfig.TUN_IPV6, TunnelConfig.TUN_IPV6_PREFIX)
+            }
+            .apply { if (isV4) addRoute("0.0.0.0", 0) }
 
-        // IPv6 LEAK PROTECTION : on by default -- the v6 default
-        // route keeps IPv6 traffic inside the tunnel. Can be disabled for
-        // networks where a default v6 route breaks connectivity.
-        // Tor mode shares this: with the flag on, v6 flows ride through
-        // tor's SOCKS exactly like v4 (tor picks an IPv6-capable exit); with
-        // it off the tunnel is v4-only and v6 stays outside the VPN.
-        if (profile.ipv6LeakProtection) {
+        // IPv6 route: only when the tunnel actually has an IPv6 address and leak
+        // protection is on. This keeps V4-only truly v4-only, and V6/BOTH behave
+        // as the user expects. Tor shares this path — with the flag on, v6 rides
+        // through tor's SOCKS (tor picks an IPv6-capable exit); off stays v4-only.
+        if (isV6 && profile.ipv6LeakProtection) {
             builder.addRoute("::", 0)
         }
 
@@ -694,7 +697,12 @@ class SoildTunnelVpnService : VpnService() {
             builder.setBlocking(true)
         }
 
-        TunnelConfig.DNS_SERVERS.forEach { builder.addDnsServer(it) }
+        val dnsServers = when {
+            isV4 && !isV6 -> TunnelConfig.DNS_SERVERS
+            !isV4 && isV6 -> listOf("2606:4700:4700::1111", "2001:4860:4860::8888")
+            else -> TunnelConfig.DNS_SERVERS + listOf("2606:4700:4700::1111", "2001:4860:4860::8888")
+        }
+        dnsServers.forEach { builder.addDnsServer(it) }
 
         // Split tunneling + loop prevention (keeps the engine's own traffic off
         // the TUN (in-process protect).
@@ -706,12 +714,12 @@ class SoildTunnelVpnService : VpnService() {
 
         tun = builder.establish()
             ?: throw IllegalStateException("Failed to establish the VPN interface")
-        DiagnosticsLog.i(
-            TAG,
-            "TUN established: ipv4=${TunnelConfig.TUN_IPV4}/${TunnelConfig.TUN_IPV4_PREFIX} " +
-                "ipv6=${TunnelConfig.TUN_IPV6}/${TunnelConfig.TUN_IPV6_PREFIX} mtu=$mtu " +
-                "split=${profile.splitMode} apps=${profile.splitApps.size} dns=${TunnelConfig.DNS_SERVERS}",
-        )
+        val tunLog = buildString {
+            if (isV4) append("ipv4=${TunnelConfig.TUN_IPV4}/${TunnelConfig.TUN_IPV4_PREFIX} ")
+            if (isV6) append("ipv6=${TunnelConfig.TUN_IPV6}/${TunnelConfig.TUN_IPV6_PREFIX} ")
+            append("mtu=$mtu split=${profile.splitMode} apps=${profile.splitApps.size} dns=$dnsServers")
+        }
+        DiagnosticsLog.i(TAG, "TUN established: $tunLog")
     }
 
     /**
@@ -812,25 +820,29 @@ class SoildTunnelVpnService : VpnService() {
      * These MUST equal the VpnService addAddress values.
      */
     private fun writeHevConfig(mtu: Int): File {
+        // Must mirror establishTun: only the address families the TUN actually has.
+        val isV4 = lastProfile?.ipVersion == com.soildtunnel.app.model.IpVersion.V4 || lastProfile?.ipVersion == com.soildtunnel.app.model.IpVersion.BOTH
+        val isV6 = lastProfile?.ipVersion == com.soildtunnel.app.model.IpVersion.V6 || lastProfile?.ipVersion == com.soildtunnel.app.model.IpVersion.BOTH
         val file = File(filesDir, "hev.yaml")
-        val yaml = """
-            tunnel:
-              mtu: $mtu
-              ipv4: ${TunnelConfig.TUN_IPV4}
-              ipv6: '${TunnelConfig.TUN_IPV6}'
-            socks5:
-              address: $SOCKS_HOST
-              port: $SOCKS_PORT
-              udp: 'udp'
-            misc:
-              task-stack-size: 86016
-              connect-timeout: 5000
-              #  stability: the old 60s idle timeout killed long-lived
-              # sessions ("works 1-2 minutes, then no site opens").
-              tcp-read-write-timeout: 300000
-              udp-read-write-timeout: 120000
-              log-level: warn
-        """.trimIndent()
+        val yaml = buildString {
+            appendLine("tunnel:")
+            appendLine("  mtu: $mtu")
+            if (isV4) appendLine("  ipv4: ${TunnelConfig.TUN_IPV4}")
+            if (isV6) appendLine("  ipv6: '${TunnelConfig.TUN_IPV6}'")
+            if (!isV4 && !isV6) appendLine("  ipv4: ${TunnelConfig.TUN_IPV4}")
+            appendLine("socks5:")
+            appendLine("  address: $SOCKS_HOST")
+            appendLine("  port: $SOCKS_PORT")
+            appendLine("  udp: 'udp'")
+            appendLine("misc:")
+            appendLine("  task-stack-size: 86016")
+            appendLine("  connect-timeout: 5000")
+            appendLine("  #  stability: the old 60s idle timeout killed long-lived")
+            appendLine("  # sessions (\"works 1-2 minutes, then no site opens\").")
+            appendLine("  tcp-read-write-timeout: 300000")
+            appendLine("  udp-read-write-timeout: 120000")
+            appendLine("  log-level: warn")
+        }
         file.writeText(yaml)
         DiagnosticsLog.i(TAG, "hev.yaml written:\n$yaml")
         return file
