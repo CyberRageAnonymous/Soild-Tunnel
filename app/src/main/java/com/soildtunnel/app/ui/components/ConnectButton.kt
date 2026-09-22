@@ -264,5 +264,5 @@ private object NeonTokens {
     val error = Color(0xFFFF4D6F)
 }
 
-private val PILL_WIDTH = 240.dp
-private val PILL_HEIGHT = 72.dp
+private val PILL_WIDTH = 228.dp
+private val PILL_HEIGHT = 68.dp

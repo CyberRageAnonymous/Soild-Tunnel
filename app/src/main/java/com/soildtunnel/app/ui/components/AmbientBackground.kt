@@ -13,7 +13,7 @@ import com.soildtunnel.app.ui.theme.GlowPoolViolet
 import com.soildtunnel.app.ui.theme.GridLine
 import com.soildtunnel.app.ui.theme.Void
 
-/** Static backdrop: void base + grid lines + two glow pools. */
+/** Static backdrop: void base + grid + glow pools + horizon band + vignette. */
 @Composable
 fun AmbientBackground(
     accent: Color,
@@ -29,16 +29,41 @@ fun AmbientBackground(
                 drawGrid()
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(primaryGlow.copy(alpha = 0.14f), Color.Transparent),
+                        colors = listOf(primaryGlow.copy(alpha = 0.16f), Color.Transparent),
                         center = Offset(-size.width * 0.10f, -size.height * 0.05f),
                         radius = size.maxDimension * 0.95f,
                     ),
                 )
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(VIOLET_GLOW.copy(alpha = 0.12f), Color.Transparent),
+                        colors = listOf(VIOLET_GLOW.copy(alpha = 0.14f), Color.Transparent),
                         center = Offset(size.width * 1.05f, size.height * 0.95f),
                         radius = size.maxDimension * 0.85f,
+                    ),
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(primaryGlow.copy(alpha = 0.10f), Color.Transparent),
+                        center = Offset(size.width * 1.10f, -size.height * 0.10f),
+                        radius = size.maxDimension * 0.55f,
+                    ),
+                )
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            primaryGlow.copy(alpha = 0.05f),
+                            Color.Transparent,
+                        ),
+                        startY = size.height * 0.30f,
+                        endY = size.height * 0.62f,
+                    ),
+                )
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.45f)),
+                        center = Offset(size.width / 2f, size.height / 2f),
+                        radius = size.maxDimension * 0.75f,
                     ),
                 )
             },

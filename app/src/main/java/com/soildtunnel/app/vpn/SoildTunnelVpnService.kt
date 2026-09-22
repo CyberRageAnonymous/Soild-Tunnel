@@ -373,7 +373,8 @@ class SoildTunnelVpnService : VpnService() {
             val base = plan.getOrElse(index) { plan.last() }
             index++
             tries++
-            val attemptProfile = if (userPinned) base.profile else base.profile.copy(
+            val attemptProfile = if (userPinned || tries > TITAN_RANGES.size) base.profile
+            else base.profile.copy(
                 endpointMode = EndpointMode.MANUAL_RANGE,
                 manualRange = TITAN_RANGES[(tries - 1) % TITAN_RANGES.size],
             )
@@ -1137,8 +1138,9 @@ class SoildTunnelVpnService : VpnService() {
         private const val SOCKS_PORT = TunnelConfig.SOCKS_PORT
         private const val MTU = TunnelConfig.MTU
         private const val MAX_RETRIES = 3
-        private const val TITAN_MAX_TRIES = 4
+        private const val TITAN_MAX_TRIES = 6
         private val TITAN_RANGES = listOf(
+            "162.159.198.0/24",
             "162.159.192.0/24",
             "188.114.97.0/24",
             "162.159.36.0/24",
