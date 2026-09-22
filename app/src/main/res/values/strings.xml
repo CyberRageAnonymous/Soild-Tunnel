@@ -10,8 +10,6 @@
     <string name="protocol_masque">MASQUE</string>
     <string name="protocol_wireguard">WireGuard</string>
     <string name="protocol_gool">WARP×2</string>
-    <string name="protocol_titan">Titan</string>
-    <string name="protocol_titan_desc">MASQUE inside ordinary HTTPS with fragmentation, ECH and aggressive obfuscation. Keeps retrying edges until the exit is outside Iran.</string>
 
     <string name="scan_mode">Scan mode</string>
     <string name="scan_turbo">Turbo</string>

@@ -10,8 +10,6 @@
     <string name="protocol_masque">MASQUE</string>
     <string name="protocol_wireguard">WireGuard</string>
     <string name="protocol_gool">WARP×2</string>
-    <string name="protocol_titan">تایتان</string>
-    <string name="protocol_titan_desc">مسک داخل HTTPS معمولی با فرگمنت، ECH و مخفی‌سازی تهاجمی. تا وقتی خروج ایران باشه لبه‌های بعدی را امتحان می‌کند.</string>
 
     <string name="scan_mode">حالت اسکن</string>
     <string name="scan_turbo">توربو</string>

@@ -158,9 +158,6 @@ fun AdvancedPanel(
                         label = { protocolLabel(it) },
                         enabled = enabled,
                     )
-                    if (profile.protocol == Protocol.TITAN) {
-                        HelperText(stringResource(R.string.protocol_titan_desc))
-                    }
                     Spacer(Modifier.height(16.dp))
 
                     // Scan mode and IP version only steer the WARP engine —
@@ -915,7 +912,6 @@ private fun protocolLabel(protocol: Protocol): String = when (protocol) {
     Protocol.MASQUE -> stringResource(R.string.protocol_masque)
     Protocol.WIREGUARD -> stringResource(R.string.protocol_wireguard)
     Protocol.GOOL -> stringResource(R.string.protocol_gool)
-    Protocol.TITAN -> stringResource(R.string.protocol_titan)
     Protocol.TOR -> stringResource(R.string.protocol_tor)
 }
 

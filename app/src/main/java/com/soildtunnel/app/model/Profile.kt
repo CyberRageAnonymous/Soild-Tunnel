@@ -2,7 +2,7 @@ package com.soildtunnel.app.model
 
 
 /** Transport protocol, mapped 1:1 to the desktop app's CLI flags. */
-enum class Protocol { AUTO, MASQUE, WIREGUARD, GOOL, TITAN, TOR }
+enum class Protocol { AUTO, MASQUE, WIREGUARD, GOOL, TOR }
 
 /**
  * How Tor enters the network (only used when [Protocol] is TOR). The
@@ -263,13 +263,6 @@ data class ConnectionProfile(
             Protocol.MASQUE -> args += "--masque"
             Protocol.WIREGUARD -> args += "--wg"
             Protocol.GOOL -> args += "--gool"
-            Protocol.TITAN -> {
-                args += "--masque"
-                args += "--h2"
-                args += "--fragment"
-                args += "--ech"
-                args += "auto"
-            }
         }
 
         // A pinned peer makes scan mode irrelevant, so only emit it otherwise.
@@ -293,10 +286,9 @@ data class ConnectionProfile(
         args += if (quickReconnect && !pinnedRange) "--quick-reconnect" else "--no-quick-reconnect"
 
         // Anti-DPI obfuscation.
-        val effectiveNoize = if (protocol == Protocol.TITAN && noize == Noize.OFF) Noize.BALANCED else noize
-        if (effectiveNoize != Noize.OFF) {
+        if (noize != Noize.OFF) {
             args += "--noize"
-            args += effectiveNoize.name.lowercase()
+            args += noize.name.lowercase()
         }
 
         // Manual endpoint pins one gateway and skips scanning entirely.
@@ -305,8 +297,8 @@ data class ConnectionProfile(
             args += manualPeer.trim()
         }
 
-        if (fragment && protocol != Protocol.TITAN) args += "--fragment"
-        if (ech && protocol != Protocol.TITAN) { args += "--ech"; args += "auto" }
+        if (fragment) args += "--fragment"
+        if (ech) { args += "--ech"; args += "auto" }
         if (keepalive > 0) { args += "--keepalive"; args += keepalive.toString() }
 
 

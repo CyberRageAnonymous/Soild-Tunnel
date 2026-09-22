@@ -41,7 +41,6 @@ import com.soildtunnel.app.core.TunnelConfig
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.ConnectionState
 import com.soildtunnel.app.model.EndpointMode
-import com.soildtunnel.app.model.IpVersion
 import com.soildtunnel.app.model.Noize
 import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.model.SplitMode
@@ -192,9 +191,6 @@ class SoildTunnelVpnService : VpnService() {
         val resolved: ConnectionProfile =
             if (profile.protocol == Protocol.AUTO) {
                 connectSmartAuto(profile)
-            } else if (profile.protocol == Protocol.TITAN) {
-                SoildTunnelController.setState(ConnectionState.Launching)
-                connectTitan(profile)
             } else {
                 // An explicitly chosen protocol keeps that protocol; the
                 // engine still selects its own endpoint (see [directPlan]).
@@ -364,54 +360,6 @@ class SoildTunnelVpnService : VpnService() {
         return won
     }
 
-    private suspend fun connectTitan(profile: ConnectionProfile): ConnectionProfile {
-        val plan = directPlan(profile)
-        val userPinned = profile.endpointMode != EndpointMode.AUTO
-        var lastError: Exception? = null
-        var tries = 0
-        var index = 0
-        while (tries < TITAN_MAX_TRIES) {
-            val base = plan.getOrElse(index) { plan.last() }
-            index++
-            tries++
-            val attemptProfile = when {
-                userPinned -> base.profile
-                tries == 1 -> base.profile.copy(ipVersion = IpVersion.V6)
-                tries - 1 <= TITAN_RANGES.size -> base.profile.copy(
-                    endpointMode = EndpointMode.MANUAL_RANGE,
-                    manualRange = TITAN_RANGES[(tries - 2) % TITAN_RANGES.size],
-                )
-                else -> base.profile.copy(ipVersion = IpVersion.BOTH)
-            }
-            DiagnosticsLog.i(TAG, "Titan attempt $tries/$TITAN_MAX_TRIES → ${base.label} range=${attemptProfile.manualRange.ifBlank { "auto" }}")
-            try {
-                connectAttempt(attemptProfile, base.timeoutMs)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                lastError = e
-                DiagnosticsLog.w(TAG, "Titan attempt $tries failed (${e.message}) — rescanning.")
-                cleanupNativeOnly()
-                Diagnostics.resetChecks()
-                continue
-            }
-            val exit = SoildTunnelController.ipInfo.value?.takeIf { it.viaTunnel }
-            val cc = exit?.countryCode?.uppercase()
-            if (cc != null && cc != "IR") {
-                DiagnosticsLog.i(TAG, "Titan exit verified: ${exit.ip} ($cc)")
-                return attemptProfile
-            }
-            if (tries >= TITAN_MAX_TRIES) {
-                DiagnosticsLog.w(TAG, "Titan kept landing on IR — accepting last tunnel instead of failing.")
-                return attemptProfile
-            }
-            DiagnosticsLog.w(TAG, "Titan exit is IR — hunting the next edge.")
-            cleanupNativeOnly()
-            Diagnostics.resetChecks()
-        }
-        throw IllegalStateException(getString(R.string.err_protocol_failed), lastError)
-    }
-
     /**
      * Two-pass plan for a protocol the user picked by hand (MASQUE, WireGuard
      * or Gool).
@@ -432,7 +380,7 @@ class SoildTunnelVpnService : VpnService() {
     private fun directPlan(profile: ConnectionProfile): List<AutoCandidate> {
         val fullBudget = profile.connectTimeoutMs()
         val hardenedNoize = if (profile.noize == Noize.OFF) Noize.FIREWALL else profile.noize
-        val masque = profile.protocol == Protocol.MASQUE || profile.protocol == Protocol.TITAN
+        val masque = profile.protocol == Protocol.MASQUE
         val hardened = profile.copy(
             noize = hardenedNoize,
             masqueHttp2 = profile.masqueHttp2 || masque,
@@ -444,12 +392,10 @@ class SoildTunnelVpnService : VpnService() {
                 AutoCandidate(profile, fullBudget, "${profile.protocol.name} · as configured"),
             )
         }
-        val firstBudget = if (profile.protocol == Protocol.TITAN) fullBudget
-        else fullBudget.coerceAtMost(FIRST_PASS_MAX_MS)
         return listOf(
             AutoCandidate(
                 profile,
-                firstBudget,
+                fullBudget.coerceAtMost(FIRST_PASS_MAX_MS),
                 "${profile.protocol.name} · as configured",
             ),
             AutoCandidate(
@@ -1143,14 +1089,6 @@ class SoildTunnelVpnService : VpnService() {
         private const val SOCKS_PORT = TunnelConfig.SOCKS_PORT
         private const val MTU = TunnelConfig.MTU
         private const val MAX_RETRIES = 3
-        private const val TITAN_MAX_TRIES = 6
-        private val TITAN_RANGES = listOf(
-            "162.159.198.0/24",
-            "162.159.192.0/24",
-            "188.114.97.0/24",
-            "162.159.36.0/24",
-            "172.65.251.0/24",
-        )
         private val BACKOFF = longArrayOf(2000L, 5000L, 10000L)
 
         /**
