@@ -62,8 +62,8 @@ class PsiphonService : Service() {
                         sendLog("FATAL: $detail")
                         stopTransportQuietly()
                         try {
-                            replyTo?.send(Message.obtain(null, MSG_ERROR).apply {
-                                it.setData(Bundle().apply { putString(KEY_MESSAGE, detail) })
+                            replyTo?.send(Message.obtain(null, MSG_ERROR).also { m ->
+                                m.setData(Bundle().apply { putString(KEY_MESSAGE, detail) })
                             })
                         } catch (_: Exception) {}
                         throw t
