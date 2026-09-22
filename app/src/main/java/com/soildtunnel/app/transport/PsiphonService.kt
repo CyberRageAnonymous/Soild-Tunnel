@@ -56,14 +56,17 @@ class PsiphonService : Service() {
                         replyTo?.send(Message.obtain(null, MSG_STARTED).also {
                             it.setData(Bundle().apply { putInt(KEY_PORT, frontPort) })
                         })
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Psiphon start failed: ${e.message}")
+                    } catch (t: Throwable) {
+                        val detail = "${t.javaClass.name}: ${t.message}"
+                        Log.w(TAG, "Psiphon start failed: $detail")
+                        sendLog("FATAL: $detail")
                         stopTransportQuietly()
                         try {
-                            replyTo?.send(Message.obtain(null, MSG_ERROR).also {
-                                it.setData(Bundle().apply { putString(KEY_MESSAGE, e.message ?: "start failed") })
+                            replyTo?.send(Message.obtain(null, MSG_ERROR).apply {
+                                it.setData(Bundle().apply { putString(KEY_MESSAGE, detail) })
                             })
                         } catch (_: Exception) {}
+                        throw t
                     }
                 }
                 true
