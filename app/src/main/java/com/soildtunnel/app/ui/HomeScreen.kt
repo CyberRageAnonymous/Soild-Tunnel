@@ -83,6 +83,7 @@ import com.soildtunnel.app.ui.components.ConnectButton
 import com.soildtunnel.app.ui.components.ConnectionCard
 import com.soildtunnel.app.ui.components.DiagnosticsPanel
 import com.soildtunnel.app.ui.components.LanguagePanel
+import com.soildtunnel.app.ui.components.PsiphonExitSheet
 import com.soildtunnel.app.ui.components.ThemePanel
 import com.soildtunnel.app.ui.components.TorExitSheet
 import com.soildtunnel.app.ui.components.UsagePanel
