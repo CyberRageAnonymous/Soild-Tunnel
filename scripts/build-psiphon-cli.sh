@@ -32,9 +32,10 @@ build_one() {
   echo "==> psiphon ConsoleClient ${goos}/${goarch}${goarm} -> ${out}"
   (
     cd "${WORK}/psiphon-tunnel-core"
-    GOFLAGS="-mod=vendor" GOOS="${goos}" GOARCH="${goarch}" ${goarm:+GOARM="${goarm}"} \
-      ${cc:+CC="${cc}"} CGO_ENABLED=$([ -n "${cc}" ] && echo 1 || echo 0) \
-      go build -trimpath -ldflags="-s -w -checklinkname=0" \
+    export GOFLAGS="-mod=vendor" GOOS="${goos}" GOARCH="${goarch}"
+    if [ -n "${goarm}" ]; then export GOARM="${goarm}"; else unset GOARM; fi
+    if [ -n "${cc}" ]; then export CC="${cc}" CGO_ENABLED=1; else export CGO_ENABLED=0; fi
+    go build -trimpath -ldflags="-s -w -checklinkname=0" \
       -o "${out}" ./ConsoleClient
   )
   chmod +x "${out}"
