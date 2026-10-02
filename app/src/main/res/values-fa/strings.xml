@@ -10,6 +10,12 @@
     <string name="protocol_masque">MASQUE</string>
     <string name="protocol_wireguard">WireGuard</string>
     <string name="protocol_gool">WARP×2</string>
+    <string name="network_backend_title">بک‌اند شبکه</string>
+    <string name="network_backend_soildtunnel">soildtunnel</string>
+    <string name="network_backend_psiphon">soildtunnel + Psiphon</string>
+    <string name="psiphon_exit_title">کشور خروجی سایفون</string>
+    <string name="psiphon_exit_sub">برای اتصال بعدی ذخیره می‌شود.</string>
+    <string name="psiphon_exit_sub_live">یک کشور بزن — اتصال فعلی ظرف چند ثانیه عوض می‌شود.</string>
 
     <string name="scan_mode">حالت اسکن</string>
     <string name="scan_turbo">توربو</string>

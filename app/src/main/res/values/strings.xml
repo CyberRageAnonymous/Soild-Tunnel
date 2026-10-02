@@ -10,6 +10,12 @@
     <string name="protocol_masque">MASQUE</string>
     <string name="protocol_wireguard">WireGuard</string>
     <string name="protocol_gool">WARP×2</string>
+    <string name="network_backend_title">Network backend</string>
+    <string name="network_backend_soildtunnel">soildtunnel</string>
+    <string name="network_backend_psiphon">soildtunnel + Psiphon</string>
+    <string name="psiphon_exit_title">Psiphon exit country</string>
+    <string name="psiphon_exit_sub">Saved for the next connect.</string>
+    <string name="psiphon_exit_sub_live">Tap a country — the live session switches over in a few seconds.</string>
 
     <string name="scan_mode">Scan mode</string>
     <string name="scan_turbo">Turbo</string>

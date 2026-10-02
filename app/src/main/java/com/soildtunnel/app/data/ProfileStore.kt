@@ -13,6 +13,7 @@ import com.soildtunnel.app.model.CoreLogLevel
 import com.soildtunnel.app.model.DnsMode
 import com.soildtunnel.app.model.EndpointMode
 import com.soildtunnel.app.model.IpVersion
+import com.soildtunnel.app.model.NetworkBackend
 import com.soildtunnel.app.model.Noize
 import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.model.ScanMode
@@ -79,6 +80,8 @@ class ProfileStore(private val context: Context) {
         val torTransport = stringPreferencesKey("torTransport")
         val torBridges = stringPreferencesKey("torBridges")
         val torExitCountry = stringPreferencesKey("torExitCountry")
+        val networkBackend = stringPreferencesKey("networkBackend")
+        val psiphonExitRegion = stringPreferencesKey("psiphonExitRegion")
     }
 
     /**
@@ -158,6 +161,9 @@ class ProfileStore(private val context: Context) {
                 ?.let { runCatching { TorTransport.valueOf(it) }.getOrNull() } ?: TorTransport.OBFS4,
             torBridges = prefs[Keys.torBridges] ?: "",
             torExitCountry = prefs[Keys.torExitCountry] ?: "",
+            networkBackend = prefs[Keys.networkBackend]
+                ?.let { runCatching { NetworkBackend.valueOf(it) }.getOrNull() } ?: NetworkBackend.SOILDTUNNEL,
+            psiphonExitRegion = prefs[Keys.psiphonExitRegion] ?: "",
         )
     }
 
@@ -214,6 +220,8 @@ class ProfileStore(private val context: Context) {
             prefs[Keys.torTransport] = profile.torTransport.name
             prefs[Keys.torBridges] = profile.torBridges
             prefs[Keys.torExitCountry] = profile.torExitCountry
+            prefs[Keys.networkBackend] = profile.networkBackend.name
+            prefs[Keys.psiphonExitRegion] = profile.psiphonExitRegion
         }
         // Secrets go to the Keystore-sealed store, never to the prefs file.
         secrets.write(SecretStore.ACCESS_SECRET, profile.accessClientSecret)
