@@ -1581,10 +1581,15 @@ async fn run_warp_in_warp(
     let http_task = spawn_http_proxy(&inner_stack);
     let mut socks_task = tokio::spawn(async move { socks::serve(listen, inner_stack).await });
 
-    let outcome = tokio::select! {
-        result = &mut outer_exit => join_outcome("outer wireguard tunnel", result),
-        result = &mut inner_exit => join_outcome("inner wireguard tunnel", result),
-        result = &mut socks_task => join_outcome("socks5 server", result),
+    enum Exited {
+        Outer,
+        Inner,
+        Socks,
+    }
+    let (outcome, exited) = tokio::select! {
+        result = &mut outer_exit => (join_outcome("outer wireguard tunnel", result), Exited::Outer),
+        result = &mut inner_exit => (join_outcome("inner wireguard tunnel", result), Exited::Inner),
+        result = &mut socks_task => (join_outcome("socks5 server", result), Exited::Socks),
     };
 
     if let Some(task) = &http_task {
@@ -1594,9 +1599,20 @@ async fn run_warp_in_warp(
     inner_exit.abort();
     socks_task.abort();
 
-    let _ = outer_exit.await;
-    let _ = inner_exit.await;
-    let _ = socks_task.await;
+    match exited {
+        Exited::Outer => {
+            let _ = inner_exit.await;
+            let _ = socks_task.await;
+        }
+        Exited::Inner => {
+            let _ = outer_exit.await;
+            let _ = socks_task.await;
+        }
+        Exited::Socks => {
+            let _ = outer_exit.await;
+            let _ = inner_exit.await;
+        }
+    }
 
     drop(outer_stack);
 

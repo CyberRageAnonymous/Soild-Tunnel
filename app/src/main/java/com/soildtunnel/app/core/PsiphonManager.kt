@@ -83,18 +83,37 @@ object PsiphonManager {
             } catch (_: Exception) {
             }
         }, "psiphon-log").apply { isDaemon = true }.start()
+        val noticesFile = File(dir, "notices.log")
+        var noticeOffset = 0L
         running = true
         try {
             withTimeout(PsiphonDefaults.ESTABLISH_TIMEOUT_MS) {
                 while (true) {
                     if (socksConnectWorks()) return@withTimeout
+                    noticeOffset = tailNotices(noticesFile, noticeOffset)
                     kotlinx.coroutines.delay(2_000)
                 }
             }
         } catch (e: TimeoutCancellationException) {
+            tailNotices(noticesFile, 0L, 60)
             throw IllegalStateException("Psiphon found no usable server")
         }
+        tailNotices(noticesFile, noticeOffset, 20)
         PsiphonDefaults.SOCKS_PORT
+    }
+
+    private fun tailNotices(file: File, offset: Long, maxLines: Int = Int.MAX_VALUE): Long {
+        return try {
+            if (!file.exists()) return offset
+            val text = file.readText()
+            if (text.length <= offset) return offset
+            val fresh = text.substring(offset.coerceAtMost(text.length.toLong()).toInt())
+            val lines = fresh.lines().filter { it.isNotBlank() }.takeLast(maxLines)
+            lines.forEach { DiagnosticsLog.d(TAG, it.take(300)) }
+            text.length.toLong()
+        } catch (_: Exception) {
+            offset
+        }
     }
 
     private fun socksConnectWorks(): Boolean = runCatching {
