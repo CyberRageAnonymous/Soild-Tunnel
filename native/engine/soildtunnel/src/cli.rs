@@ -19,7 +19,9 @@ Protocol:
   --masque                 use MASQUE over QUIC/HTTP-3 (default)
   --wg, --wireguard, --warp
                            use classic WireGuard
-  --gool, --wiw            use WARP-in-WARP (wireguard tunneled in wireguard)
+  --gool, --wiw            gool carried inside MASQUE (foreign exit)
+  --gool-classic           classic gool: wireguard tunneled in wireguard
+  --gool-peer <ip:port>    the wireguard endpoint gool dials inside the tunnel
 
 Scan mode:
   --scan <mode>            turbo | balanced | thorough | stealth
@@ -142,6 +144,14 @@ pub fn parse_args(args: Vec<String>) -> crate::error::Result<()> {
             "--masque" => set("SOILDTUNNEL_PROTOCOL", "masque"),
             "--wg" | "--wireguard" | "--warp" => set("SOILDTUNNEL_PROTOCOL", "wg"),
             "--gool" | "--wiw" => set("SOILDTUNNEL_PROTOCOL", "gool"),
+            "--gool-classic" => {
+                set("SOILDTUNNEL_PROTOCOL", "gool");
+                set("SOILDTUNNEL_GOOL_MODE", "classic");
+            }
+            "--gool-peer" => {
+                set("SOILDTUNNEL_PROTOCOL", "gool");
+                set("SOILDTUNNEL_GOOL_INNER", next_value!());
+            }
             "--protocol" => set("SOILDTUNNEL_PROTOCOL", next_value!()),
 
             "--scan" => set("SOILDTUNNEL_SCAN", next_value!()),

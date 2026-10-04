@@ -5,6 +5,14 @@ package com.soildtunnel.app.model
 enum class Protocol { AUTO, MASQUE, WIREGUARD, GOOL, TOR }
 
 /**
+ * How gool runs (only used when [Protocol] is GOOL).
+ *  - ON_MASQUE : the WARP identity is registered from inside the MASQUE
+ *    tunnel, so Cloudflare sees a foreign IP and the exit is non-Iranian.
+ *  - CLASSIC   : classic WARP-in-WARP (wireguard tunneled in wireguard).
+ */
+enum class GoolMode { ON_MASQUE, CLASSIC }
+
+/**
  * How Tor enters the network (only used when [Protocol] is TOR). The
  * built-in entries ship with official bridges, so they need no setup;
  * CUSTOM uses the user's own pasted bridges.
@@ -62,6 +70,8 @@ enum class CoreLogLevel(val raw: String) { OFF("off"), ERROR("error"), WARN("war
  */
 data class ConnectionProfile(
     val protocol: Protocol = Protocol.AUTO,
+    /** Gool running mode; only consulted when [protocol] is [Protocol.GOOL]. */
+    val goolMode: GoolMode = GoolMode.ON_MASQUE,
     val scanMode: ScanMode = ScanMode.BALANCED,
     val ipVersion: IpVersion = IpVersion.V4,
     val quickReconnect: Boolean = true,
@@ -262,7 +272,10 @@ data class ConnectionProfile(
             Protocol.TOR -> { /* handled app-side, see TorManager */ }
             Protocol.MASQUE -> args += "--masque"
             Protocol.WIREGUARD -> args += "--wg"
-            Protocol.GOOL -> args += "--gool"
+            Protocol.GOOL -> {
+                args += "--gool"
+                if (goolMode == GoolMode.CLASSIC) args += "--gool-classic"
+            }
         }
 
         // A pinned peer makes scan mode irrelevant, so only emit it otherwise.

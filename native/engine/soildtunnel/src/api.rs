@@ -549,7 +549,8 @@ pub async fn connect(
 
     match spec.transport {
         Transport::Masque => {
-            let attempt = crate::run_masque_tunnel(identity, peer, spec.ech.clone(), spec.socks);
+            let attempt =
+                crate::run_masque_tunnel(identity, peer, spec.ech.clone(), spec.socks, None);
             guard(cancel, attempt).await
         }
         Transport::WireGuard => {

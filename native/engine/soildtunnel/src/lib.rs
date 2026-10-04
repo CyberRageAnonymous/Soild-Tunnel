@@ -115,7 +115,7 @@ pub async fn run_with(args: Vec<String>) -> Result<()> {
             );
             let ech = resolve_ech().await;
             let lastconn_path = lastconn_path(&config_path);
-            run_masque(identity, ech, listen, lastconn_path).await
+            run_masque(identity, ech, listen, lastconn_path, None).await
         }
         Protocol::WireGuard => {
             let config_path = warp_config_path(&base_config);
@@ -128,6 +128,19 @@ pub async fn run_with(args: Vec<String>) -> Result<()> {
             );
             let lastconn_path = lastconn_path(&config_path);
             run_wireguard(identity, listen, lastconn_path).await
+        }
+        Protocol::WarpInWarp if !gool_classic() => {
+            select_masque_transport().await;
+            let config_path = masque_config_path(&base_config);
+            let identity = load_or_provision_masque(&config_path).await?;
+            let inner_path = derive_sibling_path(&config_path, "gool");
+            log::info!(
+                "[+] masque device={} carries the wireguard identity at {inner_path}",
+                identity.device_id
+            );
+            let ech = resolve_ech().await;
+            let lastconn_path = lastconn_path(&config_path);
+            run_masque(identity, ech, listen, lastconn_path, Some(inner_path)).await
         }
         Protocol::WarpInWarp => {
             let primary_path = warp_config_path(&base_config);
@@ -773,6 +786,7 @@ async fn run_masque(
     ech: Option<Vec<u8>>,
     listen: SocketAddr,
     lastconn_path: String,
+    inner_path: Option<String>,
 ) -> Result<()> {
     let forced = std::env::var("SOILDTUNNEL_PEER").ok();
 
@@ -869,7 +883,7 @@ async fn run_masque(
 
         last_good_peer = Some(peer);
 
-        match run_masque_tunnel(&identity, peer, ech.clone(), listen).await {
+        match run_masque_tunnel(&identity, peer, ech.clone(), listen, inner_path.clone()).await {
             Ok(()) => log::warn!("[-] MASQUE tunnel closed; reconnecting"),
             Err(e) => log::warn!("[-] MASQUE tunnel ended: {e}; reconnecting"),
         }
@@ -883,6 +897,7 @@ async fn run_masque_tunnel(
     peer: SocketAddr,
     ech: Option<Vec<u8>>,
     listen: SocketAddr,
+    inner_path: Option<String>,
 ) -> Result<()> {
     let (chans, internals) = quic::channels();
 
@@ -928,7 +943,7 @@ async fn run_masque_tunnel(
 
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
 
-    let tunnel_task = if masque_h2::enabled() {
+    let mut tunnel_task = if masque_h2::enabled() {
         let h2cfg = masque_h2::H2TunnelConfig {
             peer: masque_h2::h2_peer(peer),
             sni: consts::effective_sni(),
@@ -971,6 +986,10 @@ async fn run_masque_tunnel(
         }
     }
 
+    if let Some(inner_path) = inner_path {
+        return run_carried_hop(&stack, &mut tunnel_task, listen, inner_path).await;
+    }
+
     let socks_stack = stack.clone();
     let socks_task = tokio::spawn(async move {
         log::info!("[+] socks5 server listening on {listen}");
@@ -995,6 +1014,162 @@ async fn run_masque_tunnel(
         Ok(Err(e)) => Err(SoildTunnelError::Other(format!("tunnel exited: {e}"))),
         Err(e) => Err(SoildTunnelError::Other(format!("tunnel task join error: {e}"))),
     }
+}
+
+const GOOL_INNER_ATTEMPTS: u32 = 2;
+const GOOL_INNER_PORT: u16 = 2408;
+const GOOL_INNER_MTU: usize = 1200;
+
+fn gool_classic() -> bool {
+    matches!(
+        std::env::var("SOILDTUNNEL_GOOL_MODE").as_deref(),
+        Ok("classic") | Ok("wiw") | Ok("wg")
+    )
+}
+
+fn gool_inner_peers(identity: &account::Identity) -> Vec<SocketAddr> {
+    if let Ok(value) = std::env::var("SOILDTUNNEL_GOOL_INNER") {
+        let trimmed = value.trim();
+        if let Ok(peer) = trimmed.parse::<SocketAddr>() {
+            return vec![peer];
+        }
+        if let Ok(ip) = trimmed.parse::<IpAddr>() {
+            return vec![SocketAddr::new(ip, GOOL_INNER_PORT)];
+        }
+        log::warn!("[-] ignored the invalid gool peer {trimmed}");
+    }
+
+    let mut peers: Vec<SocketAddr> = Vec::new();
+    let hosts = std::iter::once(identity.assigned_endpoint.trim().to_string())
+        .chain(wireguard::wg_seeds_v4().into_iter().map(str::to_string));
+    for host in hosts {
+        if let Ok(ip) = host.parse::<IpAddr>() {
+            let peer = SocketAddr::new(ip, GOOL_INNER_PORT);
+            if !peers.contains(&peer) {
+                peers.push(peer);
+            }
+        }
+    }
+    peers
+}
+
+async fn carried_wg_identity(
+    outer: &netstack::StackHandle,
+    inner_path: &str,
+) -> Result<account::Identity> {
+    if let Some(identity) = config::load(inner_path)? {
+        log::info!("[+] carried wireguard identity loaded from {inner_path}");
+        let identity = adopt_team_profile(identity).await;
+        if !identity.refused {
+            config::save(inner_path, &identity)?;
+            return Ok(identity);
+        }
+        if !keep_saved_identity() {
+            return Ok(identity);
+        }
+        log::warn!("[*] registering a fresh wireguard account to replace the refused identity");
+    }
+
+    let listener = socks::bind_listener(SocketAddr::from(([127, 0, 0, 1], 0))).await?;
+    let through = listener.local_addr()?;
+    let stack = outer.clone();
+    let socks_task =
+        tokio::spawn(async move { socks::serve_on(listener, through, stack).await });
+
+    log::info!("[*] registering the carried wireguard identity through the tunnel");
+    crate::upstream::set_override(Some(&format!("socks5://{through}")));
+    let registered = match provision_account().await {
+        Ok(identity) => Ok(adopt_team_profile(identity).await),
+        Err(error) => Err(error),
+    };
+    crate::upstream::set_override(None);
+    socks_task.abort();
+
+    let identity = registered?;
+    config::save(inner_path, &identity)?;
+    log::info!(
+        "[+] carried wireguard identity registered through the tunnel: device={} ipv4={}",
+        identity.device_id,
+        identity.ipv4
+    );
+    Ok(identity)
+}
+
+async fn run_carried_hop(
+    outer: &netstack::StackHandle,
+    outer_exit: &mut TunnelExit,
+    listen: SocketAddr,
+    inner_path: String,
+) -> Result<()> {
+    let identity = carried_wg_identity(outer, &inner_path).await?;
+    let candidates = gool_inner_peers(&identity);
+    if candidates.is_empty() {
+        return Err(SoildTunnelError::Other(
+            "no wireguard endpoint for the carried identity".into(),
+        ));
+    }
+
+    let mut established: Option<(SocketAddr, (netstack::StackHandle, TunnelExit), TaskGuard)> =
+        None;
+    let mut last_error =
+        SoildTunnelError::Other("no wireguard endpoint for the carried identity".into());
+
+    'peers: for inner_peer in candidates {
+        let (forwarder, forwarder_guard) = spawn_udp_forwarder(outer, inner_peer).await?;
+        log::info!(
+            "[+] gool: wireguard endpoint {inner_peer} tunneled through masque via {forwarder}"
+        );
+        for attempt in 1..=GOOL_INNER_ATTEMPTS {
+            match establish_wg(&identity, forwarder, GOOL_INNER_MTU, false, 25, "gool").await {
+                Ok(hop) => {
+                    established = Some((inner_peer, hop, forwarder_guard));
+                    break 'peers;
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[-] gool wireguard {inner_peer} attempt {attempt}/{GOOL_INNER_ATTEMPTS} failed: {e}"
+                    );
+                    last_error = e;
+                }
+            }
+        }
+    }
+
+    let Some((inner_peer, (inner_stack, mut inner_exit), forwarder_guard)) = established else {
+        return Err(last_error);
+    };
+
+    let endpoint = inner_peer.ip().to_string();
+    if identity.assigned_endpoint != endpoint && std::env::var("SOILDTUNNEL_GOOL_INNER").is_err() {
+        let remembered = account::Identity {
+            assigned_endpoint: endpoint.clone(),
+            ..identity.clone()
+        };
+        if config::save(&inner_path, &remembered).is_ok() {
+            log::info!("[+] gool remembers {endpoint} as its wireguard endpoint");
+        }
+    }
+
+    log::info!("[+] gool ready: wireguard {inner_peer} rides inside masque");
+
+    let http_task = spawn_http_proxy(&inner_stack);
+    let socks_stack = inner_stack.clone();
+    let mut socks_task = tokio::spawn(async move { socks::serve(listen, socks_stack).await });
+
+    let outcome = tokio::select! {
+        result = outer_exit => join_outcome("masque tunnel", result),
+        result = &mut inner_exit => join_outcome("carried wireguard tunnel", result),
+        result = &mut socks_task => join_outcome("socks5 server", result),
+    };
+
+    if let Some(task) = &http_task {
+        task.abort();
+    }
+    inner_exit.abort();
+    socks_task.abort();
+    drop(forwarder_guard);
+
+    outcome
 }
 
 fn wg_keepalive_secs() -> u16 {

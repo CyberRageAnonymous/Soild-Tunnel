@@ -12,6 +12,7 @@ import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.CoreLogLevel
 import com.soildtunnel.app.model.DnsMode
 import com.soildtunnel.app.model.EndpointMode
+import com.soildtunnel.app.model.GoolMode
 import com.soildtunnel.app.model.IpVersion
 import com.soildtunnel.app.model.Noize
 import com.soildtunnel.app.model.Protocol
@@ -26,6 +27,7 @@ private val Context.dataStore by preferencesDataStore(name = "soildtunnel_profil
 class ProfileStore(private val context: Context) {
     private object Keys {
         val protocol = stringPreferencesKey("protocol")
+        val gool = stringPreferencesKey("gool")
         val scan = stringPreferencesKey("scan")
         val ip = stringPreferencesKey("ip")
         val quick = booleanPreferencesKey("quick")
@@ -95,6 +97,8 @@ class ProfileStore(private val context: Context) {
         ConnectionProfile(
             protocol = prefs[Keys.protocol]
                 ?.let { runCatching { Protocol.valueOf(it) }.getOrNull() } ?: Protocol.AUTO,
+            goolMode = prefs[Keys.gool]
+                ?.let { runCatching { GoolMode.valueOf(it) }.getOrNull() } ?: GoolMode.ON_MASQUE,
             scanMode = prefs[Keys.scan]
                 ?.let { runCatching { ScanMode.valueOf(it) }.getOrNull() } ?: ScanMode.BALANCED,
             ipVersion = prefs[Keys.ip]
@@ -164,6 +168,7 @@ class ProfileStore(private val context: Context) {
     suspend fun save(profile: ConnectionProfile) {
         context.dataStore.edit { prefs ->
             prefs[Keys.protocol] = profile.protocol.name
+            prefs[Keys.gool] = profile.goolMode.name
             prefs[Keys.scan] = profile.scanMode.name
             prefs[Keys.ip] = profile.ipVersion.name
             prefs[Keys.quick] = profile.quickReconnect

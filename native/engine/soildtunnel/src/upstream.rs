@@ -45,9 +45,38 @@ pub struct Upstream {
     pub password: Option<String>,
 }
 
-pub fn configured() -> Option<&'static Upstream> {
+static OVERRIDE: std::sync::Mutex<Option<Upstream>> = std::sync::Mutex::new(None);
+
+pub fn set_override(url: Option<&str>) {
+    let parsed = url.and_then(|raw| match Upstream::parse(raw) {
+        Ok(upstream) => {
+            log::info!(
+                "[+] api route switched to the {} proxy at {}:{}",
+                upstream.kind.label(),
+                upstream.host,
+                upstream.port
+            );
+            Some(upstream)
+        }
+        Err(error) => {
+            log::error!("[-] the temporary api route was ignored: {error}");
+            None
+        }
+    });
+    match OVERRIDE.lock() {
+        Ok(mut guard) => *guard = parsed,
+        Err(_) => log::error!("[-] the temporary api route could not be set"),
+    }
+}
+
+pub fn configured() -> Option<Upstream> {
+    if let Ok(guard) = OVERRIDE.lock() {
+        if let Some(upstream) = guard.as_ref() {
+            return Some(upstream.clone());
+        }
+    }
     static UPSTREAM: std::sync::OnceLock<Option<Upstream>> = std::sync::OnceLock::new();
-    UPSTREAM.get_or_init(Upstream::from_env).as_ref()
+    UPSTREAM.get_or_init(Upstream::from_env).clone()
 }
 
 impl Upstream {

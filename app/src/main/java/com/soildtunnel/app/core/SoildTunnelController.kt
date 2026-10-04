@@ -11,6 +11,7 @@ import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.CoreLogLevel
 import com.soildtunnel.app.model.ConnectionState
 import com.soildtunnel.app.model.EndpointMode
+import com.soildtunnel.app.model.GoolMode
 import com.soildtunnel.app.model.IpVersion
 import com.soildtunnel.app.model.Noize
 import com.soildtunnel.app.model.Protocol
@@ -100,6 +101,7 @@ object SoildTunnelController {
 object ProfileCodec {
     fun encode(p: ConnectionProfile): String = buildList {
         add("protocol=${p.protocol.name}")
+        add("gool=${p.goolMode.name}")
         add("scan=${p.scanMode.name}")
         add("ip=${p.ipVersion.name}")
         add("quick=${p.quickReconnect}")
@@ -152,6 +154,7 @@ object ProfileCodec {
         return runCatching {
             ConnectionProfile(
                 protocol = map["protocol"]?.let { enumOr<Protocol>(it) } ?: d.protocol,
+                goolMode = map["gool"]?.let { enumOr<GoolMode>(it) } ?: d.goolMode,
                 scanMode = map["scan"]?.let { enumOr<ScanMode>(it) } ?: d.scanMode,
                 ipVersion = map["ip"]?.let { enumOr<IpVersion>(it) } ?: d.ipVersion,
                 quickReconnect = map["quick"]?.toBooleanStrictOrNull() ?: d.quickReconnect,

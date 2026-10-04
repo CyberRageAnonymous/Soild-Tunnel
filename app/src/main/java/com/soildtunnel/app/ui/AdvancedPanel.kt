@@ -42,6 +42,7 @@ import com.soildtunnel.app.core.ShareBridge
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.CoreLogLevel
 import com.soildtunnel.app.model.EndpointMode
+import com.soildtunnel.app.model.GoolMode
 import com.soildtunnel.app.model.IpVersion
 import com.soildtunnel.app.model.Noize
 import com.soildtunnel.app.model.Protocol
@@ -100,6 +101,18 @@ fun AdvancedPanel(
                 enabled = enabled,
             )
             Spacer(Modifier.height(16.dp))
+
+            if (profile.protocol == Protocol.GOOL) {
+                SettingLabel(stringResource(R.string.gool_mode))
+                SegmentedSelector(
+                    options = GoolMode.entries,
+                    selected = profile.goolMode,
+                    onSelect = { onProfileChange(profile.copy(goolMode = it)) },
+                    label = { goolModeLabel(it) },
+                    enabled = enabled,
+                )
+                Spacer(Modifier.height(16.dp))
+            }
 
             // Scan mode and IP version only steer the WARP engine —
             // Tor finds its own path, so both hide in Tor mode.
@@ -884,6 +897,12 @@ private fun protocolLabel(protocol: Protocol): String = when (protocol) {
     Protocol.WIREGUARD -> stringResource(R.string.protocol_wireguard)
     Protocol.GOOL -> stringResource(R.string.protocol_gool)
     Protocol.TOR -> stringResource(R.string.protocol_tor)
+}
+
+@Composable
+private fun goolModeLabel(mode: GoolMode): String = when (mode) {
+    GoolMode.ON_MASQUE -> stringResource(R.string.gool_mode_masque)
+    GoolMode.CLASSIC -> stringResource(R.string.gool_mode_classic)
 }
 
 @Composable

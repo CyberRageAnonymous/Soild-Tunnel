@@ -10,6 +10,9 @@
     <string name="protocol_masque">MASQUE</string>
     <string name="protocol_wireguard">WireGuard</string>
     <string name="protocol_gool">WARP×2</string>
+    <string name="gool_mode">Gool mode</string>
+    <string name="gool_mode_masque">On MASQUE</string>
+    <string name="gool_mode_classic">Classic</string>
 
     <string name="scan_mode">Scan mode</string>
     <string name="scan_turbo">Turbo</string>
