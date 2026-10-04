@@ -7,6 +7,7 @@ import java.io.InputStream
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.Socket
+import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
 import kotlin.coroutines.coroutineContext
 
@@ -36,7 +37,7 @@ object SpeedTest {
                 raw.connect(InetSocketAddress.createUnresolved(HOST, PORT), CONNECT_TIMEOUT_MS)
                 raw.soTimeout = READ_TIMEOUT_MS
                 val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
-                val ssl = factory.createSocket(raw, HOST, PORT, true)
+                val ssl = factory.createSocket(raw, HOST, PORT, true) as SSLSocket
                 ssl.soTimeout = READ_TIMEOUT_MS
                 val handshakeStart = System.nanoTime()
                 ssl.startHandshake()
