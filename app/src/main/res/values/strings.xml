@@ -68,6 +68,19 @@
     <string name="diag_idle">Run the test to verify connectivity</string>
     <string name="diag_empty_logs">No logs yet. Connect or run a test.</string>
 
+    <!-- Speed test -->
+    <string name="speed_title">Speed test</string>
+    <string name="speed_run">Run test</string>
+    <string name="speed_running">Measuring download speed…</string>
+    <string name="speed_result">%1$s Mbps · %2$s ms handshake</string>
+    <string name="speed_need_connect">Connect first to measure the tunnel speed.</string>
+    <string name="speed_failed">Test failed — try again.</string>
+
+    <!-- Stealth preset -->
+    <string name="stealth_desc">Strongest anti-DPI in one tap: aggressive obfuscation, TLS fragmentation, ECH, HTTP/2 and encrypted DNS.</string>
+    <string name="stealth_apply">Apply stealth</string>
+    <string name="stealth_applied">Stealth profile applied — takes effect on next connect.</string>
+
     <!-- About panel -->
     <string name="about_title">About</string>
     <string name="about_subtitle">Credits, links &amp; what this build adds</string>

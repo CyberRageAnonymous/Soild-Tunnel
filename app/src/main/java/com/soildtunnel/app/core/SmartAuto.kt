@@ -10,6 +10,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import com.soildtunnel.app.model.ConnectionProfile
+import com.soildtunnel.app.model.DnsMode
 import com.soildtunnel.app.model.EndpointMode
 import com.soildtunnel.app.model.Noize
 import com.soildtunnel.app.model.Protocol
@@ -114,11 +115,14 @@ object SmartAuto {
             val udpCf = async { udpDnsProbe("1.1.1.1") }
             val udpGoog = async { udpDnsProbe("8.8.8.8") }
             val tls = async { tlsSniProbe() }
+            // Same handshake without SNI — tells SNI-filtering apart from a full TLS kill.
+            val tlsNoSni = async { tlsNoSniProbe() }
             val edgeJobs = EDGES.map { (cidr, probeIp) ->
                 async { cidr to tcpLatencyMs(probeIp, 443) }
             }
             val udpOk = udpCf.await() || udpGoog.await()
             val tlsOk = tls.await()
+            val noSniOk = tlsNoSni.await()
             val edges = edgeJobs.awaitAll().toMap()
             val cls = when {
                 udpOk && tlsOk -> DpiClass.OPEN
@@ -126,10 +130,24 @@ object SmartAuto {
                 tlsOk -> DpiClass.UDP_THROTTLED
                 else -> DpiClass.HOSTILE
             }
-            NetworkFingerprint(cls, udpOk, tlsOk, operatorName, iranCellular, edges)
+            val sniSignal = when {
+                tlsOk -> "none"
+                noSniOk -> "classic-sni-dpi"
+                else -> "wholesale-tls-kill"
+            }
+            NetworkFingerprint(cls, udpOk, tlsOk, operatorName, iranCellular, edges).also {
+                DiagnosticsLog.i(TAG, "SNI control probe: no-SNI handshake ${if (noSniOk) "survived" else "failed"} → $sniSignal")
+            }
         }
         val edgeSummary = fp.edgeLatencyMs.entries.joinToString(", ") { (range, ms) ->
             "$range=${if (ms < 0) "unreachable" else "${ms}ms"}"
+        }
+        if (fp.edgeLatencyMs.isNotEmpty() && fp.edgeLatencyMs.values.all { it < 0 }) {
+            DiagnosticsLog.w(
+                TAG,
+                "Every built-in WARP edge probe is unreachable — the operator may be blocking the ranges; " +
+                    "the ladder will still try, but expect slower connects.",
+            )
         }
         DiagnosticsLog.i(
             TAG,
@@ -158,17 +176,30 @@ object SmartAuto {
             h2: Boolean = false,
             frag: Boolean = false,
             ech: Boolean = false,
+            fragSize: String = "",
+            fragDelay: String = "",
         ): AutoCandidate {
             // Respect a stronger user-chosen obfuscation; bias bare profiles to
             // LIGHT noize on Iranian cellular where fingerprinting is routine.
             var mergedNoize = if (user.noize.ordinal >= noize.ordinal) user.noize else noize
             if (mergedNoize == Noize.OFF && fp.iranCellular) mergedNoize = Noize.LIGHT
+            // Encrypted DNS when the user never touched the setting — plain UDP/53 dies first
+            // under heavy filtering. The engine still falls back to plain UDP on its own.
+            val mergedDns =
+                if (fp.dpiClass != DpiClass.OPEN && user.dnsMode == DnsMode.PLAIN && user.dnsServers.isBlank()) {
+                    DnsMode.DOH
+                } else {
+                    user.dnsMode
+                }
             var p = user.copy(
                 protocol = proto,
                 noize = mergedNoize,
                 masqueHttp2 = user.masqueHttp2 || (h2 && proto == Protocol.MASQUE),
                 fragment = user.fragment || frag,
                 ech = user.ech || ech,
+                fragmentSize = user.fragmentSize.ifBlank { fragSize },
+                fragmentDelay = user.fragmentDelay.ifBlank { fragDelay },
+                dnsMode = mergedDns,
                 // TURBO per attempt: the ladder's speed comes from trying the
                 // NEXT strategy quickly, not from one long exhaustive scan.
                 scanMode = ScanMode.TURBO,
@@ -181,13 +212,18 @@ object SmartAuto {
                 append(" · noize=").append(p.noize.name.lowercase())
                 if (p.masqueHttp2) append(" · h2")
                 if (p.fragment) append(" · fragment")
+                if (p.fragmentSize.isNotBlank()) append("=").append(p.fragmentSize)
                 if (p.ech) append(" · ech")
+                if (p.dnsMode != DnsMode.PLAIN) append(" · dns=").append(p.dnsMode.name.lowercase())
                 if (!keepUserEndpoint && bestRanges.isNotEmpty()) append(" · ranges[").append(bestRanges).append("]")
                 append(" · scan=turbo")
             }
             return AutoCandidate(p, p.connectTimeoutMs(), label)
         }
 
+        // Each rung must differ from the last — real DPI boxes key on one exact
+        // ClientHello shape, so vary fragment pattern / noize / transport. When UDP is
+        // already proven dead, TCP-shaped MASQUE/H2 goes first and gets two variants.
         val ladder = when (fp.dpiClass) {
             DpiClass.OPEN -> listOf(
                 cand(Protocol.WIREGUARD, Noize.OFF),
@@ -201,11 +237,24 @@ object SmartAuto {
             )
             DpiClass.UDP_THROTTLED -> listOf(
                 cand(Protocol.MASQUE, Noize.LIGHT, h2 = true, frag = true, ech = true),
+                // Different split pattern + heavier noize: same transport,
+                // different fingerprint, before falling back to starved UDP.
+                cand(
+                    Protocol.MASQUE, Noize.FIREWALL, h2 = true, frag = true, ech = true,
+                    fragSize = "64-128", fragDelay = "4-16",
+                ),
                 cand(Protocol.GOOL, Noize.AGGRESSIVE),
                 cand(Protocol.WIREGUARD, Noize.GFW),
             )
             DpiClass.HOSTILE -> listOf(
-                cand(Protocol.MASQUE, Noize.GFW, h2 = true, frag = true, ech = true),
+                cand(
+                    Protocol.MASQUE, Noize.FIREWALL, h2 = true, frag = true, ech = true,
+                    fragSize = "16-48", fragDelay = "1-8",
+                ),
+                cand(
+                    Protocol.MASQUE, Noize.GFW, h2 = true, frag = true, ech = true,
+                    fragSize = "64-160", fragDelay = "4-20",
+                ),
                 cand(Protocol.GOOL, Noize.AGGRESSIVE),
                 cand(Protocol.WIREGUARD, Noize.AGGRESSIVE),
             )
@@ -294,6 +343,26 @@ object SmartAuto {
         }
     }.getOrElse {
         DiagnosticsLog.d(TAG, "tls-sni probe → failed (${it.message})")
+        false
+    }
+
+    /** Same handshake as [tlsSniProbe] but with no SNI at all. */
+    @Suppress("DEPRECATION")
+    private fun tlsNoSniProbe(timeoutMs: Int = TLS_PROBE_TIMEOUT_MS): Boolean = runCatching {
+        Socket().use { raw ->
+            raw.connect(InetSocketAddress("1.1.1.1", 443), timeoutMs)
+            raw.soTimeout = timeoutMs
+            val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
+            val ssl = factory.createSocket(raw, 443, true) as SSLSocket
+            ssl.soTimeout = timeoutMs
+            ssl.startHandshake()
+            val ok = ssl.session != null
+            runCatching { ssl.close() }
+            DiagnosticsLog.d(TAG, "tls-no-sni probe → ${if (ok) "handshake ok" else "no session"}")
+            ok
+        }
+    }.getOrElse {
+        DiagnosticsLog.d(TAG, "tls-no-sni probe → failed (${it.message})")
         false
     }
 

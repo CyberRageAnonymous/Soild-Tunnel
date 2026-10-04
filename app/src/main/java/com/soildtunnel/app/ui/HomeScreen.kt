@@ -87,13 +87,13 @@ import com.soildtunnel.app.ui.components.ThemePanel
 import com.soildtunnel.app.ui.components.TorExitSheet
 import com.soildtunnel.app.ui.components.UsagePanel
 import com.soildtunnel.app.ui.components.ServerPickerSheet
+import com.soildtunnel.app.ui.components.SpeedTestPanel
 import com.soildtunnel.app.ui.components.glassChip
 import com.soildtunnel.app.ui.theme.CardSubSurface
 import com.soildtunnel.app.ui.theme.CardTextDim
 import com.soildtunnel.app.ui.theme.CardTextMuted
 import com.soildtunnel.app.ui.theme.CardTextPrimary
 import com.soildtunnel.app.ui.theme.EdgeNeon
-import com.soildtunnel.app.ui.theme.EdgeNeonBright
 import com.soildtunnel.app.ui.theme.NeonAmber
 import com.soildtunnel.app.ui.theme.NeonCyan
 import com.soildtunnel.app.ui.theme.NeonMint
@@ -243,6 +243,10 @@ fun HomeScreen(
                         Spacer(Modifier.height(16.dp))
 
                         UsagePanel()
+
+                        Spacer(Modifier.height(16.dp))
+
+                        SpeedTestPanel(state = state)
 
                         Spacer(Modifier.height(16.dp))
 

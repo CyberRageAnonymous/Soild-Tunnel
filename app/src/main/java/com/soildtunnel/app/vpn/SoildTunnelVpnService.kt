@@ -363,21 +363,8 @@ class SoildTunnelVpnService : VpnService() {
     }
 
     /**
-     * Two-pass plan for a protocol the user picked by hand (MASQUE, WireGuard
-     * or Gool).
-     *
-     * "MASQUE hangs forever" FIX: a hand-picked protocol used to get ONE
-     * attempt with the full scan budget of the selected scan mode — up to 150 s
-     * on Balanced and 300 s on Thorough — with no second chance. On a network
-     * where QUIC/UDP is throttled that means the user stares at "Connecting"
-     * for minutes and then just fails, while Smart mode (which walks a ladder
-     * of shorter, hardened attempts) connects in seconds. So the chosen
-     * protocol now gets:
-     * 1. a first pass exactly as configured, on a capped budget, and
-     * 2. if that fails, the SAME protocol again with anti-DPI hardening
-     * (obfuscation on, plus HTTP/2 + TLS fragmentation + ECH for MASQUE)
-     * on the full budget.
-     * The protocol the user chose is never swapped for another one.
+     * Plan for a protocol the user picked by hand: as configured first, then
+     * hardened anti-DPI passes. The protocol itself is never swapped.
      */
     private fun directPlan(profile: ConnectionProfile): List<AutoCandidate> {
         val fullBudget = profile.connectTimeoutMs()
@@ -394,7 +381,7 @@ class SoildTunnelVpnService : VpnService() {
                 AutoCandidate(profile, fullBudget, "${profile.protocol.name} · as configured"),
             )
         }
-        return listOf(
+        val passes = mutableListOf(
             AutoCandidate(
                 profile,
                 fullBudget.coerceAtMost(FIRST_PASS_MAX_MS),
@@ -407,6 +394,22 @@ class SoildTunnelVpnService : VpnService() {
                     (if (masque) " · h2 · fragment · ech" else "") + " (anti-DPI pass)",
             ),
         )
+        // Third pass only if it is actually a different fingerprint: heavier
+        // noize + a different ClientHello split pattern.
+        val altNoize = if (hardenedNoize == Noize.AGGRESSIVE) hardenedNoize else Noize.AGGRESSIVE
+        val alt = hardened.copy(
+            noize = altNoize,
+            fragmentSize = hardened.fragmentSize.ifBlank { if (hardened.fragment) "64-160" else "" },
+            fragmentDelay = hardened.fragmentDelay.ifBlank { if (hardened.fragment) "4-20" else "" },
+        )
+        if (alt != hardened) {
+            passes += AutoCandidate(
+                alt,
+                fullBudget,
+                "${profile.protocol.name} · noize=${altNoize.name.lowercase()} · alt fragment (anti-DPI pass 2)",
+            )
+        }
+        return passes
     }
 
     /**
@@ -900,17 +903,20 @@ class SoildTunnelVpnService : VpnService() {
      * again" the user saw every few minutes was the watchdog restarting a
      * tunnel that was only briefly stalled.
      *
-     * A check now only counts as failed when THREE attempts in a row --
-     * spread over three different anycast resolvers, 8 s timeout each, 1.5 s
-     * apart -- all fail, and the engine is restarted only after THREE
-     * consecutive failed checks (90 s+ of continuously proven dead tunnel).
+     * A check now only counts as failed when FOUR attempts in a row -- mixed
+     * resolvers and ports (443 + 53), 8 s timeout each, 1.5 s apart -- all
+     * fail, and the engine is restarted only after THREE consecutive failed
+     * checks (90 s+ of continuously proven dead tunnel).
      * Brief self-healing stalls no longer trigger restarts, a genuinely dead
      * session still recovers automatically, and MASQUE's in-engine reconnect
      * loop gets room to finish before the app steps in.
      */
     private suspend fun probeTunnelCycle(port: Int = SOCKS_PORT): Boolean {
+        // Rotate the starting target per cycle so a single blocked IP/port
+        // class can never keep the whole check failing.
+        val offset = (System.currentTimeMillis() / WATCHDOG_INTERVAL_MS).toInt()
         repeat(PROBE_ATTEMPTS) { attempt ->
-            if (probeTunnelOnce(PROBE_TARGETS[attempt % PROBE_TARGETS.size], port)) return true
+            if (probeTunnelOnce(PROBE_TARGETS[(attempt + offset) % PROBE_TARGETS.size], port)) return true
             if (attempt < PROBE_ATTEMPTS - 1) delay(PROBE_RETRY_GAP_MS)
         }
         return false
@@ -1114,8 +1120,14 @@ class SoildTunnelVpnService : VpnService() {
          * Attempts per watchdog check, rotating over anycast resolvers so one
          * blocked or slow target can never fake a dead tunnel (fix).
          */
-        private const val PROBE_ATTEMPTS = 3
-        private val PROBE_TARGETS = arrayOf("1.1.1.1:53", "1.0.0.1:53", "9.9.9.9:53")
+        private const val PROBE_ATTEMPTS = 4
+        private val PROBE_TARGETS = arrayOf(
+            "1.1.1.1:443",
+            "1.1.1.1:53",
+            "1.0.0.1:443",
+            "9.9.9.9:443",
+            "8.8.8.8:53",
+        )
         private const val PROBE_TIMEOUT_MS = 8_000
         private const val PROBE_RETRY_GAP_MS = 1_500L
 

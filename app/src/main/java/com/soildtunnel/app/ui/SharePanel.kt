@@ -1,10 +1,6 @@
 package com.soildtunnel.app.ui
 
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,13 +9,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ContentCopy
-import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.WifiTethering
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -35,7 +27,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -67,7 +58,6 @@ fun SharePanel(
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val arrowRotation by animateFloatAsState(if (expanded) 180f else 0f, tween(300), label = "shareArrow")
     val shareActive by ShareBridge.active.collectAsState()
     // Show the ACTUAL bound ports (fixed standard ports; null while a listener is
     // busy), so the values on screen always match what the bridge listens on.
@@ -86,112 +76,78 @@ fun SharePanel(
         }
     }
 
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-        ),
+    PanelCard(
+        icon = Icons.Rounded.WifiTethering,
+        title = stringResource(R.string.share_title),
+        subtitle = stringResource(R.string.share_subtitle),
+        expanded = expanded,
+        onToggle = { expanded = !expanded },
+        modifier = modifier,
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 16.dp)) {
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+            )
+            Spacer(Modifier.height(4.dp))
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { expanded = !expanded },
+                    .padding(vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Icon(
-                    Icons.Rounded.WifiTethering,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = stringResource(R.string.share_title),
-                        style = MaterialTheme.typography.titleMedium,
+                        text = stringResource(R.string.share_toggle),
+                        style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
-                        text = stringResource(R.string.share_subtitle),
+                        text = stringResource(R.string.share_toggle_desc),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Icon(
-                    Icons.Rounded.ExpandMore,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.rotate(arrowRotation),
+                Switch(
+                    checked = profile.lanShare,
+                    onCheckedChange = { on ->
+                        onProfileChange(profile.copy(lanShare = on))
+                        // Take effect immediately for the current session
+                        // (the service also honours the flag on connect).
+                        if (state.isConnected) {
+                            if (on) ShareBridge.start() else ShareBridge.stop()
+                        }
+                    },
                 )
             }
 
-            AnimatedVisibility(visible = expanded) {
-                Column {
-                    Spacer(Modifier.height(12.dp))
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+            when {
+                !state.isConnected -> InfoText(stringResource(R.string.share_need_connect))
+                !profile.lanShare -> Unit
+                lanIp == null -> InfoText(stringResource(R.string.share_need_wifi))
+                shareActive -> {
+                    InfoText(stringResource(R.string.share_howto))
+                    Spacer(Modifier.height(8.dp))
+                    EndpointRow(
+                        label = stringResource(R.string.share_http_label),
+                        value = "$lanIp:${httpPort ?: ShareBridge.HTTP_SHARE_PORT}",
                     )
-                    Spacer(Modifier.height(4.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = stringResource(R.string.share_toggle),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                            Text(
-                                text = stringResource(R.string.share_toggle_desc),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Switch(
-                            checked = profile.lanShare,
-                            onCheckedChange = { on ->
-                                onProfileChange(profile.copy(lanShare = on))
-                                // Take effect immediately for the current session
-                                // (the service also honours the flag on connect).
-                                if (state.isConnected) {
-                                    if (on) ShareBridge.start() else ShareBridge.stop()
-                                }
-                            },
-                        )
-                    }
-
-                    when {
-                        !state.isConnected -> InfoText(stringResource(R.string.share_need_connect))
-                        !profile.lanShare -> Unit
-                        lanIp == null -> InfoText(stringResource(R.string.share_need_wifi))
-                        shareActive -> {
-                            InfoText(stringResource(R.string.share_howto))
-                            Spacer(Modifier.height(8.dp))
-                            EndpointRow(
-                                label = stringResource(R.string.share_http_label),
-                                value = "$lanIp:${httpPort ?: ShareBridge.HTTP_SHARE_PORT}",
-                            )
-                            EndpointRow(
-                                label = stringResource(R.string.share_socks_label),
-                                value = "$lanIp:${socksPort ?: ShareBridge.SOCKS_SHARE_PORT}",
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                text = stringResource(R.string.share_warning),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error.copy(alpha = 0.85f),
-                            )
-                        }
-                        // Bridge is starting (or failed to bind): never leave
-                        // the panel blank.
-                        else -> InfoText(stringResource(R.string.share_starting))
-                    }
+                    EndpointRow(
+                        label = stringResource(R.string.share_socks_label),
+                        value = "$lanIp:${socksPort ?: ShareBridge.SOCKS_SHARE_PORT}",
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(R.string.share_warning),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error.copy(alpha = 0.85f),
+                    )
                 }
+                // Bridge is starting (or failed to bind): never leave
+                // the panel blank.
+                else -> InfoText(stringResource(R.string.share_starting))
             }
         }
     }

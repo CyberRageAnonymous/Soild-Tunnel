@@ -69,6 +69,19 @@
     <string name="diag_idle">برای بررسی اتصال، تست را اجرا کن</string>
     <string name="diag_empty_logs">هنوز لاگی نیست. وصل شو یا تست بگیر.</string>
 
+    <!-- Speed test -->
+    <string name="speed_title">تست سرعت</string>
+    <string name="speed_run">شروع تست</string>
+    <string name="speed_running">در حال اندازه‌گیری سرعت دانلود…</string>
+    <string name="speed_result">%1$s مگابیت در ثانیه · تأخیر %2$s میلی‌ثانیه</string>
+    <string name="speed_need_connect">برای سنجش سرعت تونل اول وصل شو.</string>
+    <string name="speed_failed">تست ناموفق بود — دوباره امتحان کن.</string>
+
+    <!-- Stealth preset -->
+    <string name="stealth_desc">قوی‌ترین ضد-DPI با یک لمس: ابهام‌سازی تهاجمی، تکه‌تکه کردن TLS، ECH، HTTP/2 و DNS رمزنگاری‌شده.</string>
+    <string name="stealth_apply">فعال‌سازی استیلت</string>
+    <string name="stealth_applied">پروفایل استیلت اعمال شد — در اتصال بعدی اعمال می‌شود.</string>
+
     <!-- About panel -->
     <string name="about_title">درباره</string>
     <string name="about_subtitle">اعتبارها، لینک‌ها و امکانات این نسخه</string>
