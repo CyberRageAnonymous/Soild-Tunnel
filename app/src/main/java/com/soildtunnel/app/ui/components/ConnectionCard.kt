@@ -2,12 +2,18 @@ package com.soildtunnel.app.ui.components
 
 import android.os.SystemClock
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -40,13 +47,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -95,11 +105,13 @@ fun ConnectionCard(
         connected -> NeonMint
         else -> IDLE_ACCENT
     }
+    val stats = rememberTrafficStats(connectedSince = connectedSince, connected = connected)
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .neonPanel(CARD_SHAPE, edge = accent.copy(alpha = 0.45f))
+            .hudCorners(accent)
             .padding(horizontal = 18.dp, vertical = 16.dp),
     ) {
         Box(
@@ -125,7 +137,8 @@ fun ConnectionCard(
             TimerBlock(connectedSince = connectedSince, connected = connected)
             ServerIpPill(connected = connected, ipInfo = ipInfo, ipLoading = ipLoading)
             SectionDivider()
-            SpeedStrip(connectedSince = connectedSince, connected = connected)
+            SpeedStrip(stats = stats)
+            TrafficSparkline(history = stats.history, connected = connected)
             ProtocolStrip(connected = connected, socksPort = socksPort)
         }
     }
@@ -165,6 +178,51 @@ private fun ConsoleHeader(connected: Boolean, error: Boolean) {
                 letterSpacing = 2.sp,
             ),
             color = CardTextDim,
+        )
+        Spacer(Modifier.weight(1f))
+        ConsoleChip(connected = connected, error = error)
+    }
+}
+
+@Composable
+private fun ConsoleChip(connected: Boolean, error: Boolean) {
+    val color = when {
+        error -> NeonRed
+        connected -> NeonMint
+        else -> NeonCyan
+    }
+    val labelRes = when {
+        error -> R.string.console_fault
+        connected -> R.string.console_live
+        else -> R.string.console_standby
+    }
+    val blink by rememberInfiniteTransition(label = "chipBlink").animateFloat(
+        initialValue = 1f,
+        targetValue = 0.35f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "chipBlinkA",
+    )
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .background(color.copy(alpha = 0.10f), RoundedCornerShape(999.dp))
+            .border(1.dp, color.copy(alpha = 0.40f), RoundedCornerShape(999.dp))
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    ) {
+        Box(Modifier.graphicsLayer { alpha = if (connected) blink else 1f }) {
+            LedDot(color = color, size = 7.dp, glowing = true)
+        }
+        Spacer(Modifier.width(5.dp))
+        Text(
+            text = stringResource(labelRes),
+            fontSize = 9.sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.2.sp,
+            color = color,
         )
     }
 }
@@ -294,6 +352,14 @@ private fun ServerIpPill(connected: Boolean, ipInfo: IpEndpoint?, ipLoading: Boo
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
     ) {
+        if (connected && ipInfo?.viaTunnel == true) {
+            Icon(
+                imageVector = Icons.Rounded.Shield,
+                contentDescription = null,
+                tint = NeonMint,
+                modifier = Modifier.size(13.dp),
+            )
+        }
         Text(text = label, fontSize = 12.sp, color = CardTextMuted)
         if (ipInfo != null) {
             Text(text = flag, fontSize = 15.sp)
@@ -321,8 +387,7 @@ private fun ServerIpPill(connected: Boolean, ipInfo: IpEndpoint?, ipLoading: Boo
 // 4. speeds
 
 @Composable
-private fun SpeedStrip(connectedSince: Long?, connected: Boolean) {
-    val stats = rememberTrafficStats(connectedSince = connectedSince, connected = connected)
+private fun SpeedStrip(stats: TrafficStats) {
 
     Row(
         modifier = Modifier
@@ -531,6 +596,7 @@ private data class TrafficStats(
     val upRate: Long = 0L,
     val downTotal: Long = 0L,
     val upTotal: Long = 0L,
+    val history: List<Long> = emptyList(),
 )
 
 @Composable
@@ -559,7 +625,7 @@ private fun rememberTrafficStats(connectedSince: Long?, connected: Boolean): Tra
                     downRate = ((down - lastDown).coerceAtLeast(0L) * 1000L) / dt
                     upRate = ((up - lastUp).coerceAtLeast(0L) * 1000L) / dt
                 }
-                stats = TrafficStats(downRate, upRate, down, up)
+                stats = TrafficStats(downRate, upRate, down, up, (stats.history + downRate).takeLast(60))
                 lastDown = down
                 lastUp = up
                 lastAt = at
@@ -586,6 +652,116 @@ private fun Modifier.subEdge(shape: CornerBasedShape): Modifier = drawWithCache 
     }
     onDrawBehind {
         drawPath(outline, color = SUB_BORDER, style = Stroke(hairline))
+    }
+}
+
+// live sparkline
+
+@Composable
+private fun TrafficSparkline(history: List<Long>, connected: Boolean) {
+    val accent = if (connected) NeonMint else NeonCyan
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(color = CardSubSurface, shape = SUB_SHAPE)
+            .subEdge(SUB_SHAPE)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = stringResource(R.string.sparkline_label),
+                fontSize = 9.sp,
+                letterSpacing = 1.4.sp,
+                fontFamily = FontFamily.Monospace,
+                color = CardTextDim,
+            )
+            Spacer(Modifier.weight(1f))
+            LedDot(color = accent, size = 6.dp, glowing = connected)
+        }
+        Spacer(Modifier.height(6.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(42.dp)
+                .drawWithCache {
+                    val n = history.size
+                    val maxV = (history.maxOrNull() ?: 0L).coerceAtLeast(1L).toFloat()
+                    val line = Path()
+                    val closed = Path()
+                    var lastX = 0f
+                    var lastY = 0f
+                    if (n >= 2) {
+                        val stepX = size.width / (n - 1)
+                        val usable = size.height - 8f
+                        for (i in history.indices) {
+                            val x = i * stepX
+                            val y = size.height - 4f - (history[i] / maxV) * usable
+                            if (i == 0) line.moveTo(x, y) else line.lineTo(x, y)
+                            lastX = x
+                            lastY = y
+                        }
+                        closed.apply {
+                            addPath(line)
+                            lineTo(size.width, size.height)
+                            lineTo(0f, size.height)
+                            close()
+                        }
+                    }
+                    onDrawBehind {
+                        drawLine(
+                            color = SUB_BORDER,
+                            start = Offset(0f, size.height - 1f),
+                            end = Offset(size.width, size.height - 1f),
+                            strokeWidth = 1.dp.toPx(),
+                        )
+                        if (n >= 2) {
+                            drawPath(
+                                path = closed,
+                                brush = Brush.verticalGradient(
+                                    listOf(accent.copy(alpha = 0.30f), accent.copy(alpha = 0.02f)),
+                                ),
+                            )
+                            drawPath(
+                                path = line,
+                                color = accent,
+                                style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
+                            )
+                            drawCircle(
+                                color = accent.copy(alpha = 0.25f),
+                                radius = 5.dp.toPx(),
+                                center = Offset(lastX, lastY),
+                            )
+                            drawCircle(
+                                color = accent,
+                                radius = 2.dp.toPx(),
+                                center = Offset(lastX, lastY),
+                            )
+                        }
+                    }
+                },
+        )
+    }
+}
+
+// hud framing
+
+/** Four short neon brackets pinned to the card corners. */
+private fun Modifier.hudCorners(accent: Color): Modifier = drawWithCache {
+    val len = 16.dp.toPx()
+    val stroke = 2.dp.toPx()
+    val inset = stroke / 2f
+    val w = size.width
+    val h = size.height
+    val color = accent.copy(alpha = 0.55f)
+    onDrawBehind {
+        drawLine(color, Offset(inset, inset), Offset(inset + len, inset), strokeWidth = stroke)
+        drawLine(color, Offset(inset, inset), Offset(inset, inset + len), strokeWidth = stroke)
+        drawLine(color, Offset(w - inset, inset), Offset(w - inset - len, inset), strokeWidth = stroke)
+        drawLine(color, Offset(w - inset, inset), Offset(w - inset, inset + len), strokeWidth = stroke)
+        drawLine(color, Offset(inset, h - inset), Offset(inset + len, h - inset), strokeWidth = stroke)
+        drawLine(color, Offset(inset, h - inset), Offset(inset, h - inset - len), strokeWidth = stroke)
+        drawLine(color, Offset(w - inset, h - inset), Offset(w - inset - len, h - inset), strokeWidth = stroke)
+        drawLine(color, Offset(w - inset, h - inset), Offset(w - inset, h - inset - len), strokeWidth = stroke)
     }
 }
 

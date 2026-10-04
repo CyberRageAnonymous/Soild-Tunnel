@@ -38,6 +38,12 @@
 
     <string name="tap_to_connect">برای اتصال امن لمس کن</string>
     <string name="tap_to_disconnect">برای قطع لمس کن</string>
+
+    <!-- Connect button hints -->
+    <string name="btn_hint_idle">آماده · رمزنگاری‌شده</string>
+    <string name="btn_hint_busy">در حال ساخت تونل…</string>
+    <string name="btn_hint_connected">تونل فعال است</string>
+    <string name="btn_hint_error">برای تلاش دوباره بزن</string>
     <string name="secure_via">تونل امن از طریق %1$s</string>
     <string name="reconnect_attempt">تلاش %1$d از %2$d</string>
 
@@ -307,6 +313,11 @@
 
     <!-- Control Room console -->
     <string name="console_label">تله‌متری</string>
+
+    <string name="console_live">زنده</string>
+    <string name="console_standby">آماده‌باش</string>
+    <string name="console_fault">خطا</string>
+    <string name="sparkline_label">ترافیک · ۶۰ ثانیه اخیر</string>
 
     <!-- Server picker -->
     <string name="server_title">سرور</string>

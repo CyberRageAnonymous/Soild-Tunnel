@@ -38,6 +38,12 @@
 
     <string name="tap_to_connect">Tap to connect securely</string>
     <string name="tap_to_disconnect">Tap to disconnect</string>
+
+    <!-- Connect button hints -->
+    <string name="btn_hint_idle">READY · ENCRYPTED</string>
+    <string name="btn_hint_busy">NEGOTIATING TUNNEL…</string>
+    <string name="btn_hint_connected">TUNNEL ACTIVE</string>
+    <string name="btn_hint_error">TAP TO RETRY</string>
     <string name="secure_via">Secure tunnel via %1$s</string>
     <string name="reconnect_attempt">Attempt %1$d of %2$d</string>
 
@@ -307,6 +313,11 @@
 
     <!-- Control Room console -->
     <string name="console_label">Telemetry</string>
+
+    <string name="console_live">LIVE</string>
+    <string name="console_standby">STANDBY</string>
+    <string name="console_fault">FAULT</string>
+    <string name="sparkline_label">TRAFFIC · LAST 60S</string>
 
     <!-- Server picker -->
     <string name="server_title">Server</string>
