@@ -50,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
@@ -98,6 +99,7 @@ import com.soildtunnel.app.ui.theme.EdgeNeonBright
 import com.soildtunnel.app.ui.theme.NeonAmber
 import com.soildtunnel.app.ui.theme.NeonCyan
 import com.soildtunnel.app.ui.theme.NeonMint
+import com.soildtunnel.app.ui.theme.NeonRed
 import com.soildtunnel.app.ui.theme.DrawerGlass
 import com.soildtunnel.app.ui.theme.SheetGlass
 import com.soildtunnel.app.ui.theme.latencyColor
@@ -230,13 +232,22 @@ fun HomeScreen(
                     Spacer(Modifier.height(18.dp))
 
                     if (drawerVisible) {
+                        DrawerStatusCard(
+                            state = state,
+                            isTor = profile.protocol == Protocol.TOR,
+                        )
+
+                        Spacer(Modifier.height(18.dp))
+
+                        DrawerSectionLabel(stringResource(R.string.drawer_section_tools))
+                        Spacer(Modifier.height(10.dp))
                         DiagnosticsPanel()
 
-                        DrawerDivider()
+                        Spacer(Modifier.height(16.dp))
 
                         UsagePanel()
 
-                        DrawerDivider()
+                        Spacer(Modifier.height(16.dp))
 
                         SharePanel(
                             state = state,
@@ -246,14 +257,18 @@ fun HomeScreen(
 
                         DrawerDivider()
 
+                        DrawerSectionLabel(stringResource(R.string.drawer_section_settings))
+                        Spacer(Modifier.height(10.dp))
                         LanguagePanel()
 
-                        DrawerDivider()
+                        Spacer(Modifier.height(16.dp))
 
                         ThemePanel()
 
                         DrawerDivider()
 
+                        DrawerSectionLabel(stringResource(R.string.drawer_section_about))
+                        Spacer(Modifier.height(10.dp))
                         AboutPanel()
                     }
                 }
@@ -772,6 +787,84 @@ private fun UpdateBanner(
 }
 
 @Composable
+@Composable
+private fun DrawerSectionLabel(text: String) {
+    Text(
+        text = text.uppercase(),
+        fontFamily = FontFamily.Monospace,
+        fontWeight = FontWeight.Bold,
+        fontSize = 11.sp,
+        letterSpacing = 2.sp,
+        color = NeonCyan.copy(alpha = 0.75f),
+    )
+}
+
+@Composable
+private fun DrawerStatusCard(state: ConnectionState, isTor: Boolean) {
+    val (statusColor, glowAlpha) = when (state) {
+        is ConnectionState.Connected -> NeonMint to 0.45f
+        is ConnectionState.Reconnecting,
+        is ConnectionState.Connecting,
+        is ConnectionState.Launching,
+        is ConnectionState.Verifying,
+        is ConnectionState.Disconnecting -> NeonAmber to 0.35f
+        is ConnectionState.Error -> NeonRed to 0.40f
+        is ConnectionState.Idle -> NeonCyan to 0.20f
+    }
+    val title = stateTitle(state, isTor)
+    val subtitle = stateSubtitle(state)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = statusColor.copy(alpha = 0.07f),
+                shape = RoundedCornerShape(14.dp),
+            )
+            .border(
+                1.dp,
+                statusColor.copy(alpha = 0.35f),
+                RoundedCornerShape(14.dp),
+            )
+            .padding(horizontal = 14.dp, vertical = 13.dp),
+    ) {
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(9.dp)
+                        .background(statusColor, CircleShape)
+                        .shadow(8.dp, CircleShape, ambientColor = statusColor.copy(alpha = glowAlpha)),
+                )
+                Spacer(Modifier.width(9.dp))
+                Text(
+                    text = stringResource(R.string.drawer_section_session),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    letterSpacing = 1.4.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(9.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.6.sp,
+                ),
+                color = statusColor,
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
 private fun DrawerDivider() {
     Spacer(Modifier.height(14.dp))
     Box(

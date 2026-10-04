@@ -81,6 +81,10 @@
     <string name="about_license_title">متن‌باز</string>
     <string name="about_license_note">AGPL v3 — سورس کد در گیت‌هاب موجود است</string>
     <string name="menu_open">باز کردن منو</string>
+    <string name="drawer_section_session">نشست</string>
+    <string name="drawer_section_tools">ابزارها</string>
+    <string name="drawer_section_settings">تنظیمات</string>
+    <string name="drawer_section_about">درباره</string>
     <string name="advanced_open">باز کردن تنظیمات پیشرفته</string>
 
     <!-- Quick Settings tile -->

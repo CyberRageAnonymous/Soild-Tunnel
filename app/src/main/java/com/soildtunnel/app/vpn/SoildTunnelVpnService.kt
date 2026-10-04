@@ -193,11 +193,15 @@ class SoildTunnelVpnService : VpnService() {
         }
         if (profile.networkBackend == NetworkBackend.SOILDTUNNEL_PSIPHON
             && profile.protocol != Protocol.TOR) {
-            if (profile.protocol == Protocol.AUTO) {
-                connectSmartAuto(profile, stageOnly = true)
+            val stage1 = if (profile.protocol == Protocol.GOOL) {
+                DiagnosticsLog.i(TAG, "Psiphon first hop uses single-hop MASQUE instead of GOOL for stability.")
+                profile.copy(protocol = Protocol.MASQUE)
+            } else profile
+            if (stage1.protocol == Protocol.AUTO) {
+                connectSmartAuto(stage1, stageOnly = true)
             } else {
                 SoildTunnelController.setState(ConnectionState.Launching)
-                runLadder(directPlan(profile), getString(R.string.err_protocol_failed), stageOnly = true)
+                runLadder(directPlan(stage1), getString(R.string.err_protocol_failed), stageOnly = true)
             }
             connectPsiphon(profile)
             return
@@ -326,7 +330,7 @@ class SoildTunnelVpnService : VpnService() {
                 throw IllegalStateException("tunnel died")
             }
             if (!probeTunnelCycle(PsiphonDefaults.FRONT_PORT)) {
-                if (++probeFailures >= WATCHDOG_FAIL_CYCLES) throw IllegalStateException("tunnel failed")
+                if (++probeFailures >= PSIPHON_WATCHDOG_FAIL_CYCLES) throw IllegalStateException("tunnel failed")
             } else probeFailures = 0
         }
     }
@@ -1230,6 +1234,7 @@ class SoildTunnelVpnService : VpnService() {
          * only a genuinely dead session is restarted.
          */
         private const val WATCHDOG_FAIL_CYCLES = 3
+        private const val PSIPHON_WATCHDOG_FAIL_CYCLES = 8
 
         /**
          * Attempts per watchdog check, rotating over anycast resolvers so one
