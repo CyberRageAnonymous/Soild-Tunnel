@@ -39,7 +39,7 @@ object ShareBridge {
 
     /**
      * FIXED local proxy ports. These NEVER change at runtime: users type them
-     * once into another app (Psiphon, Telegram, a browser) and the address
+     * once into another app (Telegram, a browser) and the address
      * keeps working across every reconnect.
      *
      * ### Why these are not the "classic" proxy ports
@@ -75,7 +75,7 @@ object ShareBridge {
         10808 to "a VPN client (SOCKS5)",
         10809 to "a VPN client (HTTP)",
         7890 to "Clash (mixed)",
-        1080 to "Psiphon / generic SOCKS",
+        1080 to "generic SOCKS",
         8118 to "Privoxy",
     )
 

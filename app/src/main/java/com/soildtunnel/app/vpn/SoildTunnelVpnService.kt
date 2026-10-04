@@ -31,9 +31,6 @@ import com.soildtunnel.app.core.ProfileCodec
 import com.soildtunnel.app.core.StickyServer
 import com.soildtunnel.app.core.UsageStore
 import com.soildtunnel.app.core.HevTunnel
-import com.soildtunnel.app.core.PsiphonDefaults
-import com.soildtunnel.app.core.PsiphonManager
-import com.soildtunnel.app.core.PsiphonSocksFront
 import com.soildtunnel.app.core.RoutingEngine
 import com.soildtunnel.app.core.ShareBridge
 import com.soildtunnel.app.core.SmartAuto
@@ -44,7 +41,6 @@ import com.soildtunnel.app.core.TunnelConfig
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.ConnectionState
 import com.soildtunnel.app.model.EndpointMode
-import com.soildtunnel.app.model.NetworkBackend
 import com.soildtunnel.app.model.Noize
 import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.model.SplitMode
@@ -191,21 +187,6 @@ class SoildTunnelVpnService : VpnService() {
             connectTor(profile)
             return
         }
-        if (profile.networkBackend == NetworkBackend.SOILDTUNNEL_PSIPHON
-            && profile.protocol != Protocol.TOR) {
-            val stage1 = if (profile.protocol == Protocol.GOOL) {
-                DiagnosticsLog.i(TAG, "Psiphon first hop uses single-hop MASQUE instead of GOOL for stability.")
-                profile.copy(protocol = Protocol.MASQUE)
-            } else profile
-            if (stage1.protocol == Protocol.AUTO) {
-                connectSmartAuto(stage1, stageOnly = true)
-            } else {
-                SoildTunnelController.setState(ConnectionState.Launching)
-                runLadder(directPlan(stage1), getString(R.string.err_protocol_failed), stageOnly = true)
-            }
-            connectPsiphon(profile)
-            return
-        }
 
         val resolved: ConnectionProfile =
             if (profile.protocol == Protocol.AUTO) {
@@ -284,57 +265,6 @@ class SoildTunnelVpnService : VpnService() {
         superviseTor(profile)
     }
 
-    private var psiphonFront: PsiphonSocksFront? = null
-
-    private suspend fun connectPsiphon(profile: ConnectionProfile) {
-        SoildTunnelController.setState(ConnectionState.Connecting)
-        updateNotification(getString(R.string.state_connecting))
-        DiagnosticsLog.i(TAG, "Psiphon mode — WARP first hop then Psiphon via ${profile.psiphonExitRegion.ifBlank { "auto" }}")
-        if (!PortProbe.awaitOpen(TunnelConfig.SOCKS_HOST, TunnelConfig.SOCKS_PORT, 10_000) { engine?.isAlive() == true }) {
-            throw IllegalStateException("WARP stage failed")
-        }
-        DiagnosticsLog.i(TAG, "WARP stage up, starting Psiphon through it")
-        val upstream = "socks5://${TunnelConfig.SOCKS_HOST}:${TunnelConfig.SOCKS_PORT}"
-        PsiphonManager.start(this, profile.psiphonExitRegion, upstream)
-        val front = PsiphonSocksFront().also { it.start(PsiphonDefaults.FRONT_PORT, PsiphonDefaults.SOCKS_PORT) }
-        psiphonFront = front
-        if (!PortProbe.awaitOpen(TunnelConfig.SOCKS_HOST, PsiphonDefaults.FRONT_PORT, 15_000) { PsiphonManager.isAlive() }) {
-            PsiphonManager.stop()
-            front.stop()
-            psiphonFront = null
-            throw IllegalStateException("Psiphon failed")
-        }
-        establishTun(profile)
-        startTun2Socks(profile, PsiphonDefaults.FRONT_PORT)
-        SoildTunnelController.setState(ConnectionState.Verifying)
-        updateNotification(getString(R.string.state_verifying))
-        val healthy = runCatching { Diagnostics.run(port = PsiphonDefaults.FRONT_PORT) }.getOrDefault(false)
-        if (!healthy) {
-            PsiphonManager.stop()
-            front.stop()
-            psiphonFront = null
-            throw IllegalStateException(getString(R.string.err_selftest))
-        }
-        EngineMeta.setProtocol("PSIPHON")
-        SoildTunnelController.setState(ConnectionState.Connected("${TunnelConfig.SOCKS_HOST}:${PsiphonDefaults.FRONT_PORT}"))
-        updateNotification(getString(R.string.state_connected))
-        UsageStore.startSession()
-        registerNetworkWatch()
-        supervisePsiphon(profile)
-    }
-
-    private suspend fun supervisePsiphon(profile: ConnectionProfile) {
-        while (currentScopeActive()) {
-            delay(WATCHDOG_INTERVAL_MS)
-            if (engine?.isAlive() != true || !PsiphonManager.isAlive()) {
-                throw IllegalStateException("tunnel died")
-            }
-            if (!probeTunnelCycle(PsiphonDefaults.FRONT_PORT)) {
-                if (++probeFailures >= PSIPHON_WATCHDOG_FAIL_CYCLES) throw IllegalStateException("tunnel failed")
-            } else probeFailures = 0
-        }
-    }
-
     /**
      * Tor supervisor: same shape as the engine one, minus the engine. Tor
      * survives network handovers on its own, so there is no fast-restart on
@@ -409,7 +339,6 @@ class SoildTunnelVpnService : VpnService() {
      */
     private suspend fun connectSmartAuto(
         userProfile: ConnectionProfile,
-        stageOnly: Boolean = false,
     ): ConnectionProfile {
         SoildTunnelController.setState(ConnectionState.Launching)
         updateNotification(getString(R.string.state_analyzing))
@@ -418,7 +347,7 @@ class SoildTunnelVpnService : VpnService() {
         val sticky = StickyServer.usable(this)
         val fingerprint = SmartAuto.fingerprint(this)
         val plan = SmartAuto.buildPlan(userProfile, fingerprint, sticky?.range)
-        val won = runLadder(plan, getString(R.string.err_auto_failed), stageOnly)
+        val won = runLadder(plan, getString(R.string.err_auto_failed))
         val userOwnsEndpoint = userProfile.endpointMode != EndpointMode.AUTO
         if (!userOwnsEndpoint && won.manualRange.isNotBlank()) {
             if (sticky != null) {
@@ -487,14 +416,13 @@ class SoildTunnelVpnService : VpnService() {
     private suspend fun runLadder(
         plan: List<AutoCandidate>,
         failureMessage: String,
-        stageOnly: Boolean = false,
     ): ConnectionProfile {
         var lastError: Exception? = null
 
         plan.forEachIndexed { index, candidate ->
             DiagnosticsLog.i(TAG, "Attempt ${index + 1}/${plan.size} → ${candidate.label}")
             try {
-                connectAttempt(candidate.profile, candidate.timeoutMs, stageOnly)
+                connectAttempt(candidate.profile, candidate.timeoutMs)
                 DiagnosticsLog.i(TAG, "Connected using ${candidate.label}")
                 return candidate.profile
             } catch (e: CancellationException) {
@@ -518,46 +446,9 @@ class SoildTunnelVpnService : VpnService() {
      * for SOCKS5, bring up TUN/proxy, and gate on the 4-step self-test.
      * Throws on any failure; the caller decides whether to retry differently.
      */
-    private fun stageCheckSocksTcp(): Boolean = runCatching {
-        java.net.Socket().use { s ->
-            s.connect(java.net.InetSocketAddress(SOCKS_HOST, SOCKS_PORT), 5_000)
-            s.soTimeout = 8_000
-            val ins = s.getInputStream()
-            val out = s.getOutputStream()
-            out.write(byteArrayOf(0x05, 0x01, 0x00))
-            out.flush()
-            if (ins.read() != 0x05 || ins.read() != 0x00) return false
-            out.write(byteArrayOf(0x05, 0x01, 0x00, 0x01, 1, 1, 1, 1, 0x01, 0xBB.toByte()))
-            out.flush()
-            if (ins.read() != 0x05 || ins.read() != 0x00) return false
-            ins.read()
-            when (ins.read()) {
-                0x01 -> {
-                    ins.read(ByteArray(4))
-                    ins.read()
-                    ins.read()
-                }
-                0x03 -> {
-                    val l = ins.read()
-                    ins.read(ByteArray(l))
-                    ins.read()
-                    ins.read()
-                }
-                0x04 -> {
-                    ins.read(ByteArray(16))
-                    ins.read()
-                    ins.read()
-                }
-                else -> return false
-            }
-            true
-        }
-    }.getOrDefault(false)
-
     private suspend fun connectAttempt(
         profile: ConnectionProfile,
         timeoutMs: Long,
-        stageOnly: Boolean = false,
     ) {
         SoildTunnelController.setState(ConnectionState.Launching)
         updateNotification(getString(R.string.state_launching))
@@ -597,16 +488,6 @@ class SoildTunnelVpnService : VpnService() {
             throw IllegalStateException(getString(R.string.err_engine_timeout))
         }
         DiagnosticsLog.i(TAG, "SOCKS5 port is up.")
-
-        if (stageOnly) {
-            DiagnosticsLog.i(TAG, "Stage 1 check: outbound TCP via $SOCKS_HOST:$SOCKS_PORT…")
-            if (!stageCheckSocksTcp()) {
-                DiagnosticsLog.e(TAG, "Stage 1 proxy cannot carry TCP — trying next strategy.")
-                throw IllegalStateException(getString(R.string.err_selftest))
-            }
-            DiagnosticsLog.i(TAG, "Stage 1 up — handing the exit to stage 2.")
-            return
-        }
 
         if (profile.proxyMode) {
             // Proxy mode: DON'T capture the whole device through a system TUN.
@@ -1080,9 +961,6 @@ class SoildTunnelVpnService : VpnService() {
         } catch (_: Throwable) {
         }
         runCatching { TorManager.stop() }
-        runCatching { PsiphonManager.stop() }
-        psiphonFront?.let { runCatching { it.stop() } }
-        psiphonFront = null
         tunBridge?.let { runCatching { it.stop() } }
         tunBridge = null
         if (tunnelStarted) {
@@ -1123,9 +1001,6 @@ class SoildTunnelVpnService : VpnService() {
         } catch (_: Throwable) {
         }
         runCatching { TorManager.stop() }
-        runCatching { PsiphonManager.stop() }
-        psiphonFront?.let { runCatching { it.stop() } }
-        psiphonFront = null
         tunBridge?.let { runCatching { it.stop() } }
         tunBridge = null
         if (tunnelStarted) {
@@ -1234,7 +1109,6 @@ class SoildTunnelVpnService : VpnService() {
          * only a genuinely dead session is restarted.
          */
         private const val WATCHDOG_FAIL_CYCLES = 3
-        private const val PSIPHON_WATCHDOG_FAIL_CYCLES = 8
 
         /**
          * Attempts per watchdog check, rotating over anycast resolvers so one

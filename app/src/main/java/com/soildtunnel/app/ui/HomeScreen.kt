@@ -74,7 +74,6 @@ import com.soildtunnel.app.core.TunnelConfig
 import com.soildtunnel.app.core.UpdateChecker
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.ConnectionState
-import com.soildtunnel.app.model.NetworkBackend
 import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.model.isBusy
 import com.soildtunnel.app.model.isConnected
@@ -84,7 +83,6 @@ import com.soildtunnel.app.ui.components.ConnectButton
 import com.soildtunnel.app.ui.components.ConnectionCard
 import com.soildtunnel.app.ui.components.DiagnosticsPanel
 import com.soildtunnel.app.ui.components.LanguagePanel
-import com.soildtunnel.app.ui.components.PsiphonExitSheet
 import com.soildtunnel.app.ui.components.ThemePanel
 import com.soildtunnel.app.ui.components.TorExitSheet
 import com.soildtunnel.app.ui.components.UsagePanel
@@ -144,7 +142,6 @@ fun HomeScreen(
     var showServerSheet by remember { mutableStateOf(false) }
     // Tor exit picker (replaces the server console in Tor mode).
     var showTorSheet by remember { mutableStateOf(false) }
-    var showPsiphonSheet by remember { mutableStateOf(false) }
     var updateResult by remember { mutableStateOf(UpdateChecker.getCachedResult()) }
     val settingsEnabled = state is ConnectionState.Idle || state is ConnectionState.Error
 
@@ -339,13 +336,6 @@ fun HomeScreen(
                         enabled = state.isConnected,
                         onClick = { if (state.isConnected) showTorSheet = true },
                     )
-                } else if (profile.networkBackend == NetworkBackend.SOILDTUNNEL_PSIPHON
-                    && profile.protocol != Protocol.TOR) {
-                    PsiphonExitPill(
-                        exitCountry = profile.psiphonExitRegion,
-                        enabled = settingsEnabled,
-                        onClick = { if (settingsEnabled) showPsiphonSheet = true },
-                    )
                 } else if (profile.protocol == Protocol.GOOL) {
                     ServerSelectorPill(
                         profile = profile,
@@ -440,15 +430,6 @@ fun HomeScreen(
             connected = state.isConnected,
             onSelect = { onTorExitSelected(it) },
             onDismiss = { showTorSheet = false },
-        )
-    }
-
-    if (showPsiphonSheet) {
-        PsiphonExitSheet(
-            selected = profile.psiphonExitRegion,
-            connected = state.isConnected,
-            onSelect = { onProfileChange(profile.copy(psiphonExitRegion = it.uppercase())) },
-            onDismiss = { showPsiphonSheet = false },
         )
     }
 
@@ -598,58 +579,6 @@ private fun TorExitPill(
     ) {
         Text(
             text = stringResource(R.string.protocol_tor).uppercase(),
-            fontFamily = FontFamily.Monospace,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.6.sp,
-            color = CardTextDim,
-        )
-        Spacer(Modifier.width(2.dp))
-        if (flag.isNotEmpty()) {
-            Text(text = flag, fontSize = 13.sp)
-        }
-        Text(
-            text = name,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Bold,
-            fontSize = 14.sp,
-            letterSpacing = 1.4.sp,
-            color = NeonMint,
-        )
-        Spacer(Modifier.weight(1f))
-        Icon(
-            imageVector = Icons.Rounded.KeyboardArrowDown,
-            contentDescription = null,
-            tint = CardTextMuted,
-            modifier = Modifier.size(20.dp),
-        )
-    }
-}
-
-@Composable
-private fun PsiphonExitPill(
-    exitCountry: String,
-    enabled: Boolean,
-    onClick: () -> Unit,
-) {
-    val shape = RoundedCornerShape(16.dp)
-    val name = com.soildtunnel.app.model.PsiphonExitRegions.name(exitCountry)
-    val flag = if (exitCountry.isBlank()) "\uD83C\uDF10" else NetProbe.flagEmoji(exitCountry)
-    val alpha = if (enabled) 1f else 0.55f
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .alpha(alpha)
-            .background(color = CardSubSurface, shape = shape)
-            .border(1.dp, EdgeNeon, shape)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 11.dp),
-    ) {
-        Text(
-            text = "PSIPHON",
             fontFamily = FontFamily.Monospace,
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,

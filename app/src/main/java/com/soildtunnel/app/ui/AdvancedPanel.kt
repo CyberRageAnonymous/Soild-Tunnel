@@ -56,10 +56,8 @@ import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.CoreLogLevel
 import com.soildtunnel.app.model.EndpointMode
 import com.soildtunnel.app.model.IpVersion
-import com.soildtunnel.app.model.NetworkBackend
 import com.soildtunnel.app.model.Noize
 import com.soildtunnel.app.model.Protocol
-import com.soildtunnel.app.model.PsiphonExitRegions
 import com.soildtunnel.app.model.ScanMode
 import com.soildtunnel.app.model.TorTransport
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -161,30 +159,6 @@ fun AdvancedPanel(
                         enabled = enabled,
                     )
                     Spacer(Modifier.height(16.dp))
-
-                    if (profile.protocol != Protocol.TOR) {
-                        SettingLabel(stringResource(R.string.network_backend_title))
-                        SegmentedSelector(
-                            options = NetworkBackend.entries,
-                            selected = profile.networkBackend,
-                            onSelect = { onProfileChange(profile.copy(networkBackend = it)) },
-                            label = { networkBackendLabel(it) },
-                            enabled = enabled,
-                        )
-                        Spacer(Modifier.height(16.dp))
-
-                        if (profile.networkBackend == NetworkBackend.SOILDTUNNEL_PSIPHON) {
-                            SettingLabel(stringResource(R.string.psiphon_exit_title))
-                            DropdownSelector(
-                                options = PsiphonExitRegions.values,
-                                selected = profile.psiphonExitRegion.uppercase(),
-                                onSelect = { onProfileChange(profile.copy(psiphonExitRegion = it.uppercase())) },
-                                label = { PsiphonExitRegions.label(it) },
-                                enabled = enabled,
-                            )
-                            Spacer(Modifier.height(16.dp))
-                        }
-                    }
 
                     // Scan mode and IP version only steer the WARP engine —
                     // Tor finds its own path, so both hide in Tor mode.
@@ -942,12 +916,6 @@ private fun protocolLabel(protocol: Protocol): String = when (protocol) {
 }
 
 @Composable
-private fun networkBackendLabel(backend: NetworkBackend): String = when (backend) {
-    NetworkBackend.SOILDTUNNEL -> stringResource(R.string.network_backend_soildtunnel)
-    NetworkBackend.SOILDTUNNEL_PSIPHON -> stringResource(R.string.network_backend_psiphon)
-}
-
-@Composable
 private fun torTransportLabel(t: TorTransport): String = when (t) {
     TorTransport.DIRECT -> stringResource(R.string.tor_transport_direct)
     TorTransport.OBFS4 -> stringResource(R.string.tor_transport_obfs4)
@@ -1014,7 +982,7 @@ private fun splitLabel(m: SplitMode): String = when (m) {
 /**
  * One fixed proxy endpoint (e.g. "127.0.0.1:10808") with a copy button.
  * The value is a compile-time constant address: it is the SAME every session,
- * so what the user copies into Psiphon/Telegram/etc. keeps working forever.
+ * so what the user copies into Telegram/etc. keeps working forever.
  */
 @Composable
 private fun ProxyEndpointRow(label: String, value: String) {

@@ -43,11 +43,6 @@ jobs:
           yes | sdkmanager "ndk;${NDK_VERSION}" > /dev/null
           echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.26"
-
       - name: Set up Rust (Android targets)
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -85,11 +80,6 @@ jobs:
       # external repository changing under us.
       - name: Build engine (SoildTunnel)
         run: bash scripts/build-natives.sh soildtunnel
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build psiphon CLI (owner/psiphon chain)
-        run: bash scripts/build-psiphon-cli.sh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
