@@ -787,7 +787,6 @@ private fun UpdateBanner(
 }
 
 @Composable
-@Composable
 private fun DrawerSectionLabel(text: String) {
     Text(
         text = text.uppercase(),
@@ -865,6 +864,7 @@ private fun DrawerStatusCard(state: ConnectionState, isTor: Boolean) {
     }
 }
 
+@Composable
 private fun DrawerDivider() {
     Spacer(Modifier.height(14.dp))
     Box(
