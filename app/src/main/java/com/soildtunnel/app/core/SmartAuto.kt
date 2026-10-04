@@ -353,7 +353,7 @@ object SmartAuto {
             raw.connect(InetSocketAddress("1.1.1.1", 443), timeoutMs)
             raw.soTimeout = timeoutMs
             val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
-            val ssl = factory.createSocket(raw, 443, true) as SSLSocket
+            val ssl = factory.createSocket(raw, null, 443, true) as SSLSocket
             ssl.soTimeout = timeoutMs
             ssl.startHandshake()
             val ok = ssl.session != null

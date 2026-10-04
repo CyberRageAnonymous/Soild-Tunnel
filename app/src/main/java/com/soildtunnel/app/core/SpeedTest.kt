@@ -35,7 +35,8 @@ object SpeedTest {
                 // the local resolver where it could be poisoned.
                 raw.connect(InetSocketAddress.createUnresolved(HOST, PORT), CONNECT_TIMEOUT_MS)
                 raw.soTimeout = READ_TIMEOUT_MS
-                val ssl = SSLSocketFactory.getDefault().createSocket(raw, HOST, PORT, true)
+                val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
+                val ssl = factory.createSocket(raw, HOST, PORT, true)
                 ssl.soTimeout = READ_TIMEOUT_MS
                 val handshakeStart = System.nanoTime()
                 ssl.startHandshake()

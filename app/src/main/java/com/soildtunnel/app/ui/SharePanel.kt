@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.soildtunnel.app.R
+import com.soildtunnel.app.ui.components.PanelCard
 import com.soildtunnel.app.core.ShareBridge
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.ConnectionState

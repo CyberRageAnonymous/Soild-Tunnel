@@ -54,6 +54,7 @@ import com.soildtunnel.app.ui.components.AppPickerDialog
 import com.soildtunnel.app.ui.components.DropdownSelector
 import com.soildtunnel.app.ui.components.LtrOutlinedTextField
 import com.soildtunnel.app.ui.components.SegmentedSelector
+import com.soildtunnel.app.ui.components.PanelCard
 import com.soildtunnel.app.model.DnsMode
 
 /**

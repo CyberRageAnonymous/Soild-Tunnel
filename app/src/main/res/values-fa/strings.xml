@@ -10,7 +10,6 @@
     <string name="protocol_masque">MASQUE</string>
     <string name="protocol_wireguard">WireGuard</string>
     <string name="protocol_gool">WARP×2</string>
-    <string name="network_backend_title">بک‌اند شبکه</string>
 
     <string name="scan_mode">حالت اسکن</string>
     <string name="scan_turbo">توربو</string>

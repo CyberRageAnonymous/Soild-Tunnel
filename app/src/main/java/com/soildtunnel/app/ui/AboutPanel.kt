@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material3.HorizontalDivider
@@ -29,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.soildtunnel.app.BuildConfig
 import com.soildtunnel.app.R
+import com.soildtunnel.app.ui.components.PanelCard
 
 private const val URL_PROJECT_GITHUB = "https://github.com/CyberRageAnonymous/Soild-Tunnel"
 private const val URL_TELEGRAM = "https://t.me/cyberrageofficial"

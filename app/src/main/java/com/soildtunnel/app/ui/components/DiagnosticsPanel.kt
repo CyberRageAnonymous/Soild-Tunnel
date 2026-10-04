@@ -66,7 +66,7 @@ fun DiagnosticsPanel(modifier: Modifier = Modifier) {
     val overall = overallState(checks)
 
     PanelCard(
-        icon = Icons.Rounded.HealthAndSafety,
+        icon = Icons.Rounded.Bolt,
         title = androidx.compose.ui.res.stringResource(R.string.diag_title),
         subtitle = androidx.compose.ui.res.stringResource(overall.captionRes),
         expanded = expanded,
