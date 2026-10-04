@@ -39,7 +39,8 @@ object PsiphonManager {
                 if (index > 0) {
                     DiagnosticsLog.w(TAG, "Retrying with automatic exit and fresh datastore.")
                     stopProcess()
-                    File(dir, "psiphon").deleteRecursively()
+                    File(dir, "store").deleteRecursively()
+                    File(dir, "store").mkdirs()
                     awaitClosed("127.0.0.1", PsiphonDefaults.SOCKS_PORT, 5_000)
                 }
                 try {
@@ -61,6 +62,7 @@ object PsiphonManager {
         egress: String,
         upstream: String?,
     ): Int = withContext(Dispatchers.IO) {
+        File(dir, "store").apply { mkdirs() }
         File(dir, "config.json").writeText(buildConfig(context, egress, upstream))
         DiagnosticsLog.i(TAG, "Starting psiphon core (exit=${egress.ifEmpty { "auto" }}).")
         val proc = ProcessBuilder(bin.absolutePath, "-config", File(dir, "config.json").absolutePath,
