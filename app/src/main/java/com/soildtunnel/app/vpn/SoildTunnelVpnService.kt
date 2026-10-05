@@ -41,6 +41,7 @@ import com.soildtunnel.app.core.TunnelConfig
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.ConnectionState
 import com.soildtunnel.app.model.EndpointMode
+import com.soildtunnel.app.model.GoolMode
 import com.soildtunnel.app.model.Noize
 import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.model.SplitMode
@@ -394,10 +395,20 @@ class SoildTunnelVpnService : VpnService() {
                 AutoCandidate(profile, fullBudget, "${profile.protocol.name} · as configured"),
             )
         }
+        // Gool carried inside MASQUE needs one extra hop after the outer
+        // tunnel is up (register + dial the inner identity), so its first
+        // pass gets a wider cap than a single-hop protocol.
+        val firstPassMax = if (profile.protocol == Protocol.GOOL &&
+            profile.goolMode == GoolMode.ON_MASQUE
+        ) {
+            FIRST_PASS_MAX_MS + GOOL_CARRIED_EXTRA_MS
+        } else {
+            FIRST_PASS_MAX_MS
+        }
         return listOf(
             AutoCandidate(
                 profile,
-                fullBudget.coerceAtMost(FIRST_PASS_MAX_MS),
+                fullBudget.coerceAtMost(firstPassMax),
                 "${profile.protocol.name} · as configured",
             ),
             AutoCandidate(
@@ -1131,5 +1142,6 @@ class SoildTunnelVpnService : VpnService() {
          * budget before the hardened second pass is even tried.
          */
         private const val FIRST_PASS_MAX_MS = 75_000L
+        private const val GOOL_CARRIED_EXTRA_MS = 60_000L
     }
 }
