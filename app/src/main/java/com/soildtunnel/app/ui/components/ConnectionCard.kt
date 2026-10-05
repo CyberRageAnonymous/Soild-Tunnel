@@ -111,7 +111,7 @@ fun ConnectionCard(
         modifier = modifier
             .fillMaxWidth()
             .neonPanel(CARD_SHAPE, edge = accent.copy(alpha = 0.45f))
-            .hudCorners(accent)
+            .roundedRing(accent)
             .padding(horizontal = 18.dp, vertical = 16.dp),
     ) {
         Box(
@@ -743,25 +743,24 @@ private fun TrafficSparkline(history: List<Long>, connected: Boolean) {
     }
 }
 
-// hud framing
+// rounded framing
 
-/** Four short neon brackets pinned to the card corners. */
-private fun Modifier.hudCorners(accent: Color): Modifier = drawWithCache {
-    val len = 16.dp.toPx()
+/** Fully rounded neon ring hugging the card shape, wrapped in a soft halo. */
+private fun Modifier.roundedRing(accent: Color): Modifier = drawWithCache {
     val stroke = 2.dp.toPx()
-    val inset = stroke / 2f
-    val w = size.width
-    val h = size.height
-    val color = accent.copy(alpha = 0.55f)
+    val inset = stroke / 2f + 1.dp.toPx()
+    val radius = CARD_RADIUS.toPx()
+    val ring = Path().apply {
+        addRoundRect(
+            RoundRect(
+                rect = Rect(inset, inset, size.width - inset, size.height - inset),
+                cornerRadius = CornerRadius(radius),
+            ),
+        )
+    }
     onDrawBehind {
-        drawLine(color, Offset(inset, inset), Offset(inset + len, inset), strokeWidth = stroke)
-        drawLine(color, Offset(inset, inset), Offset(inset, inset + len), strokeWidth = stroke)
-        drawLine(color, Offset(w - inset, inset), Offset(w - inset - len, inset), strokeWidth = stroke)
-        drawLine(color, Offset(w - inset, inset), Offset(w - inset, inset + len), strokeWidth = stroke)
-        drawLine(color, Offset(inset, h - inset), Offset(inset + len, h - inset), strokeWidth = stroke)
-        drawLine(color, Offset(inset, h - inset), Offset(inset, h - inset - len), strokeWidth = stroke)
-        drawLine(color, Offset(w - inset, h - inset), Offset(w - inset - len, h - inset), strokeWidth = stroke)
-        drawLine(color, Offset(w - inset, h - inset), Offset(w - inset, h - inset - len), strokeWidth = stroke)
+        drawPath(ring, color = accent.copy(alpha = 0.10f), style = Stroke(7.dp.toPx()))
+        drawPath(ring, color = accent.copy(alpha = 0.55f), style = Stroke(stroke))
     }
 }
 

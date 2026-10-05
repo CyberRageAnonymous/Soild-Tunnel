@@ -58,6 +58,7 @@ import com.soildtunnel.app.core.ServerCatalog
 import com.soildtunnel.app.core.ServerNode
 import com.soildtunnel.app.core.ServerPinger
 import com.soildtunnel.app.model.ConnectionProfile
+import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.ui.theme.CardSubSurface
 import com.soildtunnel.app.ui.theme.CardTextDim
 import com.soildtunnel.app.ui.theme.CardTextMuted
@@ -81,6 +82,7 @@ fun ServerPickerSheet(
     val selected = ServerCatalog.selectedIn(profile)
     val scope = rememberCoroutineScope()
     val sweeping by ServerPinger.sweeping.collectAsState()
+    val servers by ServerCatalog.displayOrder.collectAsState()
 
     // Measure as soon as the console opens — one parallel sweep, ~2.5s max.
     LaunchedEffect(Unit) { ServerPinger.maybeAutoRefresh() }
@@ -104,7 +106,15 @@ fun ServerPickerSheet(
                 NeonSectionLabel(stringResource(R.string.server_pick_title), accent = NeonCyan)
                 Spacer(Modifier.weight(1f))
                 RefreshButton(sweeping = sweeping) {
-                    scope.launch { ServerPinger.refreshAll() }
+                    scope.launch {
+                        // WARP only: rotate the servers (order + probe IPs)
+                        // so they visibly move on every refresh. TOR and the
+                        // other protocols keep the plain re-ping behavior.
+                        if (profile.protocol == Protocol.WIREGUARD) {
+                            ServerCatalog.rotateWarpNodes()
+                        }
+                        ServerPinger.refreshAll()
+                    }
                 }
             }
             Text(
@@ -124,7 +134,7 @@ fun ServerPickerSheet(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.height(430.dp),
             ) {
-                itemsIndexed(ServerCatalog.all, key = { _, node -> node.id }) { _, node ->
+                itemsIndexed(servers, key = { _, node -> node.id }) { _, node ->
                     ServerRow(
                         node = node,
                         selected = selected?.id == node.id,

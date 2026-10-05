@@ -53,7 +53,9 @@ object ServerPinger {
         if (!sweepGuard.compareAndSet(false, true)) return@withContext
         _sweeping.value = true
         try {
-            val targets = ServerCatalog.all
+            // Read the live display order (not the static catalog): on WARP
+            // the refresh button rotates probe IPs, and the sweep must follow.
+            val targets = ServerCatalog.displayOrder.value
             _state.update { cur ->
                 targets.associate { it.id to (cur[it.id] ?: Result()).copy(measuring = true) }
             }
