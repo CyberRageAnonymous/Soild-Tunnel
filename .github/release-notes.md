@@ -1,15 +1,18 @@
-# SoildTunnel v1.0.8
+# SoildTunnel v1.0.9
 
-A visual refresh plus small reliability fixes across the app.
+This one is all about getting you a clean, non-Iranian IP without the fuss.
 
-**New look:**
-- Redesigned connect button — a status capsule with the current state written on it, a shine sweep while idle and a breathing glow while connected.
-- Richer home backdrop with slowly drifting aurora pools, a horizon band and a vignette.
-- Telemetry console polish — glowing status title, larger session timer, animated up/down share bars and a live latency dot.
-- Sidebar and Advanced headers with neon glow details, gradient dividers between drawer sections and uniform server cards.
+**Gool finally exits abroad:**
+- Gool now rides carried inside MASQUE by default, so your WARP identity is born with a foreign IP — no more Iranian exits.
+- New Gool mode switch in Advanced settings: stay on MASQUE, or fall back to classic WARP-in-WARP.
+- On MASQUE mode the server list steps aside and just offers Auto, since pinned ranges can't serve its outer scan.
 
-**Fixes:**
-- Server cards in the picker no longer stretch unevenly; long country names ellipsize on one fixed-height row.
-- Persian translations updated for the new and changed strings.
+**Fresh touches:**
+- Speed test built right into the app, plus a stealth scan preset for rough networks.
+- The connect button got a full makeover — pulse rings and live hints — and the telemetry console now wears a round neon ring.
+- Hitting refresh on WARP servers actually shuffles them now, so the list feels alive.
 
-Version: SoildTunnel 1.0.8 (version code 9).
+**Under the hood:**
+- Psiphon backend removed entirely; smaller app, fewer moving parts.
+
+Version: SoildTunnel 1.0.9 (version code 10).
