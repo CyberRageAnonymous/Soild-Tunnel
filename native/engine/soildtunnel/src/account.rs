@@ -424,6 +424,7 @@ where
             Ok(response) => response,
             Err(error) => {
                 last_error = SoildTunnelError::Api(format!("{label}: {error}"));
+                log::debug!("[!] {label} error chain: {error:?}");
                 continue;
             }
         };

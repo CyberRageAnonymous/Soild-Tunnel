@@ -1,8 +1,6 @@
 package com.soildtunnel.app.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,10 +15,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -31,7 +27,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -41,7 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.runtime.collectAsState
 import android.widget.Toast
 import kotlinx.coroutines.launch
@@ -71,79 +66,49 @@ fun DiagnosticsPanel(modifier: Modifier = Modifier) {
 
     val overall = overallState(checks)
 
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+    PanelCard(
+        icon = Icons.Rounded.Bolt,
+        title = androidx.compose.ui.res.stringResource(R.string.diag_title),
+        subtitle = androidx.compose.ui.res.stringResource(overall.captionRes),
+        expanded = expanded,
+        onToggle = { expanded = !expanded },
+        modifier = modifier,
+        subtitleColor = overall.color,
     ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            // Header (tap to expand).
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded },
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                StatusDot(color = overall.color, size = 12.dp)
-                Spacer(Modifier.size(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = androidx.compose.ui.res.stringResource(R.string.diag_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = androidx.compose.ui.res.stringResource(overall.captionRes),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+        Column(Modifier.padding(start = 18.dp, end = 18.dp, bottom = 18.dp)) {
+            Spacer(Modifier.height(16.dp))
+
+            checks.forEach { CheckRow(it) }
+
+            Spacer(Modifier.height(16.dp))
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { scope.launch { Diagnostics.run() } },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(androidx.compose.ui.res.stringResource(R.string.diag_run))
                 }
-                Icon(
-                    imageVector = Icons.Rounded.ExpandMore,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.rotate(if (expanded) 180f else 0f),
-                )
-            }
-
-            AnimatedVisibility(visible = expanded) {
-                Column {
-                    Spacer(Modifier.height(16.dp))
-
-                    checks.forEach { CheckRow(it) }
-
-                    Spacer(Modifier.height(16.dp))
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
-                            onClick = { scope.launch { Diagnostics.run() } },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text(androidx.compose.ui.res.stringResource(R.string.diag_run))
-                        }
-                        TextButton(
-                            onClick = {
-                                clipboard.setText(AnnotatedString(DiagnosticsLog.exportText()))
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.diag_copied),
-                                    Toast.LENGTH_SHORT,
-                                ).show()
-                            },
-                        ) {
-                            Text(androidx.compose.ui.res.stringResource(R.string.diag_copy))
-                        }
-                        TextButton(onClick = { DiagnosticsLog.clear() }) {
-                            Text(androidx.compose.ui.res.stringResource(R.string.diag_clear))
-                        }
-                    }
-
-                    Spacer(Modifier.height(12.dp))
-
-                    LogConsole()
+                TextButton(
+                    onClick = {
+                        clipboard.setText(AnnotatedString(DiagnosticsLog.exportText()))
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.diag_copied),
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    },
+                ) {
+                    Text(androidx.compose.ui.res.stringResource(R.string.diag_copy))
+                }
+                TextButton(onClick = { DiagnosticsLog.clear() }) {
+                    Text(androidx.compose.ui.res.stringResource(R.string.diag_clear))
                 }
             }
+
+            Spacer(Modifier.height(12.dp))
+
+            LogConsole()
         }
     }
 }

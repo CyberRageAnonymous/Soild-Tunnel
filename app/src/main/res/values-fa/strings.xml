@@ -10,6 +10,9 @@
     <string name="protocol_masque">MASQUE</string>
     <string name="protocol_wireguard">WireGuard</string>
     <string name="protocol_gool">WARP×2</string>
+    <string name="gool_mode">حالت GOOL</string>
+    <string name="gool_mode_masque">روی MASQUE</string>
+    <string name="gool_mode_classic">کلاسیک</string>
 
     <string name="scan_mode">حالت اسکن</string>
     <string name="scan_turbo">توربو</string>
@@ -38,6 +41,12 @@
 
     <string name="tap_to_connect">برای اتصال امن لمس کن</string>
     <string name="tap_to_disconnect">برای قطع لمس کن</string>
+
+    <!-- Connect button hints -->
+    <string name="btn_hint_idle">آماده · رمزنگاری‌شده</string>
+    <string name="btn_hint_busy">در حال ساخت تونل…</string>
+    <string name="btn_hint_connected">تونل فعال است</string>
+    <string name="btn_hint_error">برای تلاش دوباره بزن</string>
     <string name="secure_via">تونل امن از طریق %1$s</string>
     <string name="reconnect_attempt">تلاش %1$d از %2$d</string>
 
@@ -68,6 +77,19 @@
     <string name="diag_idle">برای بررسی اتصال، تست را اجرا کن</string>
     <string name="diag_empty_logs">هنوز لاگی نیست. وصل شو یا تست بگیر.</string>
 
+    <!-- Speed test -->
+    <string name="speed_title">تست سرعت</string>
+    <string name="speed_run">شروع تست</string>
+    <string name="speed_running">در حال اندازه‌گیری سرعت دانلود…</string>
+    <string name="speed_result">%1$s مگابیت در ثانیه · تأخیر %2$s میلی‌ثانیه</string>
+    <string name="speed_need_connect">برای سنجش سرعت تونل اول وصل شو.</string>
+    <string name="speed_failed">تست ناموفق بود — دوباره امتحان کن.</string>
+
+    <!-- Stealth preset -->
+    <string name="stealth_desc">قوی‌ترین ضد-DPI با یک لمس: ابهام‌سازی تهاجمی، تکه‌تکه کردن TLS، ECH، HTTP/2 و DNS رمزنگاری‌شده.</string>
+    <string name="stealth_apply">فعال‌سازی استیلت</string>
+    <string name="stealth_applied">پروفایل استیلت اعمال شد — در اتصال بعدی اعمال می‌شود.</string>
+
     <!-- About panel -->
     <string name="about_title">درباره</string>
     <string name="about_subtitle">اعتبارها، لینک‌ها و امکانات این نسخه</string>
@@ -75,6 +97,10 @@
     <string name="about_license_title">متن‌باز</string>
     <string name="about_license_note">AGPL v3 — سورس کد در گیت‌هاب موجود است</string>
     <string name="menu_open">باز کردن منو</string>
+    <string name="drawer_section_session">نشست</string>
+    <string name="drawer_section_tools">ابزارها</string>
+    <string name="drawer_section_settings">تنظیمات</string>
+    <string name="drawer_section_about">درباره</string>
     <string name="advanced_open">باز کردن تنظیمات پیشرفته</string>
 
     <!-- Quick Settings tile -->
@@ -291,11 +317,17 @@
     <!-- Control Room console -->
     <string name="console_label">تله‌متری</string>
 
+    <string name="console_live">زنده</string>
+    <string name="console_standby">آماده‌باش</string>
+    <string name="console_fault">خطا</string>
+    <string name="sparkline_label">ترافیک · ۶۰ ثانیه اخیر</string>
+
     <!-- Server picker -->
     <string name="server_title">سرور</string>
     <string name="server_pick_title">انتخاب سرور</string>
     <string name="server_pick_subtitle">تأخیر زنده از همین دستگاه اندازه‌گیری شده. برای پین کردن روی نود بزن.</string>
     <string name="server_anycast_note">Cloudflare ترافیک را به نزدیک‌ترین لبه مسیریابی می‌کند — کشور خروجی ممکن است با برچسب متفاوت باشد. کشور واقعی خروجی بعد از اتصال نمایش داده می‌شود.</string>
+    <string name="server_masque_auto_note">گول روی MASQUE همیشه خودکار اسکن می‌کند — اینجا فقط Auto در دسترس است.</string>
     <string name="server_auto_desc">همه رنج‌های لبه داخلی را اسکن و سریع‌ترین گیت‌وی زنده را نگه می‌دارد</string>
     <string name="server_selected">انتخاب شد</string>
     <string name="server_ping_refresh">اندازه‌گیری دوباره تأخیر</string>

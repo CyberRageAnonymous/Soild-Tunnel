@@ -2,7 +2,7 @@ name: Build APK
 
 on:
   push:
-    branches: [ main, master, 'fix/**' ]
+    branches: [ main, master, 'fix/**', 'test/**' ]
     tags: [ 'v*' ]
   workflow_dispatch:
 
@@ -42,11 +42,6 @@ jobs:
         run: |
           yes | sdkmanager "ndk;${NDK_VERSION}" > /dev/null
           echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
 
       - name: Set up Rust (Android targets)
         uses: dtolnay/rust-toolchain@stable

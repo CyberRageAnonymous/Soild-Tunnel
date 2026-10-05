@@ -2,6 +2,9 @@ package com.soildtunnel.app.core
 
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.EndpointMode
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /** One edge node for the server list. */
 data class ServerNode(
@@ -55,6 +58,37 @@ object ServerCatalog {
 
     /** Everything the picker shows, in display order. */
     val all: List<ServerNode> = listOf(auto) + nodes
+
+    /**
+     * Live display order of the picker. Starts as [all]; every WARP refresh
+     * rotates it (see [rotateWarpNodes]). The sheet collects this flow, so a
+     * rotation visibly moves the rows without a reload.
+     */
+    private val _displayOrder = MutableStateFlow(all)
+    val displayOrder: StateFlow<List<ServerNode>> = _displayOrder.asStateFlow()
+
+    /**
+     * WARP-only rotation, triggered by the picker refresh button. Every node
+     * advances to the next IP of its range and the list order rotates by one,
+     * so the servers visibly move instead of staying pinned. Ids and CIDRs
+     * stay stable, so selection matching is unaffected. Other protocols never
+     * call this — their picker behavior is unchanged.
+     */
+    fun rotateWarpNodes() {
+        val tail = _displayOrder.value
+            .filter { it.id != AUTO_ID }
+            .map { it.copy(probeHost = nextProbeIp(it.probeHost)) }
+        if (tail.isEmpty()) return
+        _displayOrder.value = listOf(auto) + tail.drop(1) + tail.take(1)
+    }
+
+    private fun nextProbeIp(host: String): String {
+        val idx = host.lastIndexOf('.')
+        if (idx < 0) return host
+        val last = host.substring(idx + 1).toIntOrNull() ?: return host
+        val advanced = if (last >= 254) 1 else last + 1
+        return host.substring(0, idx) + "." + advanced
+    }
 
     fun byId(id: String): ServerNode? = all.firstOrNull { it.id == id }
 

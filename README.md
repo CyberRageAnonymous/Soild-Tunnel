@@ -308,6 +308,13 @@ checks (ip-api.com) through the tunnel itself.
 
 ---
 
+## Credits
+
+Part of the core engine is based on the
+[Aether](https://github.com/CluvexStudio/Aether) project.
+
+---
+
 ## License
 
 This project is licensed under the [GNU Affero General Public License v3.0](LICENSE).

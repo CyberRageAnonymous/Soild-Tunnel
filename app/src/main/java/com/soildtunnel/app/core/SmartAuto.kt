@@ -11,6 +11,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.EndpointMode
+import com.soildtunnel.app.model.GoolMode
 import com.soildtunnel.app.model.Noize
 import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.model.ScanMode
@@ -175,6 +176,11 @@ object SmartAuto {
             )
             if (!keepUserEndpoint && bestRanges.isNotEmpty()) {
                 p = p.copy(endpointMode = EndpointMode.MANUAL_RANGE, manualRange = bestRanges)
+            }
+            // Gool on MASQUE always scans automatically: a pinned range
+            // would kill its outer scan, so force Auto for this candidate.
+            if (proto == Protocol.GOOL && p.goolMode == GoolMode.ON_MASQUE) {
+                p = p.copy(endpointMode = EndpointMode.AUTO, manualRange = "")
             }
             val label = buildString {
                 append(proto.name)

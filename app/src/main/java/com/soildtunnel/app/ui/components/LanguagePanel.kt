@@ -1,22 +1,13 @@
 package com.soildtunnel.app.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Language
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -28,7 +19,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -38,7 +28,6 @@ import com.soildtunnel.app.core.LocaleStore
 @Composable
 fun LanguagePanel(modifier: Modifier = Modifier) {
     var expanded by remember { mutableStateOf(false) }
-    val arrowRotation by animateFloatAsState(if (expanded) 180f else 0f, tween(300), label = "langArrow")
     val context = LocalContext.current
     val current = remember { LocaleStore.get(context) }
 
@@ -48,66 +37,31 @@ fun LanguagePanel(modifier: Modifier = Modifier) {
         (context as? android.app.Activity)?.recreate()
     }
 
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-        ),
+    PanelCard(
+        icon = Icons.Rounded.Language,
+        title = stringResource(R.string.lang_title),
+        subtitle = languageLabel(current),
+        expanded = expanded,
+        onToggle = { expanded = !expanded },
+        modifier = modifier,
     ) {
-        Column(Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded }
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Language,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.lang_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = languageLabel(current),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Icon(
-                    imageVector = Icons.Rounded.ExpandMore,
-                    contentDescription = null,
-                    modifier = Modifier.rotate(arrowRotation),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            AnimatedVisibility(visible = expanded) {
-                Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp)) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                    LanguageRow(
-                        label = stringResource(R.string.lang_system),
-                        selected = current == LocaleStore.SYSTEM,
-                        onClick = { pick(LocaleStore.SYSTEM) },
-                    )
-                    LanguageRow(
-                        label = "English",
-                        selected = current == LocaleStore.ENGLISH,
-                        onClick = { pick(LocaleStore.ENGLISH) },
-                    )
-                    LanguageRow(
-                        label = "\u0641\u0627\u0631\u0633\u06CC",
-                        selected = current == LocaleStore.PERSIAN,
-                        onClick = { pick(LocaleStore.PERSIAN) },
-                    )
-                }
-            }
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp)) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            LanguageRow(
+                label = stringResource(R.string.lang_system),
+                selected = current == LocaleStore.SYSTEM,
+                onClick = { pick(LocaleStore.SYSTEM) },
+            )
+            LanguageRow(
+                label = "English",
+                selected = current == LocaleStore.ENGLISH,
+                onClick = { pick(LocaleStore.ENGLISH) },
+            )
+            LanguageRow(
+                label = "\u0641\u0627\u0631\u0633\u06CC",
+                selected = current == LocaleStore.PERSIAN,
+                onClick = { pick(LocaleStore.PERSIAN) },
+            )
         }
     }
 }

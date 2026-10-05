@@ -1,10 +1,6 @@
 package com.soildtunnel.app.ui
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,10 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -29,7 +22,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
@@ -38,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.soildtunnel.app.BuildConfig
 import com.soildtunnel.app.R
+import com.soildtunnel.app.ui.components.PanelCard
 
 private const val URL_PROJECT_GITHUB = "https://github.com/CyberRageAnonymous/Soild-Tunnel"
 private const val URL_TELEGRAM = "https://t.me/cyberrageofficial"
@@ -50,7 +43,6 @@ private const val URL_TELEGRAM = "https://t.me/cyberrageofficial"
 @Composable
 fun AboutPanel(modifier: Modifier = Modifier) {
     var expanded by remember { mutableStateOf(false) }
-    val arrowRotation by animateFloatAsState(if (expanded) 180f else 0f, tween(300), label = "aboutArrow")
     val context = LocalContext.current
     val versionName = remember {
         runCatching {
@@ -58,80 +50,45 @@ fun AboutPanel(modifier: Modifier = Modifier) {
         }.getOrNull() ?: "1.0.0"
     }
 
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-        ),
+    PanelCard(
+        icon = Icons.Rounded.Info,
+        title = stringResource(R.string.about_title),
+        subtitle = stringResource(R.string.about_subtitle),
+        expanded = expanded,
+        onToggle = { expanded = !expanded },
+        modifier = modifier,
     ) {
-        Column(Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded }
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Info,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.about_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = stringResource(R.string.about_subtitle),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Icon(
-                    imageVector = Icons.Rounded.ExpandMore,
-                    contentDescription = null,
-                    modifier = Modifier.rotate(arrowRotation),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 20.dp)) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            Spacer(Modifier.height(14.dp))
 
-            AnimatedVisibility(visible = expanded) {
-                Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 20.dp)) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                    Spacer(Modifier.height(14.dp))
+            Text(
+                text = stringResource(R.string.about_version, versionName),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            // Engine (core) version from native/engine/CORE_VERSION.
+            Text(
+                text = stringResource(R.string.about_core_version, BuildConfig.CORE_VERSION),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
-                    Text(
-                        text = stringResource(R.string.about_version, versionName),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    // Engine (core) version from native/engine/CORE_VERSION.
-                    Text(
-                        text = stringResource(R.string.about_core_version, BuildConfig.CORE_VERSION),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+            Spacer(Modifier.height(16.dp))
 
-                    Spacer(Modifier.height(16.dp))
-
-                    // ---- Open source ----
-                    SectionHeader(
-                        title = stringResource(R.string.about_license_title),
-                        note = stringResource(R.string.about_license_note),
-                    )
-                    LinkRow(R.drawable.ic_github, "CyberRageAnonymous/Soild-Tunnel", URL_PROJECT_GITHUB)
-                    LinkRow(R.drawable.ic_telegram, "t.me/cyberrageofficial", URL_TELEGRAM)
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = "Released under the GNU AGPL v3. Built on open-source components.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+            // ---- Open source ----
+            SectionHeader(
+                title = stringResource(R.string.about_license_title),
+                note = stringResource(R.string.about_license_note),
+            )
+            LinkRow(R.drawable.ic_github, "CyberRageAnonymous/Soild-Tunnel", URL_PROJECT_GITHUB)
+            LinkRow(R.drawable.ic_telegram, "t.me/cyberrageofficial", URL_TELEGRAM)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "Released under the GNU AGPL v3. Built on open-source components.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

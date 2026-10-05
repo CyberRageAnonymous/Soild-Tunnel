@@ -41,6 +41,7 @@ import com.soildtunnel.app.core.TunnelConfig
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.ConnectionState
 import com.soildtunnel.app.model.EndpointMode
+import com.soildtunnel.app.model.GoolMode
 import com.soildtunnel.app.model.Noize
 import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.model.SplitMode
@@ -337,7 +338,9 @@ class SoildTunnelVpnService : VpnService() {
      * self-test. Returns the strategy that won so the supervisor restarts the
      * engine with the SAME working configuration.
      */
-    private suspend fun connectSmartAuto(userProfile: ConnectionProfile): ConnectionProfile {
+    private suspend fun connectSmartAuto(
+        userProfile: ConnectionProfile,
+    ): ConnectionProfile {
         SoildTunnelController.setState(ConnectionState.Launching)
         updateNotification(getString(R.string.state_analyzing))
         // 24h sticky pin: reuse the range that won last time so the exit
@@ -392,10 +395,20 @@ class SoildTunnelVpnService : VpnService() {
                 AutoCandidate(profile, fullBudget, "${profile.protocol.name} · as configured"),
             )
         }
+        // Gool carried inside MASQUE needs one extra hop after the outer
+        // tunnel is up (register + dial the inner identity), so its first
+        // pass gets a wider cap than a single-hop protocol.
+        val firstPassMax = if (profile.protocol == Protocol.GOOL &&
+            profile.goolMode == GoolMode.ON_MASQUE
+        ) {
+            FIRST_PASS_MAX_MS + GOOL_CARRIED_EXTRA_MS
+        } else {
+            FIRST_PASS_MAX_MS
+        }
         return listOf(
             AutoCandidate(
                 profile,
-                fullBudget.coerceAtMost(FIRST_PASS_MAX_MS),
+                fullBudget.coerceAtMost(firstPassMax),
                 "${profile.protocol.name} · as configured",
             ),
             AutoCandidate(
@@ -770,7 +783,7 @@ class SoildTunnelVpnService : VpnService() {
         }
     }
 
-    private fun startTun2Socks(profile: ConnectionProfile) {
+    private fun startTun2Socks(profile: ConnectionProfile, socksPort: Int = SOCKS_PORT) {
         // Tor mode always rides the userspace bridge, even with no blocked
         // apps: hev forwards UDP through SOCKS5 UDP ASSOCIATE, which tor
         // does not implement, so DNS would silently die on the hev path.
@@ -788,7 +801,7 @@ class SoildTunnelVpnService : VpnService() {
                 vpnService = this,
                 tunDescriptor = pfd,
                 socksHost = SOCKS_HOST,
-                socksPort = if (torMode) TorDefaults.SOCKS_PORT else SOCKS_PORT,
+                socksPort = if (torMode) TorDefaults.SOCKS_PORT else socksPort,
                 mtu = profile.mtu.coerceIn(576, 9000),
                 blockedPackagesProvider = { profile.blockedApps.toSet() },
                 routingEngine = RoutingEngine(emptyList()),
@@ -800,7 +813,7 @@ class SoildTunnelVpnService : VpnService() {
             tunBridge = bridge
             return
         }
-        val config = writeHevConfig(profile.mtu.coerceIn(576, 9000))
+        val config = writeHevConfig(profile.mtu.coerceIn(576, 9000), socksPort)
         // Use the LIVE fd of the ParcelFileDescriptor (do NOT detach): hev uses it
         // while running and we close the pfd ourselves on teardown. The fd is only
         // valid inside THIS process, which is exactly why hev must run in-process.
@@ -819,7 +832,7 @@ class SoildTunnelVpnService : VpnService() {
      * nowhere to be routed, so the tunnel "connects" but no site ever loads.
      * These MUST equal the VpnService addAddress values.
      */
-    private fun writeHevConfig(mtu: Int): File {
+    private fun writeHevConfig(mtu: Int, socksPort: Int = SOCKS_PORT): File {
         // Must mirror establishTun: only the address families the TUN actually has.
         val isV4 = lastProfile?.ipVersion == com.soildtunnel.app.model.IpVersion.V4 || lastProfile?.ipVersion == com.soildtunnel.app.model.IpVersion.BOTH
         val isV6 = lastProfile?.ipVersion == com.soildtunnel.app.model.IpVersion.V6 || lastProfile?.ipVersion == com.soildtunnel.app.model.IpVersion.BOTH
@@ -832,7 +845,7 @@ class SoildTunnelVpnService : VpnService() {
             if (!isV4 && !isV6) appendLine("  ipv4: ${TunnelConfig.TUN_IPV4}")
             appendLine("socks5:")
             appendLine("  address: $SOCKS_HOST")
-            appendLine("  port: $SOCKS_PORT")
+            appendLine("  port: $socksPort")
             appendLine("  udp: 'udp'")
             appendLine("misc:")
             appendLine("  task-stack-size: 86016")
@@ -1129,5 +1142,6 @@ class SoildTunnelVpnService : VpnService() {
          * budget before the hardened second pass is even tried.
          */
         private const val FIRST_PASS_MAX_MS = 75_000L
+        private const val GOOL_CARRIED_EXTRA_MS = 60_000L
     }
 }

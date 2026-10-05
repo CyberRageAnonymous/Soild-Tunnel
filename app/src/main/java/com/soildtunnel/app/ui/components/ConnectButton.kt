@@ -15,7 +15,9 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -43,10 +45,12 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soildtunnel.app.R
@@ -89,11 +93,29 @@ fun ConnectButton(
         ).value
     } else 1f
 
+    // Slow ambient wave tinting the pill background left/right edges.
+    val amb = rememberInfiniteTransition(label = "btnAmbient")
+    val wave by amb.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2_400, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "wave",
+    )
+
     val label = when (mode) {
         ButtonMode.IDLE -> stringResource(R.string.tap_to_connect)
         ButtonMode.BUSY -> stringResource(R.string.state_connecting)
         ButtonMode.CONNECTED -> stringResource(R.string.tap_to_disconnect)
         ButtonMode.ERROR -> stringResource(R.string.state_error)
+    }
+    val hint = when (mode) {
+        ButtonMode.IDLE -> stringResource(R.string.btn_hint_idle)
+        ButtonMode.BUSY -> stringResource(R.string.btn_hint_busy)
+        ButtonMode.CONNECTED -> stringResource(R.string.btn_hint_connected)
+        ButtonMode.ERROR -> stringResource(R.string.btn_hint_error)
     }
     val glyph: ImageVector = when (mode) {
         ButtonMode.BUSY -> Icons.Rounded.Autorenew
@@ -107,6 +129,9 @@ fun ConnectButton(
             .fillMaxWidth()
             .scale(pressScale * breathe),
     ) {
+        if (mode == ButtonMode.CONNECTED) {
+            PulseRings(accent = animatedAccent)
+        }
         Box(
             modifier = Modifier
                 .width(PILL_WIDTH)
@@ -117,7 +142,16 @@ fun ConnectButton(
                     ambientColor = animatedAccent.copy(alpha = 0.45f),
                     spotColor = animatedAccent.copy(alpha = 0.45f),
                 )
-                .background(color = CardSubSurface, shape = RoundedCornerShape(PILL_HEIGHT / 2))
+                .background(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            animatedAccent.copy(alpha = 0.08f + 0.07f * wave),
+                            CardSubSurface,
+                            animatedAccent.copy(alpha = 0.08f + 0.07f * (1f - wave)),
+                        ),
+                    ),
+                    shape = RoundedCornerShape(PILL_HEIGHT / 2),
+                )
                 .border(
                     width = 1.5.dp,
                     brush = Brush.horizontalGradient(
@@ -143,56 +177,147 @@ fun ConnectButton(
             if (mode == ButtonMode.ERROR) {
                 ErrorWash()
             }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-                modifier = Modifier.padding(horizontal = 16.dp),
-            ) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(34.dp)
-                        .background(
-                            color = animatedAccent.copy(alpha = 0.16f),
-                            shape = CircleShape,
-                        )
-                        .border(
-                            1.dp,
-                            animatedAccent.copy(alpha = 0.5f),
-                            CircleShape,
-                        ),
-                ) {
-                    if (mode == ButtonMode.BUSY) {
-                        SpinningGlyph(glyph, animatedAccent)
-                    } else {
-                        Icon(
-                            imageVector = glyph,
-                            contentDescription = null,
-                            tint = animatedAccent,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-                }
-                androidx.compose.foundation.layout.Spacer(Modifier.width(10.dp))
-                Text(
-                    text = label,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    letterSpacing = 0.4.sp,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        shadow = Shadow(
-                            color = animatedAccent.copy(
-                                alpha = if (mode == ButtonMode.CONNECTED) 0.5f else 0.25f,
+            // Glass reflection along the top edge.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth(0.82f)
+                    .height(1.5.dp)
+                    .background(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color.White.copy(alpha = 0.20f),
+                                Color.Transparent,
                             ),
-                            blurRadius = 12f,
                         ),
                     ),
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                )
+            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 7.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(34.dp)
+                            .background(
+                                color = animatedAccent.copy(alpha = 0.16f),
+                                shape = CircleShape,
+                            )
+                            .border(
+                                1.dp,
+                                animatedAccent.copy(alpha = 0.5f),
+                                CircleShape,
+                            ),
+                    ) {
+                        if (mode == ButtonMode.BUSY) {
+                            SpinningGlyph(glyph, animatedAccent)
+                        } else {
+                            Icon(
+                                imageVector = glyph,
+                                contentDescription = null,
+                                tint = animatedAccent,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = label,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        letterSpacing = 0.4.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            shadow = Shadow(
+                                color = animatedAccent.copy(
+                                    alpha = if (mode == ButtonMode.CONNECTED) 0.5f else 0.25f,
+                                ),
+                                blurRadius = 12f,
+                            ),
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(Modifier.height(3.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = hint,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 10.sp,
+                        color = animatedAccent.copy(alpha = 0.85f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (mode == ButtonMode.CONNECTED) {
+                        Spacer(Modifier.width(7.dp))
+                        EqualizerBars(tint = animatedAccent)
+                    }
+                }
             }
+        }
+    }
+}
+
+/** Two expanding pill outlines radiating from the button while connected. */
+@Composable
+private fun PulseRings(accent: Color) {
+    val t by rememberInfiniteTransition(label = "pulse").animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(2_000, easing = LinearEasing)),
+        label = "pulseT",
+    )
+    for (i in 0 until 2) {
+        val p = (t + i * 0.5f) % 1f
+        Box(
+            modifier = Modifier
+                .width(PILL_WIDTH)
+                .height(PILL_HEIGHT)
+                .graphicsLayer {
+                    scaleX = 1f + p * 0.38f
+                    scaleY = 1f + p * 0.38f
+                    alpha = (1f - p) * 0.30f
+                }
+                .border(1.5.dp, accent, RoundedCornerShape(PILL_HEIGHT / 2)),
+        )
+    }
+}
+
+/** Three bottom-aligned bars bouncing out of phase — "live traffic" feel. */
+@Composable
+private fun EqualizerBars(tint: Color) {
+    val transition = rememberInfiniteTransition(label = "eq")
+    val durations = intArrayOf(480, 620, 760)
+    Row(
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        modifier = Modifier.height(14.dp),
+    ) {
+        for (i in 0 until 3) {
+            val h by transition.animateFloat(
+                initialValue = 5f,
+                targetValue = 13f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durations[i], easing = LinearEasing),
+                    repeatMode = RepeatMode.Reverse,
+                ),
+                label = "eqBar$i",
+            )
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height(h.dp)
+                    .background(tint, RoundedCornerShape(1.5.dp)),
+            )
         }
     }
 }

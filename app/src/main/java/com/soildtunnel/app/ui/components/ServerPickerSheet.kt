@@ -58,6 +58,8 @@ import com.soildtunnel.app.core.ServerCatalog
 import com.soildtunnel.app.core.ServerNode
 import com.soildtunnel.app.core.ServerPinger
 import com.soildtunnel.app.model.ConnectionProfile
+import com.soildtunnel.app.model.GoolMode
+import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.ui.theme.CardSubSurface
 import com.soildtunnel.app.ui.theme.CardTextDim
 import com.soildtunnel.app.ui.theme.CardTextMuted
@@ -81,6 +83,17 @@ fun ServerPickerSheet(
     val selected = ServerCatalog.selectedIn(profile)
     val scope = rememberCoroutineScope()
     val sweeping by ServerPinger.sweeping.collectAsState()
+    val servers by ServerCatalog.displayOrder.collectAsState()
+    // Gool on MASQUE always scans automatically: pinned ranges stay dead
+    // for its outer scan, so only Auto is offered. Classic and every other
+    // protocol keep the full list.
+    val masqueOnlyAuto = profile.protocol == Protocol.GOOL &&
+        profile.goolMode == GoolMode.ON_MASQUE
+    val visible = if (masqueOnlyAuto) {
+        servers.filter { it.id == ServerCatalog.AUTO_ID }
+    } else {
+        servers
+    }
 
     // Measure as soon as the console opens — one parallel sweep, ~2.5s max.
     LaunchedEffect(Unit) { ServerPinger.maybeAutoRefresh() }
@@ -104,7 +117,15 @@ fun ServerPickerSheet(
                 NeonSectionLabel(stringResource(R.string.server_pick_title), accent = NeonCyan)
                 Spacer(Modifier.weight(1f))
                 RefreshButton(sweeping = sweeping) {
-                    scope.launch { ServerPinger.refreshAll() }
+                    scope.launch {
+                        // WARP only: rotate the servers (order + probe IPs)
+                        // so they visibly move on every refresh. TOR and the
+                        // other protocols keep the plain re-ping behavior.
+                        if (profile.protocol == Protocol.WIREGUARD) {
+                            ServerCatalog.rotateWarpNodes()
+                        }
+                        ServerPinger.refreshAll()
+                    }
                 }
             }
             Text(
@@ -117,14 +138,22 @@ fun ServerPickerSheet(
                 text = stringResource(R.string.server_anycast_note),
                 fontSize = 11.sp,
                 color = CardTextDim,
-                modifier = Modifier.padding(bottom = 14.dp),
+                modifier = Modifier.padding(bottom = if (masqueOnlyAuto) 6.dp else 14.dp),
             )
+            if (masqueOnlyAuto) {
+                Text(
+                    text = stringResource(R.string.server_masque_auto_note),
+                    fontSize = 11.sp,
+                    color = CardTextDim,
+                    modifier = Modifier.padding(bottom = 14.dp),
+                )
+            }
 
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.height(430.dp),
             ) {
-                itemsIndexed(ServerCatalog.all, key = { _, node -> node.id }) { _, node ->
+                itemsIndexed(visible, key = { _, node -> node.id }) { _, node ->
                     ServerRow(
                         node = node,
                         selected = selected?.id == node.id,

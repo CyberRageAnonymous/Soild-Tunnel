@@ -155,8 +155,20 @@ pub(crate) fn proxy_connect_succeeded(head: &[u8]) -> Option<bool> {
     Some((200..300).contains(&status))
 }
 
+pub async fn bind_listener(listen: SocketAddr) -> Result<TcpListener> {
+    Ok(TcpListener::bind(listen).await?)
+}
+
 pub async fn serve(listen: SocketAddr, stack: StackHandle) -> Result<()> {
-    let listener = TcpListener::bind(listen).await?;
+    let listener = bind_listener(listen).await?;
+    serve_on(listener, listen, stack).await
+}
+
+pub async fn serve_on(
+    listener: TcpListener,
+    listen: SocketAddr,
+    stack: StackHandle,
+) -> Result<()> {
     log::info!("socks5 listening on {listen}");
     let bind_ip = listen.ip();
 
