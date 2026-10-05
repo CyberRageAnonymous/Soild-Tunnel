@@ -107,7 +107,18 @@ fun AdvancedPanel(
                 SegmentedSelector(
                     options = GoolMode.entries,
                     selected = profile.goolMode,
-                    onSelect = { onProfileChange(profile.copy(goolMode = it)) },
+                    onSelect = {
+                        var next = profile.copy(goolMode = it)
+                        // Pinned ranges stay dead for the MASQUE outer scan,
+                        // so entering ON_MASQUE always returns to Auto.
+                        if (it == GoolMode.ON_MASQUE) {
+                            next = next.copy(
+                                endpointMode = EndpointMode.AUTO,
+                                manualRange = "",
+                            )
+                        }
+                        onProfileChange(next)
+                    },
                     label = { goolModeLabel(it) },
                     enabled = enabled,
                 )
