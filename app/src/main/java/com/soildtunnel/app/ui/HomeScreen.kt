@@ -25,6 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.Send
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Update
 import androidx.compose.material3.DrawerValue
@@ -67,6 +68,7 @@ import kotlinx.coroutines.launch
 import com.soildtunnel.app.R
 import com.soildtunnel.app.core.IpEndpoint
 import com.soildtunnel.app.core.NetProbe
+import com.soildtunnel.app.core.OnboardingFlags
 import com.soildtunnel.app.core.ServerCatalog
 import com.soildtunnel.app.core.ServerPinger
 import com.soildtunnel.app.core.TorDefaults
@@ -143,6 +145,10 @@ fun HomeScreen(
     // Tor exit picker (replaces the server console in Tor mode).
     var showTorSheet by remember { mutableStateOf(false) }
     var updateResult by remember { mutableStateOf(UpdateChecker.getCachedResult()) }
+    // One-shot Telegram channel banner (once per install, then never again).
+    var telegramBannerSeen by remember {
+        mutableStateOf(OnboardingFlags.telegramBannerSeen(context))
+    }
     val settingsEnabled = state is ConnectionState.Idle || state is ConnectionState.Error
 
     // Kick off a background sweep when the screen first appears; TTL keeps
@@ -326,6 +332,27 @@ fun HomeScreen(
                             )
                         },
                         onDismiss = { updateResult = UpdateChecker.Result() },
+                    )
+                }
+
+                // One-shot Telegram channel banner.
+                if (!telegramBannerSeen) {
+                    Spacer(Modifier.height(14.dp))
+                    TelegramBanner(
+                        onJoin = {
+                            OnboardingFlags.markTelegramBannerSeen(context)
+                            telegramBannerSeen = true
+                            context.startActivity(
+                                android.content.Intent(
+                                    android.content.Intent.ACTION_VIEW,
+                                    android.net.Uri.parse(URL_TELEGRAM_CHANNEL),
+                                )
+                            )
+                        },
+                        onDismiss = {
+                            OnboardingFlags.markTelegramBannerSeen(context)
+                            telegramBannerSeen = true
+                        },
                     )
                 }
 
@@ -674,6 +701,8 @@ private fun stateSubtitle(state: ConnectionState): String = when (state) {
     else -> stringResource(R.string.tap_to_disconnect)
 }
 
+private const val URL_TELEGRAM_CHANNEL = "https://t.me/cyberrageofficial"
+
 @Composable
 private fun UpdateBanner(
     version: String,
@@ -709,6 +738,55 @@ private fun UpdateBanner(
                 color = NeonAmber,
             )
         }
+        Text(
+            text = "×",
+            color = CardTextMuted,
+            modifier = Modifier
+                .clickable { onDismiss() }
+                .padding(4.dp),
+        )
+    }
+}
+
+@Composable
+private fun TelegramBanner(
+    onJoin: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(NeonCyan.copy(alpha = 0.10f))
+            .border(1.dp, NeonCyan.copy(alpha = 0.30f), RoundedCornerShape(14.dp))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Send,
+            contentDescription = null,
+            tint = NeonCyan,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = stringResource(R.string.banner_telegram_text),
+            style = MaterialTheme.typography.labelLarge,
+            color = CardTextPrimary,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = stringResource(R.string.banner_telegram_join),
+            style = MaterialTheme.typography.labelLarge,
+            color = NeonCyan,
+            modifier = Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .background(NeonCyan.copy(alpha = 0.12f))
+                .border(1.dp, NeonCyan.copy(alpha = 0.35f), RoundedCornerShape(999.dp))
+                .clickable { onJoin() }
+                .padding(horizontal = 14.dp, vertical = 7.dp),
+        )
         Text(
             text = "×",
             color = CardTextMuted,

@@ -249,7 +249,11 @@ pub async fn host_has_ipv6() -> bool {
     }
 }
 
-pub async fn hunt_best_gateway(probe: &MasqueProbe, mode: ScanMode) -> Result<ProbeResult> {
+pub async fn hunt_best_gateway(
+    probe: &MasqueProbe,
+    mode: ScanMode,
+    excluded: &std::collections::HashSet<std::net::SocketAddr>,
+) -> Result<ProbeResult> {
     let mut st = mode.strategy();
     st.concurrency = crate::sysprofile::cap_concurrency(st.concurrency);
     let timeout = st.per_probe_timeout;
@@ -316,6 +320,11 @@ pub async fn hunt_best_gateway(probe: &MasqueProbe, mode: ScanMode) -> Result<Pr
                     None => break,
                     Some(None) => continue,
                     Some(Some(pr)) => {
+                        let addr = std::net::SocketAddr::new(pr.ip, pr.port);
+                        if excluded.contains(&addr) {
+                            log::debug!("[-] candidate {addr} is avoided, skipping");
+                            continue;
+                        }
                         log::info!("[+] candidate ok {}:{} rtt={:?}", pr.ip, pr.port, pr.rtt);
                         if st.early_exit_first {
                             return Ok(pr);
@@ -359,6 +368,122 @@ pub async fn hunt_best_gateway(probe: &MasqueProbe, mode: ScanMode) -> Result<Pr
         }
         None => Err(SoildTunnelError::NoCleanEndpoint),
     }
+}
+
+/// Ranked variant: collects every verified gateway instead of keeping only
+/// the best, so the caller can walk the list (establish + check each) off a
+/// single scan instead of rescanning per candidate.
+pub async fn hunt_ranked_gateways(
+    probe: &MasqueProbe,
+    mode: ScanMode,
+    excluded: &std::collections::HashSet<std::net::SocketAddr>,
+    want: usize,
+) -> Result<Vec<ProbeResult>> {
+    let mut st = mode.strategy();
+    st.concurrency = crate::sysprofile::cap_concurrency(st.concurrency);
+    let timeout = st.per_probe_timeout;
+    let mut effective_ip = probe.ip;
+    if probe.ip.want_v6() && !host_has_ipv6().await {
+        if probe.ip.want_v4() {
+            log::warn!("[-] host has no IPv6 route; falling back to IPv4-only scan");
+            effective_ip = IpScan::V4;
+        } else {
+            log::warn!("[-] host has no IPv6 route; IPv6 scan needs native IPv6 connectivity");
+            return Err(SoildTunnelError::NoCleanEndpoint);
+        }
+    }
+    let candidates = build_candidates(&st, &probe.ports, effective_ip);
+
+    log::info!(
+        "[*] scan mode={} ip={} candidates={} ports={:?} concurrency={} per_probe={:?} budget={:?}",
+        mode.label(),
+        effective_ip.label(),
+        candidates.len(),
+        probe.ports,
+        st.concurrency,
+        st.per_probe_timeout,
+        st.overall_deadline,
+    );
+
+    let ironclad = mode == ScanMode::Ironclad;
+
+    let stream = futures::stream::iter(
+        candidates
+            .into_iter()
+            .map(|(ip, port)| verify_one(probe, ip, port, timeout, ironclad)),
+    )
+    .buffer_unordered(st.concurrency);
+    tokio::pin!(stream);
+
+    let deadline = Instant::now() + st.overall_deadline;
+    let mut collected: Vec<ProbeResult> = Vec::new();
+    let mut quiet_until: Option<Instant> = None;
+
+    loop {
+        let effective = match quiet_until {
+            Some(q) => q.min(deadline),
+            None => deadline,
+        };
+        let remaining = effective.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            if collected.is_empty() {
+                log::warn!("[-] scan deadline reached with no gateway");
+            } else if quiet_until.is_some() {
+                log::info!("[+] no new gateways recently, finalizing selection");
+            } else {
+                log::warn!("[-] scan deadline reached");
+            }
+            break;
+        }
+
+        tokio::select! {
+            item = stream.next() => {
+                match item {
+                    None => break,
+                    Some(None) => continue,
+                    Some(Some(pr)) => {
+                        let addr = std::net::SocketAddr::new(pr.ip, pr.port);
+                        if excluded.contains(&addr) {
+                            log::debug!("[-] candidate {addr} is avoided, skipping");
+                            continue;
+                        }
+                        log::info!("[+] candidate ok {}:{} rtt={:?}", pr.ip, pr.port, pr.rtt);
+                        collected.push(pr);
+
+                        if st.target_successes > 0
+                            && collected.len() >= st.target_successes.max(want)
+                            && quiet_until.is_none()
+                        {
+                            log::info!(
+                                "[+] reached target of {} gateways, collecting ranked list",
+                                collected.len()
+                            );
+                            if !st.quiet_after_first.is_zero() {
+                                quiet_until = Some(Instant::now() + st.quiet_after_first);
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            _ = tokio::time::sleep(remaining) => {
+                if collected.is_empty() {
+                    log::warn!("[-] scan deadline reached with no gateway");
+                } else if quiet_until.is_some() {
+                    log::info!("[+] no new gateways recently, finalizing selection");
+                } else {
+                    log::warn!("[-] scan deadline reached");
+                }
+                break;
+            }
+        }
+    }
+
+    collected.sort_by(|a, b| a.rtt.cmp(&b.rtt));
+    collected.truncate(want);
+    log::info!("[+] ranked {} gateways for walking", collected.len());
+    Ok(collected)
 }
 
 async fn verify_one(

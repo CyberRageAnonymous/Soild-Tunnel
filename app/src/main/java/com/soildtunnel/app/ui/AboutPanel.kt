@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -22,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
@@ -34,6 +36,8 @@ import com.soildtunnel.app.ui.components.PanelCard
 
 private const val URL_PROJECT_GITHUB = "https://github.com/CyberRageAnonymous/Soild-Tunnel"
 private const val URL_TELEGRAM = "https://t.me/cyberrageofficial"
+private const val URL_WEBSITE = "https://soildtunnelvpn.netlify.app"
+private const val URL_X = "https://x.com/CyberRageAnon"
 
 
 
@@ -83,6 +87,8 @@ fun AboutPanel(modifier: Modifier = Modifier) {
             )
             LinkRow(R.drawable.ic_github, "CyberRageAnonymous/Soild-Tunnel", URL_PROJECT_GITHUB)
             LinkRow(R.drawable.ic_telegram, "t.me/cyberrageofficial", URL_TELEGRAM)
+            LinkVectorRow(Icons.Rounded.Public, "soildtunnelvpn.netlify.app", URL_WEBSITE)
+            LinkRow(R.drawable.ic_x, "x.com/CyberRageAnon", URL_X)
             Spacer(Modifier.height(6.dp))
             Text(
                 text = "Released under the GNU AGPL v3. Built on open-source components.",
@@ -90,6 +96,32 @@ fun AboutPanel(modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+@Composable
+private fun LinkVectorRow(icon: ImageVector, label: String, url: String) {
+    val uriHandler = LocalUriHandler.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { runCatching { uriHandler.openUri(url) } }
+            .padding(vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+            tint = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.primary,
+        )
     }
 }
 

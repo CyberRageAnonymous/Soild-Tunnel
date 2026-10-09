@@ -23,6 +23,9 @@ pub enum SoildTunnelError {
     #[error("prober: no clean endpoint found")]
     NoCleanEndpoint,
 
+    #[error("iranian egress, rescanning")]
+    IranianEgress,
+
     #[error("capsule: {0}")]
     Capsule(String),
 

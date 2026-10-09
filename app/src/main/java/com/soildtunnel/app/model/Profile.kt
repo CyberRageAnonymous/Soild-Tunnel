@@ -423,6 +423,11 @@ data class ConnectionProfile(
         if (protocol == Protocol.GOOL && mtu != DEFAULT_MTU) {
             put("SOILDTUNNEL_TUN_MTU", mtu.coerceIn(1280, 1500).toString())
         }
+        // Gool stacks two tunnels on hostile networks where >10s stalls are
+        // routine; give both hops a longer death threshold than the default.
+        if (protocol == Protocol.GOOL) {
+            put("SOILDTUNNEL_WG_STALE_SECS", "30")
+        }
         if (validateSecs > 0) {
             put("SOILDTUNNEL_MASQUE_VALIDATE_SECS", validateSecs.coerceIn(1, 3600).toString())
         }

@@ -381,40 +381,51 @@ class SoildTunnelVpnService : VpnService() {
      * The protocol the user chose is never swapped for another one.
      */
     private fun directPlan(profile: ConnectionProfile): List<AutoCandidate> {
-        val fullBudget = profile.connectTimeoutMs()
-        val hardenedNoize = if (profile.noize == Noize.OFF) Noize.FIREWALL else profile.noize
-        val masque = profile.protocol == Protocol.MASQUE
-        val hardened = profile.copy(
+        // Gool on MASQUE always scans automatically: a stale pinned endpoint
+        // would kill its outer scan, so it is dropped back to Auto here.
+        // Classic keeps pins untouched.
+        val effective = if (profile.protocol == Protocol.GOOL &&
+            profile.goolMode == GoolMode.ON_MASQUE &&
+            profile.endpointMode != EndpointMode.AUTO
+        ) {
+            DiagnosticsLog.i(TAG, "Gool on MASQUE ignores the pinned endpoint and scans automatically")
+            profile.copy(endpointMode = EndpointMode.AUTO, manualRange = "", manualPeer = "")
+        } else {
+            profile
+        }
+        val fullBudget = effective.connectTimeoutMs()
+        val hardenedNoize = if (effective.noize == Noize.OFF) Noize.FIREWALL else effective.noize
+        val masque = effective.protocol == Protocol.MASQUE
+        val hardened = effective.copy(
             noize = hardenedNoize,
-            masqueHttp2 = profile.masqueHttp2 || masque,
-            fragment = profile.fragment || masque,
-            ech = profile.ech || masque,
+            masqueHttp2 = effective.masqueHttp2 || masque,
+            fragment = effective.fragment || masque,
+            ech = effective.ech || masque,
         )
-        if (hardened == profile) {
+        if (hardened == effective) {
             return listOf(
-                AutoCandidate(profile, fullBudget, "${profile.protocol.name} · as configured"),
+                AutoCandidate(effective, fullBudget, "${effective.protocol.name} · as configured"),
             )
         }
-        // Gool carried inside MASQUE needs one extra hop after the outer
-        // tunnel is up (register + dial the inner identity), so its first
-        // pass gets a wider cap than a single-hop protocol.
-        val firstPassMax = if (profile.protocol == Protocol.GOOL &&
-            profile.goolMode == GoolMode.ON_MASQUE
-        ) {
+        // Gool needs one extra hop after the outer tunnel is up (carried:
+        // register + dial the inner identity; classic: a second WireGuard
+        // tunnel), plus cold scans on hostile networks, so its first pass
+        // gets a wider cap than a single-hop protocol.
+        val firstPassMax = if (effective.protocol == Protocol.GOOL) {
             FIRST_PASS_MAX_MS + GOOL_CARRIED_EXTRA_MS
         } else {
             FIRST_PASS_MAX_MS
         }
         return listOf(
             AutoCandidate(
-                profile,
+                effective,
                 fullBudget.coerceAtMost(firstPassMax),
-                "${profile.protocol.name} · as configured",
+                "${effective.protocol.name} · as configured",
             ),
             AutoCandidate(
                 hardened,
                 fullBudget,
-                "${profile.protocol.name} · noize=${hardenedNoize.name.lowercase()}" +
+                "${effective.protocol.name} · noize=${hardenedNoize.name.lowercase()}" +
                     (if (masque) " · h2 · fragment · ech" else "") + " (anti-DPI pass)",
             ),
         )
@@ -577,6 +588,10 @@ class SoildTunnelVpnService : VpnService() {
         // Switches observed before supervision starts (initial onAvailable
         // storm right after registration) must not count as a network change.
         var lastHandledSwitch = System.currentTimeMillis()
+        // Set once SOCKS opens under the current engine process; while it
+        // never opened, the engine is still recovering and the connect
+        // timeout (not the watchdog) owns the deadline.
+        var socksOpened = false
         while (currentScopeActive()) {
             if (engine?.isAlive() == true) {
                 attempt = 0
@@ -600,6 +615,7 @@ class SoildTunnelVpnService : VpnService() {
                 if (engine?.isAlive() == true) {
                     if (probeTunnelCycle()) {
                         probeFailures = 0
+                        socksOpened = true
                     } else if (switched) {
                         // Wi-Fi <-> mobile handover kills most QUIC/WG
                         // sessions outright, so a single failed probe after a
@@ -608,6 +624,9 @@ class SoildTunnelVpnService : VpnService() {
                         DiagnosticsLog.w(TAG, "Network changed and the tunnel did not survive it -- fast restart.")
                         probeFailures = 0
                         engine?.stop()
+                    } else if (!socksOpened) {
+                        // Still recovering: SOCKS never opened since the
+                        // engine started, so there is nothing to declare dead.
                     } else if (++probeFailures >= WATCHDOG_FAIL_CYCLES) {
                         DiagnosticsLog.w(
                             TAG,
@@ -636,6 +655,7 @@ class SoildTunnelVpnService : VpnService() {
             delay(backoff)
 
             engine = SoildTunnelProcess(applicationInfo.nativeLibraryDir, filesDir).also { it.start(profile) }
+            socksOpened = false
             if (PortProbe.awaitOpen(SOCKS_HOST, SOCKS_PORT, profile.connectTimeoutMs()) { engine?.isAlive() == true }) {
                 // Same gate as the initial connect: never claim Connected after
                 // a silent engine restart until traffic really flows again.

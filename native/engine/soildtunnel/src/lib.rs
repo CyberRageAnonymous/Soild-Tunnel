@@ -32,6 +32,7 @@ pub mod zerotrust;
 
 use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Instant;
 
 use error::{SoildTunnelError, Result};
@@ -151,7 +152,8 @@ pub async fn run_with(args: Vec<String>) -> Result<()> {
                 "[+] outer device={} ipv4={} | inner device={} ipv4={}",
                 primary.device_id, primary.ipv4, secondary.device_id, secondary.ipv4
             );
-            run_gool(primary, secondary, listen).await
+            let lastconn_path = lastconn_path(&primary_path);
+            run_gool(primary, secondary, listen, lastconn_path).await
         }
     }
 }
@@ -160,11 +162,28 @@ async fn run_gool(
     primary: account::Identity,
     secondary: account::Identity,
     listen: SocketAddr,
+    lastconn_path: String,
 ) -> Result<()> {
     let mut last_peer: Option<SocketAddr> = None;
     let mut last_inner: Option<SocketAddr> = None;
     let mut consecutive_fails: u32 = 0;
     const MAX_CONSECUTIVE_FAILS: u32 = 2;
+
+    // One-shot reuse of the last working pair across restarts: the normal
+    // establish validation still confirms it, so a stale entry only costs
+    // one failed handshake before a fresh scan. Never applied over a pinned
+    // range or a forced peer.
+    let mut cached: Option<(SocketAddr, SocketAddr)> = if std::env::var("SOILDTUNNEL_SCAN_CIDRS")
+        .is_ok()
+        || std::env::var("SOILDTUNNEL_WG_PEER").is_ok()
+    {
+        None
+    } else {
+        lastconn::load(&lastconn_path).and_then(|c| {
+            let (outer, inner) = c.peer.split_once(',')?;
+            Some((outer.trim().parse().ok()?, inner.trim().parse().ok()?))
+        })
+    };
 
     loop {
         let peer = if consecutive_fails < MAX_CONSECUTIVE_FAILS {
@@ -185,19 +204,27 @@ async fn run_gool(
         let pair = match peer {
             Some(p) => Some((p, last_inner)),
             None => {
-                let mode_str = select_scan_mode_str().await;
-                let ip = select_ip_version().await;
-                match select_wg_peers(&primary, &mode_str, ip, 2).await {
-                    Ok(found) => {
-                        consecutive_fails = 0;
-                        let outer = found[0];
-                        let inner = found.get(1).copied();
-                        Some((outer, inner))
-                    }
-                    Err(e) => {
-                        log::warn!("[-] no usable outer WARP endpoint found: {e}; rescanning shortly");
-                        tokio::time::sleep(wg_reconnect_delay()).await;
-                        continue;
+                if let Some((outer, inner)) = cached.take() {
+                    log::info!(
+                        "[*] reusing last working warp-in-warp pair {outer} / {inner} before rescanning"
+                    );
+                    consecutive_fails = 0;
+                    Some((outer, Some(inner)))
+                } else {
+                    let mode_str = select_scan_mode_str().await;
+                    let ip = select_ip_version().await;
+                    match select_wg_peers(&primary, &mode_str, ip, 2).await {
+                        Ok(found) => {
+                            consecutive_fails = 0;
+                            let outer = found[0];
+                            let inner = found.get(1).copied();
+                            Some((outer, inner))
+                        }
+                        Err(e) => {
+                            log::warn!("[-] no usable outer WARP endpoint found: {e}; rescanning shortly");
+                            tokio::time::sleep(wg_reconnect_delay()).await;
+                            continue;
+                        }
                     }
                 }
             }
@@ -224,6 +251,9 @@ async fn run_gool(
         log::info!("[+] using cloudflare edge {peer} (outer) and {inner_peer} (inner)");
         last_peer = Some(peer);
         last_inner = Some(inner_peer);
+        let noize_profile =
+            std::env::var("SOILDTUNNEL_NOIZE").unwrap_or_else(|_| "balanced".to_string());
+        lastconn::save(&lastconn_path, &format!("{peer},{inner_peer}"), &noize_profile);
 
         match run_warp_in_warp(primary.clone(), secondary.clone(), peer, inner_peer, listen).await {
             Ok(()) => log::warn!("[-] gool tunnel closed; reconnecting"),
@@ -594,7 +624,7 @@ async fn select_peer(identity: &account::Identity, protocol: Protocol) -> Result
                 local_ipv4: parse_local_v4(&identity.ipv4),
             };
 
-            let best = prober::hunt_best_gateway(&probe, mode).await?;
+            let best = prober::hunt_best_gateway(&probe, mode, &HashSet::new()).await?;
             log::info!("[+] selected MASQUE gateway {}:{} (rtt {:?})", best.ip, best.port, best.rtt);
             Ok(SocketAddr::new(best.ip, best.port))
         }
@@ -699,8 +729,43 @@ async fn hunt_masque_peer(
     identity: &account::Identity,
     mode_str: &str,
     ip: prober::IpScan,
+    excluded: &HashSet<SocketAddr>,
 ) -> Result<SocketAddr> {
     log::info!("[*] hunting for a working MASQUE gateway (deep connect-ip + data-plane verification)");
+    let (mode, probe) = masque_probe(identity, mode_str, ip);
+
+    let best = prober::hunt_best_gateway(&probe, mode, excluded).await?;
+    log::info!(
+        "[+] selected MASQUE gateway {}:{} (rtt {:?})",
+        best.ip,
+        best.port,
+        best.rtt
+    );
+    Ok(SocketAddr::new(best.ip, best.port))
+}
+
+async fn hunt_masque_peers(
+    identity: &account::Identity,
+    mode_str: &str,
+    ip: prober::IpScan,
+    excluded: &HashSet<SocketAddr>,
+    want: usize,
+) -> Result<Vec<SocketAddr>> {
+    log::info!("[*] hunting for ranked MASQUE gateways (deep connect-ip + data-plane verification)");
+    let (mode, probe) = masque_probe(identity, mode_str, ip);
+
+    let ranked = prober::hunt_ranked_gateways(&probe, mode, excluded, want).await?;
+    Ok(ranked
+        .into_iter()
+        .map(|pr| SocketAddr::new(pr.ip, pr.port))
+        .collect())
+}
+
+fn masque_probe(
+    identity: &account::Identity,
+    mode_str: &str,
+    ip: prober::IpScan,
+) -> (prober::ScanMode, prober::MasqueProbe) {
     let mode = prober::ScanMode::parse(mode_str);
     let probe = prober::MasqueProbe {
         sni: consts::effective_sni(),
@@ -714,15 +779,7 @@ async fn hunt_masque_peer(
         ip,
         local_ipv4: parse_local_v4(&identity.ipv4),
     };
-
-    let best = prober::hunt_best_gateway(&probe, mode).await?;
-    log::info!(
-        "[+] selected MASQUE gateway {}:{} (rtt {:?})",
-        best.ip,
-        best.port,
-        best.rtt
-    );
-    Ok(SocketAddr::new(best.ip, best.port))
+    (mode, probe)
 }
 
 
@@ -788,6 +845,7 @@ async fn run_masque(
     lastconn_path: String,
     inner_path: Option<String>,
 ) -> Result<()> {
+    const RANKED_GATEWAYS: usize = 10;
     let forced = std::env::var("SOILDTUNNEL_PEER").ok();
 
     let mut quick_peer: Option<SocketAddr> = None;
@@ -834,6 +892,12 @@ async fn run_masque(
     };
 
     let mut last_good_peer: Option<SocketAddr> = None;
+    let mut ranked: Vec<SocketAddr> = Vec::new();
+    let avoid_path = derive_sibling_path(&lastconn_path, "avoid");
+    let mut avoid: HashSet<SocketAddr> = lastconn::load_avoided(&avoid_path);
+    if !avoid.is_empty() {
+        log::info!("[+] {} avoided gateways remembered", avoid.len());
+    }
 
     loop {
         let peer = if let Some(p) = quick_peer.take() {
@@ -862,17 +926,56 @@ async fn run_masque(
                         }
                         Err(_) => return Err(SoildTunnelError::Other(format!("bad peer address {p}"))),
                     },
-                    None => match hunt_masque_peer(&identity, &mode_str, ip).await {
-                        Ok(peer) => peer,
-                        Err(e) => {
-                            log::warn!("[-] no usable MASQUE gateway found: {e}; rescanning shortly");
-                            tokio::time::sleep(masque_reconnect_delay()).await;
-                            continue;
+                    None => {
+                        if inner_path.is_some() {
+                            if ranked.is_empty() {
+                                match hunt_masque_peers(
+                                    &identity,
+                                    &mode_str,
+                                    ip,
+                                    &avoid,
+                                    RANKED_GATEWAYS,
+                                )
+                                .await
+                                {
+                                    Ok(peers) => {
+                                        ranked = peers
+                                            .into_iter()
+                                            .filter(|p| !avoid.contains(p))
+                                            .collect();
+                                    }
+                                    Err(e) => {
+                                        log::warn!("[-] no usable MASQUE gateway found: {e}; rescanning shortly");
+                                        tokio::time::sleep(masque_reconnect_delay()).await;
+                                        continue;
+                                    }
+                                }
+                            }
+                            if ranked.is_empty() {
+                                log::warn!("[-] ranked gateways exhausted; rescanning");
+                                continue;
+                            }
+                            ranked.remove(0)
+                        } else {
+                            match hunt_masque_peer(&identity, &mode_str, ip, &avoid).await {
+                                Ok(peer) => peer,
+                                Err(e) => {
+                                    log::warn!("[-] no usable MASQUE gateway found: {e}; rescanning shortly");
+                                    tokio::time::sleep(masque_reconnect_delay()).await;
+                                    continue;
+                                }
+                            }
                         }
-                    },
+                    }
                 },
             }
         };
+
+        if forced.is_none() && avoid.contains(&peer) {
+            log::warn!("[-] gateway {peer} is avoided (iranian egress); rescanning");
+            last_good_peer = None;
+            continue;
+        }
 
         log::info!("[+] using cloudflare edge {peer}");
 
@@ -884,8 +987,26 @@ async fn run_masque(
         last_good_peer = Some(peer);
 
         match run_masque_tunnel(&identity, peer, ech.clone(), listen, inner_path.clone()).await {
-            Ok(()) => log::warn!("[-] MASQUE tunnel closed; reconnecting"),
-            Err(e) => log::warn!("[-] MASQUE tunnel ended: {e}; reconnecting"),
+            Ok(()) => {
+                log::warn!("[-] MASQUE tunnel closed; reconnecting");
+                ranked.clear();
+            }
+            Err(SoildTunnelError::IranianEgress) => {
+                log::warn!("[-] gateway {peer} exits in IR; avoiding it and rescanning");
+                avoid.insert(peer);
+                lastconn::save_avoided(&avoid_path, &avoid);
+                lastconn::forget(&lastconn_path, &peer.to_string());
+                last_good_peer = None;
+                if forced.is_some() {
+                    return Err(SoildTunnelError::IranianEgress);
+                }
+            }
+            Err(e) => {
+                log::warn!("[-] MASQUE tunnel ended: {e}; reconnecting");
+                if inner_path.is_some() {
+                    last_good_peer = None;
+                }
+            }
         }
 
         tokio::time::sleep(masque_reconnect_delay()).await;
@@ -1019,6 +1140,10 @@ async fn run_masque_tunnel(
 const GOOL_INNER_ATTEMPTS: u32 = 2;
 const GOOL_INNER_PORT: u16 = 2408;
 const GOOL_INNER_MTU: usize = 1200;
+const PIPE_AFTER_IR: usize = 6;
+
+static OUTER_IR_STREAK: AtomicUsize = AtomicUsize::new(0);
+static INNER_REPROVISIONED: AtomicBool = AtomicBool::new(false);
 
 fn gool_classic() -> bool {
     matches!(
@@ -1095,24 +1220,81 @@ async fn carried_wg_identity(
     Ok(identity)
 }
 
+/// Ask where the outer tunnel exits, through the tunnel itself, with a plain
+/// HTTP geo lookup. Only a certain "IR" answer is trusted; anything
+/// inconclusive (rate limit, timeout, parse failure) lets the hop proceed, so
+/// a flaky lookup can never block connecting.
+async fn outer_exit_country(outer: &netstack::StackHandle) -> Result<Option<String>> {
+    let ip = socks::dns_resolve(outer, "ip-api.com").await?;
+    let conn = outer.open_tcp(SocketAddr::new(ip, 80)).await?;
+    let (sender, mut from_stack) = conn.into_split();
+    sender
+        .send(
+            b"GET http://ip-api.com/json/ HTTP/1.0\r\nHost: ip-api.com\r\nUser-Agent: Mozilla/5.0\r\nConnection: close\r\n\r\n"
+                .to_vec(),
+        )
+        .await?;
+    let mut raw: Vec<u8> = Vec::new();
+    while let Some(chunk) = from_stack.recv().await {
+        raw.extend_from_slice(&chunk);
+        if raw.len() > 8192 {
+            break;
+        }
+    }
+    let text = String::from_utf8_lossy(&raw);
+    let marker = "\"countryCode\":\"";
+    if let Some(start) = text.find(marker) {
+        let code: String = text[start + marker.len()..].chars().take(2).collect();
+        if code.len() == 2 && code.bytes().all(|b| b.is_ascii_alphabetic()) {
+            return Ok(Some(code.to_uppercase()));
+        }
+    }
+    Ok(None)
+}
+
 async fn run_carried_hop(
     outer: &netstack::StackHandle,
     outer_exit: &mut TunnelExit,
     listen: SocketAddr,
     inner_path: String,
 ) -> Result<()> {
-    let identity = carried_wg_identity(outer, &inner_path).await?;
-    let candidates = gool_inner_peers(&identity);
-    if candidates.is_empty() {
-        return Err(SoildTunnelError::Other(
-            "no wireguard endpoint for the carried identity".into(),
-        ));
+    let had_saved = std::path::Path::new(&inner_path).exists();
+    let mut outer_ir = false;
+    match tokio::time::timeout(std::time::Duration::from_secs(10), outer_exit_country(outer)).await
+    {
+        Ok(Ok(Some(country))) if country == "IR" && !had_saved => {
+            let streak = OUTER_IR_STREAK.fetch_add(1, Ordering::SeqCst) + 1;
+            if streak < PIPE_AFTER_IR {
+                log::warn!("[-] gool: outer gateway exits in IR; dropping it and rescanning");
+                return Err(SoildTunnelError::IranianEgress);
+            }
+            OUTER_IR_STREAK.store(0, Ordering::SeqCst);
+            outer_ir = true;
+            log::warn!("[-] gool: all recent gateways exit in IR; using this one as a pipe and checking the inner exit");
+        }
+        Ok(Ok(Some(country))) if country == "IR" => {
+            log::info!("[+] gool: outer gateway exits in IR; saved identity exists, using it as a pipe");
+        }
+        Ok(Ok(Some(country))) => {
+            OUTER_IR_STREAK.store(0, Ordering::SeqCst);
+            log::info!("[+] gool: outer gateway exits in {country}");
+        }
+        _ => log::debug!("[*] gool: outer exit country unknown; continuing"),
     }
 
-    let mut established: Option<(SocketAddr, (netstack::StackHandle, TunnelExit), TaskGuard)> =
-        None;
-    let mut last_error =
-        SoildTunnelError::Other("no wireguard endpoint for the carried identity".into());
+    let mut identity = carried_wg_identity(outer, &inner_path).await?;
+    let mut saw_inner_ir = false;
+
+    loop {
+        let candidates = gool_inner_peers(&identity);
+        if candidates.is_empty() {
+            return Err(SoildTunnelError::Other(
+                "no wireguard endpoint for the carried identity".into(),
+            ));
+        }
+
+        let mut last_error =
+            SoildTunnelError::Other("no wireguard endpoint for the carried identity".into());
 
     'peers: for inner_peer in candidates {
         let (forwarder, forwarder_guard) = spawn_udp_forwarder(outer, inner_peer).await?;
@@ -1120,10 +1302,62 @@ async fn run_carried_hop(
             "[+] gool: wireguard endpoint {inner_peer} tunneled through masque via {forwarder}"
         );
         for attempt in 1..=GOOL_INNER_ATTEMPTS {
-            match establish_wg(&identity, forwarder, GOOL_INNER_MTU, false, 25, "gool").await {
-                Ok(hop) => {
-                    established = Some((inner_peer, hop, forwarder_guard));
-                    break 'peers;
+            match establish_wg(&identity, forwarder, GOOL_INNER_MTU, false, 10, "gool").await {
+                Ok((inner_stack, mut inner_exit)) => {
+                    match tokio::time::timeout(
+                        std::time::Duration::from_secs(10),
+                        outer_exit_country(&inner_stack),
+                    )
+                    .await
+                    {
+                        Ok(Ok(Some(country))) if country == "IR" => {
+                            log::warn!(
+                                "[-] gool inner {inner_peer} exits in IR; trying next endpoint"
+                            );
+                            saw_inner_ir = true;
+                            inner_exit.abort();
+                            continue 'peers;
+                        }
+                        Ok(Ok(Some(country))) => {
+                            log::info!("[+] gool inner exits in {country}");
+                        }
+                        _ => log::debug!("[*] gool inner exit country unknown; continuing"),
+                    }
+
+                    let endpoint = inner_peer.ip().to_string();
+                    if identity.assigned_endpoint != endpoint
+                        && std::env::var("SOILDTUNNEL_GOOL_INNER").is_err()
+                    {
+                        let remembered = account::Identity {
+                            assigned_endpoint: endpoint.clone(),
+                            ..identity.clone()
+                        };
+                        if config::save(&inner_path, &remembered).is_ok() {
+                            log::info!("[+] gool remembers {endpoint} as its wireguard endpoint");
+                        }
+                    }
+
+                    log::info!("[+] gool ready: wireguard {inner_peer} rides inside masque");
+
+                    let http_task = spawn_http_proxy(&inner_stack);
+                    let socks_stack = inner_stack.clone();
+                    let mut socks_task =
+                        tokio::spawn(async move { socks::serve(listen, socks_stack).await });
+
+                    let outcome = tokio::select! {
+                        result = &mut *outer_exit => join_outcome("masque tunnel", result),
+                        result = &mut inner_exit => join_outcome("carried wireguard tunnel", result),
+                        result = &mut socks_task => join_outcome("socks5 server", result),
+                    };
+
+                    if let Some(task) = &http_task {
+                        task.abort();
+                    }
+                    inner_exit.abort();
+                    socks_task.abort();
+                    drop(forwarder_guard);
+
+                    return outcome;
                 }
                 Err(e) => {
                     log::warn!(
@@ -1135,41 +1369,18 @@ async fn run_carried_hop(
         }
     }
 
-    let Some((inner_peer, (inner_stack, mut inner_exit), forwarder_guard)) = established else {
-        return Err(last_error);
-    };
-
-    let endpoint = inner_peer.ip().to_string();
-    if identity.assigned_endpoint != endpoint && std::env::var("SOILDTUNNEL_GOOL_INNER").is_err() {
-        let remembered = account::Identity {
-            assigned_endpoint: endpoint.clone(),
-            ..identity.clone()
-        };
-        if config::save(&inner_path, &remembered).is_ok() {
-            log::info!("[+] gool remembers {endpoint} as its wireguard endpoint");
+        if had_saved && !outer_ir && saw_inner_ir && !INNER_REPROVISIONED.swap(true, Ordering::SeqCst)
+        {
+            log::warn!(
+                "[-] gool: every inner endpoint exits in IR; registering a fresh identity and retrying once"
+            );
+            let _ = std::fs::remove_file(&inner_path);
+            identity = carried_wg_identity(outer, &inner_path).await?;
+            continue;
         }
+
+        return Err(last_error);
     }
-
-    log::info!("[+] gool ready: wireguard {inner_peer} rides inside masque");
-
-    let http_task = spawn_http_proxy(&inner_stack);
-    let socks_stack = inner_stack.clone();
-    let mut socks_task = tokio::spawn(async move { socks::serve(listen, socks_stack).await });
-
-    let outcome = tokio::select! {
-        result = outer_exit => join_outcome("masque tunnel", result),
-        result = &mut inner_exit => join_outcome("carried wireguard tunnel", result),
-        result = &mut socks_task => join_outcome("socks5 server", result),
-    };
-
-    if let Some(task) = &http_task {
-        task.abort();
-    }
-    inner_exit.abort();
-    socks_task.abort();
-    drop(forwarder_guard);
-
-    outcome
 }
 
 fn wg_keepalive_secs() -> u16 {

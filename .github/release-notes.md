@@ -1,18 +1,17 @@
-# SoildTunnel v1.0.9
+# SoildTunnel v1.1.0
 
-This one is all about getting you a clean, non-Iranian IP without the fuss.
+If Gool ever gave you an Iranian IP or kept dropping on rough networks, this release is for you.
 
-**Gool finally exits abroad:**
-- Gool now rides carried inside MASQUE by default, so your WARP identity is born with a foreign IP — no more Iranian exits.
-- New Gool mode switch in Advanced settings: stay on MASQUE, or fall back to classic WARP-in-WARP.
-- On MASQUE mode the server list steps aside and just offers Auto, since pinned ranges can't serve its outer scan.
+**Gool you can finally rely on:**
+- The app now checks where every gateway really exits and skips the Iranian ones, walking down the list until it lands you a foreign exit.
+- Reconnects are much faster — your last working setup is reused first instead of rescanning everything from zero.
+- Dropped tunnels recover calmly now: the watchdog waits patiently while the engine finds its way back instead of pulling the plug mid-recovery.
+- Short network stalls no longer kill the tunnel at the first hiccup.
 
-**Fresh touches:**
-- Speed test built right into the app, plus a stealth scan preset for rough networks.
-- The connect button got a full makeover — pulse rings and live hints — and the telemetry console now wears a round neon ring.
-- Hitting refresh on WARP servers actually shuffles them now, so the list feels alive.
+**Small touches you'll notice:**
+- WARP servers shuffle when you hit refresh, so the list always feels fresh.
+- Find our website and X account in About — and you'll get a one-time hello inviting you to our Telegram channel.
 
-**Under the hood:**
-- Psiphon backend removed entirely; smaller app, fewer moving parts.
+Thanks for sticking with us, and enjoy the cleaner exits.
 
-Version: SoildTunnel 1.0.9 (version code 10).
+Version: SoildTunnel 1.1.0 (version code 11).
