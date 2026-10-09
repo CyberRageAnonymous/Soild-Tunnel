@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AlternateEmail
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material3.HorizontalDivider
@@ -89,7 +88,7 @@ fun AboutPanel(modifier: Modifier = Modifier) {
             LinkRow(R.drawable.ic_github, "CyberRageAnonymous/Soild-Tunnel", URL_PROJECT_GITHUB)
             LinkRow(R.drawable.ic_telegram, "t.me/cyberrageofficial", URL_TELEGRAM)
             LinkVectorRow(Icons.Rounded.Public, "soildtunnelvpn.netlify.app", URL_WEBSITE)
-            LinkVectorRow(Icons.Rounded.AlternateEmail, "x.com/CyberRageAnon", URL_X)
+            LinkRow(R.drawable.ic_x, "x.com/CyberRageAnon", URL_X)
             Spacer(Modifier.height(6.dp))
             Text(
                 text = "Released under the GNU AGPL v3. Built on open-source components.",
