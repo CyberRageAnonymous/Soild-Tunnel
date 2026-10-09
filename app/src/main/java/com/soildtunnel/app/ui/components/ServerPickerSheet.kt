@@ -70,6 +70,11 @@ import com.soildtunnel.app.ui.theme.NeonMint
 import com.soildtunnel.app.ui.theme.SheetGlass
 import com.soildtunnel.app.ui.theme.latencyColor
 
+/** Rotation applies to classic WARP transports only. */
+private fun warpRotation(profile: ConnectionProfile): Boolean =
+    profile.protocol == Protocol.WIREGUARD ||
+        (profile.protocol == Protocol.GOOL && profile.goolMode == GoolMode.CLASSIC)
+
 /** Server list bottom sheet with live ping badges. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -94,7 +99,6 @@ fun ServerPickerSheet(
     } else {
         servers
     }
-
     // Measure as soon as the console opens — one parallel sweep, ~2.5s max.
     LaunchedEffect(Unit) { ServerPinger.maybeAutoRefresh() }
 
@@ -118,10 +122,7 @@ fun ServerPickerSheet(
                 Spacer(Modifier.weight(1f))
                 RefreshButton(sweeping = sweeping) {
                     scope.launch {
-                        // WARP only: rotate the servers (order + probe IPs)
-                        // so they visibly move on every refresh. TOR and the
-                        // other protocols keep the plain re-ping behavior.
-                        if (profile.protocol == Protocol.WIREGUARD) {
+                        if (warpRotation(profile)) {
                             ServerCatalog.rotateWarpNodes()
                         }
                         ServerPinger.refreshAll()

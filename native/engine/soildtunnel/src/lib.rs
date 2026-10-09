@@ -1268,8 +1268,6 @@ async fn run_carried_hop(
         ));
     }
 
-    let mut established: Option<(SocketAddr, (netstack::StackHandle, TunnelExit), TaskGuard)> =
-        None;
     let mut last_error =
         SoildTunnelError::Other("no wireguard endpoint for the carried identity".into());
 
@@ -1280,9 +1278,60 @@ async fn run_carried_hop(
         );
         for attempt in 1..=GOOL_INNER_ATTEMPTS {
             match establish_wg(&identity, forwarder, GOOL_INNER_MTU, false, 25, "gool").await {
-                Ok(hop) => {
-                    established = Some((inner_peer, hop, forwarder_guard));
-                    break 'peers;
+                Ok((inner_stack, mut inner_exit)) => {
+                    match tokio::time::timeout(
+                        std::time::Duration::from_secs(10),
+                        outer_exit_country(&inner_stack),
+                    )
+                    .await
+                    {
+                        Ok(Ok(Some(country))) if country == "IR" => {
+                            log::warn!(
+                                "[-] gool inner {inner_peer} exits in IR; trying next endpoint"
+                            );
+                            inner_exit.abort();
+                            continue 'peers;
+                        }
+                        Ok(Ok(Some(country))) => {
+                            log::info!("[+] gool inner exits in {country}");
+                        }
+                        _ => log::debug!("[*] gool inner exit country unknown; continuing"),
+                    }
+
+                    let endpoint = inner_peer.ip().to_string();
+                    if identity.assigned_endpoint != endpoint
+                        && std::env::var("SOILDTUNNEL_GOOL_INNER").is_err()
+                    {
+                        let remembered = account::Identity {
+                            assigned_endpoint: endpoint.clone(),
+                            ..identity.clone()
+                        };
+                        if config::save(&inner_path, &remembered).is_ok() {
+                            log::info!("[+] gool remembers {endpoint} as its wireguard endpoint");
+                        }
+                    }
+
+                    log::info!("[+] gool ready: wireguard {inner_peer} rides inside masque");
+
+                    let http_task = spawn_http_proxy(&inner_stack);
+                    let socks_stack = inner_stack.clone();
+                    let mut socks_task =
+                        tokio::spawn(async move { socks::serve(listen, socks_stack).await });
+
+                    let outcome = tokio::select! {
+                        result = &mut *outer_exit => join_outcome("masque tunnel", result),
+                        result = &mut inner_exit => join_outcome("carried wireguard tunnel", result),
+                        result = &mut socks_task => join_outcome("socks5 server", result),
+                    };
+
+                    if let Some(task) = &http_task {
+                        task.abort();
+                    }
+                    inner_exit.abort();
+                    socks_task.abort();
+                    drop(forwarder_guard);
+
+                    return outcome;
                 }
                 Err(e) => {
                     log::warn!(
@@ -1294,41 +1343,7 @@ async fn run_carried_hop(
         }
     }
 
-    let Some((inner_peer, (inner_stack, mut inner_exit), forwarder_guard)) = established else {
-        return Err(last_error);
-    };
-
-    let endpoint = inner_peer.ip().to_string();
-    if identity.assigned_endpoint != endpoint && std::env::var("SOILDTUNNEL_GOOL_INNER").is_err() {
-        let remembered = account::Identity {
-            assigned_endpoint: endpoint.clone(),
-            ..identity.clone()
-        };
-        if config::save(&inner_path, &remembered).is_ok() {
-            log::info!("[+] gool remembers {endpoint} as its wireguard endpoint");
-        }
-    }
-
-    log::info!("[+] gool ready: wireguard {inner_peer} rides inside masque");
-
-    let http_task = spawn_http_proxy(&inner_stack);
-    let socks_stack = inner_stack.clone();
-    let mut socks_task = tokio::spawn(async move { socks::serve(listen, socks_stack).await });
-
-    let outcome = tokio::select! {
-        result = outer_exit => join_outcome("masque tunnel", result),
-        result = &mut inner_exit => join_outcome("carried wireguard tunnel", result),
-        result = &mut socks_task => join_outcome("socks5 server", result),
-    };
-
-    if let Some(task) = &http_task {
-        task.abort();
-    }
-    inner_exit.abort();
-    socks_task.abort();
-    drop(forwarder_guard);
-
-    outcome
+    Err(last_error)
 }
 
 fn wg_keepalive_secs() -> u16 {
