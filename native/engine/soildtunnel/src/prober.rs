@@ -249,7 +249,11 @@ pub async fn host_has_ipv6() -> bool {
     }
 }
 
-pub async fn hunt_best_gateway(probe: &MasqueProbe, mode: ScanMode) -> Result<ProbeResult> {
+pub async fn hunt_best_gateway(
+    probe: &MasqueProbe,
+    mode: ScanMode,
+    excluded: &std::collections::HashSet<std::net::SocketAddr>,
+) -> Result<ProbeResult> {
     let mut st = mode.strategy();
     st.concurrency = crate::sysprofile::cap_concurrency(st.concurrency);
     let timeout = st.per_probe_timeout;
@@ -316,6 +320,11 @@ pub async fn hunt_best_gateway(probe: &MasqueProbe, mode: ScanMode) -> Result<Pr
                     None => break,
                     Some(None) => continue,
                     Some(Some(pr)) => {
+                        let addr = std::net::SocketAddr::new(pr.ip, pr.port);
+                        if excluded.contains(&addr) {
+                            log::debug!("[-] candidate {addr} is avoided, skipping");
+                            continue;
+                        }
                         log::info!("[+] candidate ok {}:{} rtt={:?}", pr.ip, pr.port, pr.rtt);
                         if st.early_exit_first {
                             return Ok(pr);

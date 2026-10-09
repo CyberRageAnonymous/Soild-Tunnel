@@ -26,3 +26,18 @@ pub fn save(path: &str, peer: &str, profile: &str) {
         Err(e) => log::debug!("[lastconn] failed to encode: {e}"),
     }
 }
+
+/// Drop the cached gateway when it is known bad (e.g. iranian egress), so
+/// the next loop scans fresh instead of reusing it.
+pub fn forget(path: &str, peer: &str) {
+    match load(path) {
+        Some(cached) if cached.peer == peer => {
+            if let Err(e) = std::fs::remove_file(path) {
+                log::debug!("[lastconn] failed to forget {path}: {e}");
+            } else {
+                log::info!("[+] forgot cached gateway {peer}");
+            }
+        }
+        _ => {}
+    }
+}

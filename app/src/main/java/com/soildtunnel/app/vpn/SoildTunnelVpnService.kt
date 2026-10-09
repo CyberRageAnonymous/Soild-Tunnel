@@ -381,40 +381,51 @@ class SoildTunnelVpnService : VpnService() {
      * The protocol the user chose is never swapped for another one.
      */
     private fun directPlan(profile: ConnectionProfile): List<AutoCandidate> {
-        val fullBudget = profile.connectTimeoutMs()
-        val hardenedNoize = if (profile.noize == Noize.OFF) Noize.FIREWALL else profile.noize
-        val masque = profile.protocol == Protocol.MASQUE
-        val hardened = profile.copy(
+        // Gool on MASQUE always scans automatically: a stale pinned endpoint
+        // would kill its outer scan, so it is dropped back to Auto here.
+        // Classic keeps pins untouched.
+        val effective = if (profile.protocol == Protocol.GOOL &&
+            profile.goolMode == GoolMode.ON_MASQUE &&
+            profile.endpointMode != EndpointMode.AUTO
+        ) {
+            DiagnosticsLog.i(TAG, "Gool on MASQUE ignores the pinned endpoint and scans automatically")
+            profile.copy(endpointMode = EndpointMode.AUTO, manualRange = "", manualPeer = "")
+        } else {
+            profile
+        }
+        val fullBudget = effective.connectTimeoutMs()
+        val hardenedNoize = if (effective.noize == Noize.OFF) Noize.FIREWALL else effective.noize
+        val masque = effective.protocol == Protocol.MASQUE
+        val hardened = effective.copy(
             noize = hardenedNoize,
-            masqueHttp2 = profile.masqueHttp2 || masque,
-            fragment = profile.fragment || masque,
-            ech = profile.ech || masque,
+            masqueHttp2 = effective.masqueHttp2 || masque,
+            fragment = effective.fragment || masque,
+            ech = effective.ech || masque,
         )
-        if (hardened == profile) {
+        if (hardened == effective) {
             return listOf(
-                AutoCandidate(profile, fullBudget, "${profile.protocol.name} · as configured"),
+                AutoCandidate(effective, fullBudget, "${effective.protocol.name} · as configured"),
             )
         }
-        // Gool carried inside MASQUE needs one extra hop after the outer
-        // tunnel is up (register + dial the inner identity), so its first
-        // pass gets a wider cap than a single-hop protocol.
-        val firstPassMax = if (profile.protocol == Protocol.GOOL &&
-            profile.goolMode == GoolMode.ON_MASQUE
-        ) {
+        // Gool needs one extra hop after the outer tunnel is up (carried:
+        // register + dial the inner identity; classic: a second WireGuard
+        // tunnel), plus cold scans on hostile networks, so its first pass
+        // gets a wider cap than a single-hop protocol.
+        val firstPassMax = if (effective.protocol == Protocol.GOOL) {
             FIRST_PASS_MAX_MS + GOOL_CARRIED_EXTRA_MS
         } else {
             FIRST_PASS_MAX_MS
         }
         return listOf(
             AutoCandidate(
-                profile,
+                effective,
                 fullBudget.coerceAtMost(firstPassMax),
-                "${profile.protocol.name} · as configured",
+                "${effective.protocol.name} · as configured",
             ),
             AutoCandidate(
                 hardened,
                 fullBudget,
-                "${profile.protocol.name} · noize=${hardenedNoize.name.lowercase()}" +
+                "${effective.protocol.name} · noize=${hardenedNoize.name.lowercase()}" +
                     (if (masque) " · h2 · fragment · ech" else "") + " (anti-DPI pass)",
             ),
         )

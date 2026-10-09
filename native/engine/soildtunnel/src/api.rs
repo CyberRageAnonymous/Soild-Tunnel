@@ -410,7 +410,8 @@ pub async fn scan(
                 local_ipv4: crate::parse_local_v4(&identity.ipv4),
             };
             let mode = prober::ScanMode::parse(&request.mode);
-            let best = guard(cancel, prober::hunt_best_gateway(&probe, mode)).await?;
+            let best =
+                guard(cancel, prober::hunt_best_gateway(&probe, mode, &std::collections::HashSet::new())).await?;
             Ok(Endpoint {
                 ip: best.ip,
                 port: best.port,
