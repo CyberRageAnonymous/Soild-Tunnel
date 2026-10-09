@@ -32,6 +32,7 @@ pub mod zerotrust;
 
 use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Instant;
 
 use error::{SoildTunnelError, Result};
@@ -1134,6 +1135,10 @@ async fn run_masque_tunnel(
 const GOOL_INNER_ATTEMPTS: u32 = 2;
 const GOOL_INNER_PORT: u16 = 2408;
 const GOOL_INNER_MTU: usize = 1200;
+const PIPE_AFTER_IR: usize = 6;
+
+static OUTER_IR_STREAK: AtomicUsize = AtomicUsize::new(0);
+static INNER_REPROVISIONED: AtomicBool = AtomicBool::new(false);
 
 fn gool_classic() -> bool {
     matches!(
@@ -1248,28 +1253,40 @@ async fn run_carried_hop(
     listen: SocketAddr,
     inner_path: String,
 ) -> Result<()> {
+    let mut outer_ir = false;
     match tokio::time::timeout(std::time::Duration::from_secs(10), outer_exit_country(outer)).await
     {
         Ok(Ok(Some(country))) if country == "IR" => {
-            log::warn!("[-] gool: outer gateway exits in IR; dropping it and rescanning");
-            return Err(SoildTunnelError::IranianEgress);
+            let streak = OUTER_IR_STREAK.fetch_add(1, Ordering::SeqCst) + 1;
+            if streak < PIPE_AFTER_IR {
+                log::warn!("[-] gool: outer gateway exits in IR; dropping it and rescanning");
+                return Err(SoildTunnelError::IranianEgress);
+            }
+            OUTER_IR_STREAK.store(0, Ordering::SeqCst);
+            outer_ir = true;
+            log::warn!("[-] gool: all recent gateways exit in IR; using this one as a pipe and checking the inner exit");
         }
         Ok(Ok(Some(country))) => {
+            OUTER_IR_STREAK.store(0, Ordering::SeqCst);
             log::info!("[+] gool: outer gateway exits in {country}");
         }
         _ => log::debug!("[*] gool: outer exit country unknown; continuing"),
     }
 
-    let identity = carried_wg_identity(outer, &inner_path).await?;
-    let candidates = gool_inner_peers(&identity);
-    if candidates.is_empty() {
-        return Err(SoildTunnelError::Other(
-            "no wireguard endpoint for the carried identity".into(),
-        ));
-    }
+    let had_saved = std::path::Path::new(&inner_path).exists();
+    let mut identity = carried_wg_identity(outer, &inner_path).await?;
+    let mut saw_inner_ir = false;
 
-    let mut last_error =
-        SoildTunnelError::Other("no wireguard endpoint for the carried identity".into());
+    loop {
+        let candidates = gool_inner_peers(&identity);
+        if candidates.is_empty() {
+            return Err(SoildTunnelError::Other(
+                "no wireguard endpoint for the carried identity".into(),
+            ));
+        }
+
+        let mut last_error =
+            SoildTunnelError::Other("no wireguard endpoint for the carried identity".into());
 
     'peers: for inner_peer in candidates {
         let (forwarder, forwarder_guard) = spawn_udp_forwarder(outer, inner_peer).await?;
@@ -1289,6 +1306,7 @@ async fn run_carried_hop(
                             log::warn!(
                                 "[-] gool inner {inner_peer} exits in IR; trying next endpoint"
                             );
+                            saw_inner_ir = true;
                             inner_exit.abort();
                             continue 'peers;
                         }
@@ -1343,7 +1361,18 @@ async fn run_carried_hop(
         }
     }
 
-    Err(last_error)
+        if had_saved && !outer_ir && saw_inner_ir && !INNER_REPROVISIONED.swap(true, Ordering::SeqCst)
+        {
+            log::warn!(
+                "[-] gool: every inner endpoint exits in IR; registering a fresh identity and retrying once"
+            );
+            let _ = std::fs::remove_file(&inner_path);
+            identity = carried_wg_identity(outer, &inner_path).await?;
+            continue;
+        }
+
+        return Err(last_error);
+    }
 }
 
 fn wg_keepalive_secs() -> u16 {
