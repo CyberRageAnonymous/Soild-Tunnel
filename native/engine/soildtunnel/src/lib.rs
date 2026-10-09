@@ -731,6 +731,40 @@ async fn hunt_masque_peer(
     excluded: &HashSet<SocketAddr>,
 ) -> Result<SocketAddr> {
     log::info!("[*] hunting for a working MASQUE gateway (deep connect-ip + data-plane verification)");
+    let (mode, probe) = masque_probe(identity, mode_str, ip);
+
+    let best = prober::hunt_best_gateway(&probe, mode, excluded).await?;
+    log::info!(
+        "[+] selected MASQUE gateway {}:{} (rtt {:?})",
+        best.ip,
+        best.port,
+        best.rtt
+    );
+    Ok(SocketAddr::new(best.ip, best.port))
+}
+
+async fn hunt_masque_peers(
+    identity: &account::Identity,
+    mode_str: &str,
+    ip: prober::IpScan,
+    excluded: &HashSet<SocketAddr>,
+    want: usize,
+) -> Result<Vec<SocketAddr>> {
+    log::info!("[*] hunting for ranked MASQUE gateways (deep connect-ip + data-plane verification)");
+    let (mode, probe) = masque_probe(identity, mode_str, ip);
+
+    let ranked = prober::hunt_ranked_gateways(&probe, mode, excluded, want).await?;
+    Ok(ranked
+        .into_iter()
+        .map(|pr| SocketAddr::new(pr.ip, pr.port))
+        .collect())
+}
+
+fn masque_probe(
+    identity: &account::Identity,
+    mode_str: &str,
+    ip: prober::IpScan,
+) -> (prober::ScanMode, prober::MasqueProbe) {
     let mode = prober::ScanMode::parse(mode_str);
     let probe = prober::MasqueProbe {
         sni: consts::effective_sni(),
@@ -744,15 +778,7 @@ async fn hunt_masque_peer(
         ip,
         local_ipv4: parse_local_v4(&identity.ipv4),
     };
-
-    let best = prober::hunt_best_gateway(&probe, mode, excluded).await?;
-    log::info!(
-        "[+] selected MASQUE gateway {}:{} (rtt {:?})",
-        best.ip,
-        best.port,
-        best.rtt
-    );
-    Ok(SocketAddr::new(best.ip, best.port))
+    (mode, probe)
 }
 
 
@@ -818,6 +844,7 @@ async fn run_masque(
     lastconn_path: String,
     inner_path: Option<String>,
 ) -> Result<()> {
+    const RANKED_GATEWAYS: usize = 10;
     let forced = std::env::var("SOILDTUNNEL_PEER").ok();
 
     let mut quick_peer: Option<SocketAddr> = None;
@@ -865,6 +892,7 @@ async fn run_masque(
 
     let mut last_good_peer: Option<SocketAddr> = None;
     let mut avoid: HashSet<SocketAddr> = HashSet::new();
+    let mut ranked: Vec<SocketAddr> = Vec::new();
 
     loop {
         let peer = if let Some(p) = quick_peer.take() {
@@ -893,14 +921,47 @@ async fn run_masque(
                         }
                         Err(_) => return Err(SoildTunnelError::Other(format!("bad peer address {p}"))),
                     },
-                    None => match hunt_masque_peer(&identity, &mode_str, ip, &avoid).await {
-                        Ok(peer) => peer,
-                        Err(e) => {
-                            log::warn!("[-] no usable MASQUE gateway found: {e}; rescanning shortly");
-                            tokio::time::sleep(masque_reconnect_delay()).await;
-                            continue;
+                    None => {
+                        if inner_path.is_some() {
+                            if ranked.is_empty() {
+                                match hunt_masque_peers(
+                                    &identity,
+                                    &mode_str,
+                                    ip,
+                                    &avoid,
+                                    RANKED_GATEWAYS,
+                                )
+                                .await
+                                {
+                                    Ok(peers) => {
+                                        ranked = peers
+                                            .into_iter()
+                                            .filter(|p| !avoid.contains(p))
+                                            .collect();
+                                    }
+                                    Err(e) => {
+                                        log::warn!("[-] no usable MASQUE gateway found: {e}; rescanning shortly");
+                                        tokio::time::sleep(masque_reconnect_delay()).await;
+                                        continue;
+                                    }
+                                }
+                            }
+                            if ranked.is_empty() {
+                                log::warn!("[-] ranked gateways exhausted; rescanning");
+                                continue;
+                            }
+                            ranked.remove(0)
+                        } else {
+                            match hunt_masque_peer(&identity, &mode_str, ip, &avoid).await {
+                                Ok(peer) => peer,
+                                Err(e) => {
+                                    log::warn!("[-] no usable MASQUE gateway found: {e}; rescanning shortly");
+                                    tokio::time::sleep(masque_reconnect_delay()).await;
+                                    continue;
+                                }
+                            }
                         }
-                    },
+                    }
                 },
             }
         };
@@ -921,7 +982,10 @@ async fn run_masque(
         last_good_peer = Some(peer);
 
         match run_masque_tunnel(&identity, peer, ech.clone(), listen, inner_path.clone()).await {
-            Ok(()) => log::warn!("[-] MASQUE tunnel closed; reconnecting"),
+            Ok(()) => {
+                log::warn!("[-] MASQUE tunnel closed; reconnecting");
+                ranked.clear();
+            }
             Err(SoildTunnelError::IranianEgress) => {
                 log::warn!("[-] gateway {peer} exits in IR; avoiding it and rescanning");
                 avoid.insert(peer);
@@ -931,7 +995,12 @@ async fn run_masque(
                     return Err(SoildTunnelError::IranianEgress);
                 }
             }
-            Err(e) => log::warn!("[-] MASQUE tunnel ended: {e}; reconnecting"),
+            Err(e) => {
+                log::warn!("[-] MASQUE tunnel ended: {e}; reconnecting");
+                if inner_path.is_some() {
+                    last_good_peer = None;
+                }
+            }
         }
 
         tokio::time::sleep(masque_reconnect_delay()).await;
