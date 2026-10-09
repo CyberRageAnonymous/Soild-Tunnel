@@ -588,6 +588,10 @@ class SoildTunnelVpnService : VpnService() {
         // Switches observed before supervision starts (initial onAvailable
         // storm right after registration) must not count as a network change.
         var lastHandledSwitch = System.currentTimeMillis()
+        // Set once SOCKS opens under the current engine process; while it
+        // never opened, the engine is still recovering and the connect
+        // timeout (not the watchdog) owns the deadline.
+        var socksOpened = false
         while (currentScopeActive()) {
             if (engine?.isAlive() == true) {
                 attempt = 0
@@ -611,6 +615,7 @@ class SoildTunnelVpnService : VpnService() {
                 if (engine?.isAlive() == true) {
                     if (probeTunnelCycle()) {
                         probeFailures = 0
+                        socksOpened = true
                     } else if (switched) {
                         // Wi-Fi <-> mobile handover kills most QUIC/WG
                         // sessions outright, so a single failed probe after a
@@ -619,6 +624,9 @@ class SoildTunnelVpnService : VpnService() {
                         DiagnosticsLog.w(TAG, "Network changed and the tunnel did not survive it -- fast restart.")
                         probeFailures = 0
                         engine?.stop()
+                    } else if (!socksOpened) {
+                        // Still recovering: SOCKS never opened since the
+                        // engine started, so there is nothing to declare dead.
                     } else if (++probeFailures >= WATCHDOG_FAIL_CYCLES) {
                         DiagnosticsLog.w(
                             TAG,
@@ -647,6 +655,7 @@ class SoildTunnelVpnService : VpnService() {
             delay(backoff)
 
             engine = SoildTunnelProcess(applicationInfo.nativeLibraryDir, filesDir).also { it.start(profile) }
+            socksOpened = false
             if (PortProbe.awaitOpen(SOCKS_HOST, SOCKS_PORT, profile.connectTimeoutMs()) { engine?.isAlive() == true }) {
                 // Same gate as the initial connect: never claim Connected after
                 // a silent engine restart until traffic really flows again.

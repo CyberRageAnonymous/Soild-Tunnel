@@ -892,8 +892,12 @@ async fn run_masque(
     };
 
     let mut last_good_peer: Option<SocketAddr> = None;
-    let mut avoid: HashSet<SocketAddr> = HashSet::new();
     let mut ranked: Vec<SocketAddr> = Vec::new();
+    let avoid_path = derive_sibling_path(&lastconn_path, "avoid");
+    let mut avoid: HashSet<SocketAddr> = lastconn::load_avoided(&avoid_path);
+    if !avoid.is_empty() {
+        log::info!("[+] {} avoided gateways remembered", avoid.len());
+    }
 
     loop {
         let peer = if let Some(p) = quick_peer.take() {
@@ -990,6 +994,7 @@ async fn run_masque(
             Err(SoildTunnelError::IranianEgress) => {
                 log::warn!("[-] gateway {peer} exits in IR; avoiding it and rescanning");
                 avoid.insert(peer);
+                lastconn::save_avoided(&avoid_path, &avoid);
                 lastconn::forget(&lastconn_path, &peer.to_string());
                 last_good_peer = None;
                 if forced.is_some() {
@@ -1253,10 +1258,11 @@ async fn run_carried_hop(
     listen: SocketAddr,
     inner_path: String,
 ) -> Result<()> {
+    let had_saved = std::path::Path::new(&inner_path).exists();
     let mut outer_ir = false;
     match tokio::time::timeout(std::time::Duration::from_secs(10), outer_exit_country(outer)).await
     {
-        Ok(Ok(Some(country))) if country == "IR" => {
+        Ok(Ok(Some(country))) if country == "IR" && !had_saved => {
             let streak = OUTER_IR_STREAK.fetch_add(1, Ordering::SeqCst) + 1;
             if streak < PIPE_AFTER_IR {
                 log::warn!("[-] gool: outer gateway exits in IR; dropping it and rescanning");
@@ -1266,6 +1272,9 @@ async fn run_carried_hop(
             outer_ir = true;
             log::warn!("[-] gool: all recent gateways exit in IR; using this one as a pipe and checking the inner exit");
         }
+        Ok(Ok(Some(country))) if country == "IR" => {
+            log::info!("[+] gool: outer gateway exits in IR; saved identity exists, using it as a pipe");
+        }
         Ok(Ok(Some(country))) => {
             OUTER_IR_STREAK.store(0, Ordering::SeqCst);
             log::info!("[+] gool: outer gateway exits in {country}");
@@ -1273,7 +1282,6 @@ async fn run_carried_hop(
         _ => log::debug!("[*] gool: outer exit country unknown; continuing"),
     }
 
-    let had_saved = std::path::Path::new(&inner_path).exists();
     let mut identity = carried_wg_identity(outer, &inner_path).await?;
     let mut saw_inner_ir = false;
 
@@ -1294,7 +1302,7 @@ async fn run_carried_hop(
             "[+] gool: wireguard endpoint {inner_peer} tunneled through masque via {forwarder}"
         );
         for attempt in 1..=GOOL_INNER_ATTEMPTS {
-            match establish_wg(&identity, forwarder, GOOL_INNER_MTU, false, 25, "gool").await {
+            match establish_wg(&identity, forwarder, GOOL_INNER_MTU, false, 10, "gool").await {
                 Ok((inner_stack, mut inner_exit)) => {
                     match tokio::time::timeout(
                         std::time::Duration::from_secs(10),
