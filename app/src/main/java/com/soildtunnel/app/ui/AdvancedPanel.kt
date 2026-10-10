@@ -905,6 +905,7 @@ private fun ToggleRow(
 private fun protocolLabel(protocol: Protocol): String = when (protocol) {
     Protocol.AUTO -> stringResource(R.string.protocol_auto)
     Protocol.MASQUE -> stringResource(R.string.protocol_masque)
+    Protocol.SOILD -> stringResource(R.string.protocol_soild)
     Protocol.WIREGUARD -> stringResource(R.string.protocol_wireguard)
     Protocol.GOOL -> stringResource(R.string.protocol_gool)
     Protocol.TOR -> stringResource(R.string.protocol_tor)

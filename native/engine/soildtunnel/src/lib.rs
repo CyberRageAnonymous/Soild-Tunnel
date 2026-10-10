@@ -148,8 +148,10 @@ pub async fn run_with(args: Vec<String>) -> Result<()> {
         Protocol::WarpInWarp => {
             let primary_path = warp_config_path(&base_config);
             let secondary_path = derive_sibling_path(&primary_path, "secondary");
-            let primary = load_or_provision_warp(&primary_path).await?;
-            let secondary = load_or_provision_warp(&secondary_path).await?;
+            let primary =
+                provision_warp_with_tunnel_fallback(&base_config, &primary_path).await?;
+            let secondary =
+                provision_warp_with_tunnel_fallback(&base_config, &secondary_path).await?;
             log::info!(
                 "[+] outer device={} ipv4={} | inner device={} ipv4={}",
                 primary.device_id, primary.ipv4, secondary.device_id, secondary.ipv4
@@ -531,6 +533,86 @@ async fn load_or_provision_warp(config_path: &str) -> Result<account::Identity> 
     config::save(config_path, &identity)?;
     log::info!("[+] provisioned and saved new warp identity to {config_path}");
     Ok(identity)
+}
+
+async fn provision_warp_with_tunnel_fallback(
+    base_config: &str,
+    warp_path: &str,
+) -> Result<account::Identity> {
+    match load_or_provision_warp(warp_path).await {
+        Ok(identity) => Ok(identity),
+        Err(error) => {
+            log::warn!("[-] classic provision failed: {error}; trying through a temporary masque tunnel");
+            provision_warp_via_temp_masque(base_config, warp_path).await
+        }
+    }
+}
+
+async fn provision_warp_via_temp_masque(
+    base_config: &str,
+    warp_path: &str,
+) -> Result<account::Identity> {
+    let masque_path = masque_config_path(base_config);
+    let identity = load_or_provision_masque(&masque_path).await?;
+    let masque_lastconn = lastconn_path(&masque_path);
+
+    let mut peer: Option<SocketAddr> = None;
+    if let Some(cached) = lastconn::load(&masque_lastconn) {
+        if let Ok(p) = cached.peer.parse::<SocketAddr>() {
+            if want_quick_reconnect(&cached).await && quick_verify_masque_peer(&identity, p).await {
+                log::info!("[+] reusing cached masque gateway {p} for the temporary tunnel");
+                peer = Some(p);
+            }
+        }
+    }
+    let peer = match peer {
+        Some(p) => p,
+        None => {
+            let mode_str = select_scan_mode_str().await;
+            let ip = select_ip_version().await;
+            hunt_masque_peer(&identity, &mode_str, ip, &HashSet::new()).await?
+        }
+    };
+
+    let probe =
+        socks::bind_listener(SocketAddr::from(([127, 0, 0, 1], 0))).await?;
+    let listen = probe.local_addr()?;
+    drop(probe);
+    let ech = resolve_ech().await;
+    let tunnel_identity = identity.clone();
+    let tunnel =
+        tokio::spawn(async move { run_masque_tunnel(&tunnel_identity, peer, ech, listen, None).await });
+
+    log::info!("[*] temporary masque tunnel rising for classic provisioning");
+    if !wait_for_socks(listen, 90).await {
+        tunnel.abort();
+        return Err(SoildTunnelError::Other(
+            "temporary masque tunnel never opened its proxy".into(),
+        ));
+    }
+
+    crate::upstream::set_override(Some(&format!("socks5://{listen}")));
+    let registered = provision_account().await;
+    crate::upstream::set_override(None);
+    tunnel.abort();
+    let _ = tunnel.await;
+
+    let identity = registered?;
+    let identity = adopt_team_profile(identity).await;
+    config::save(warp_path, &identity)?;
+    log::info!("[+] classic identity provisioned through the temporary tunnel");
+    Ok(identity)
+}
+
+async fn wait_for_socks(listen: SocketAddr, secs: u64) -> bool {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(secs);
+    while tokio::time::Instant::now() < deadline {
+        if tokio::net::TcpStream::connect(listen).await.is_ok() {
+            return true;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+    false
 }
 
 async fn load_or_provision_masque(config_path: &str) -> Result<account::Identity> {
@@ -1176,6 +1258,13 @@ fn gool_classic() -> bool {
     matches!(
         std::env::var("SOILDTUNNEL_GOOL_MODE").as_deref(),
         Ok("classic") | Ok("wiw") | Ok("wg")
+    )
+}
+
+pub(crate) fn front_mode() -> bool {
+    matches!(
+        std::env::var("SOILDTUNNEL_MASQUE_FRONT").as_deref(),
+        Ok("1") | Ok("true") | Ok("yes") | Ok("on")
     )
 }
 
@@ -2154,6 +2243,10 @@ impl Protocol {
 }
 
 async fn select_masque_transport() {
+    if front_mode() {
+        std::env::set_var("SOILDTUNNEL_MASQUE_HTTP2", "1");
+        return;
+    }
     if std::env::var("SOILDTUNNEL_MASQUE_HTTP2").is_ok() || std::env::var("SOILDTUNNEL_PEER").is_ok() {
         return;
     }

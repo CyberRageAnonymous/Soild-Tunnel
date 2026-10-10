@@ -2,7 +2,7 @@ package com.soildtunnel.app.model
 
 
 /** Transport protocol, mapped 1:1 to the desktop app's CLI flags. */
-enum class Protocol { AUTO, MASQUE, WIREGUARD, GOOL, TOR }
+enum class Protocol { AUTO, MASQUE, SOILD, WIREGUARD, GOOL, TOR }
 
 /**
  * How gool runs (only used when [Protocol] is GOOL).
@@ -271,6 +271,7 @@ data class ConnectionProfile(
             // daemon plus the TUN bridge, the WARP engine stays off.
             Protocol.TOR -> { /* handled app-side, see TorManager */ }
             Protocol.MASQUE -> args += "--masque"
+            Protocol.SOILD -> args += "--soild"
             Protocol.WIREGUARD -> args += "--wg"
             Protocol.GOOL -> {
                 args += "--gool"

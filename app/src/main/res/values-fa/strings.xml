@@ -8,6 +8,7 @@
     <string name="protocol">پروتکل</string>
     <string name="protocol_auto">هوشمند</string>
     <string name="protocol_masque">MASQUE</string>
+    <string name="protocol_soild">Soild</string>
     <string name="protocol_wireguard">WireGuard</string>
     <string name="protocol_gool">WARP×2</string>
     <string name="gool_mode">حالت GOOL</string>

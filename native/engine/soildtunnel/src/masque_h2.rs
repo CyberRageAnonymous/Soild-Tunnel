@@ -188,7 +188,12 @@ pub async fn verify_h2(cfg: &H2TunnelConfig, timeout: Duration) -> Result<Durati
         let tls_config = build_tls(cfg)?;
         let tcp = dial(cfg.peer).await?;
         let _ = tcp.set_nodelay(true);
-        let fragment = FragmentingStream::new(tcp, FragmentConfig::from_env());
+        let frag_cfg = if crate::front_mode() {
+            FragmentConfig::disabled()
+        } else {
+            FragmentConfig::from_env()
+        };
+        let fragment = FragmentingStream::new(tcp, frag_cfg);
         let tls = tokio_boring::connect(tls_config, &cfg.sni, fragment)
             .await
             .map_err(|e| SoildTunnelError::Tls(format!("h2 tls handshake: {e}")))?;
@@ -300,7 +305,11 @@ pub async fn run(
     let tcp = dial(cfg.peer).await?;
     let _ = tcp.set_nodelay(true);
 
-    let frag_cfg = FragmentConfig::from_env();
+    let frag_cfg = if crate::front_mode() {
+        FragmentConfig::disabled()
+    } else {
+        FragmentConfig::from_env()
+    };
     if frag_cfg.enabled {
         log_or_debug(quiet, format!(
             "[h2] fragmenting client hello: size={}..{} delay={}..{}ms",

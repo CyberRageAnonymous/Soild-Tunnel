@@ -22,6 +22,8 @@ Protocol:
   --gool, --wiw            gool carried inside MASQUE (foreign exit)
   --gool-classic           classic gool: wireguard tunneled in wireguard
   --gool-peer <ip:port>    the wireguard endpoint gool dials inside the tunnel
+  --soild                  plain MASQUE over H2: standard TLS, no ECH, no
+                           fragmentation (works where those are filtered)
 
 Scan mode:
   --scan <mode>            turbo | balanced | thorough | stealth
@@ -144,6 +146,10 @@ pub fn parse_args(args: Vec<String>) -> crate::error::Result<()> {
             "--masque" => set("SOILDTUNNEL_PROTOCOL", "masque"),
             "--wg" | "--wireguard" | "--warp" => set("SOILDTUNNEL_PROTOCOL", "wg"),
             "--gool" | "--wiw" => set("SOILDTUNNEL_PROTOCOL", "gool"),
+            "--soild" => {
+                set("SOILDTUNNEL_PROTOCOL", "masque");
+                set("SOILDTUNNEL_MASQUE_FRONT", "1");
+            }
             "--gool-classic" => {
                 set("SOILDTUNNEL_PROTOCOL", "gool");
                 set("SOILDTUNNEL_GOOL_MODE", "classic");

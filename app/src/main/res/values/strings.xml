@@ -8,6 +8,7 @@
     <string name="protocol">Protocol</string>
     <string name="protocol_auto">Smart</string>
     <string name="protocol_masque">MASQUE</string>
+    <string name="protocol_soild">Soild</string>
     <string name="protocol_wireguard">WireGuard</string>
     <string name="protocol_gool">WARP×2</string>
     <string name="gool_mode">Gool mode</string>
