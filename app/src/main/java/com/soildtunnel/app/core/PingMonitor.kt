@@ -32,6 +32,13 @@ object PingMonitor {
     private val _state = MutableStateFlow(PingResult())
     val state: StateFlow<PingResult> = _state.asStateFlow()
 
+    private val _failStreak = MutableStateFlow(0)
+    val failStreak: StateFlow<Int> = _failStreak.asStateFlow()
+
+    fun resetFailStreak() {
+        _failStreak.value = 0
+    }
+
     /** Serialises concurrent taps so two probes can never overlap. */
     private val mutex = Mutex()
 
@@ -48,7 +55,13 @@ object PingMonitor {
         try {
             _state.value = PingResult(running = true)
             val ms = withContext(Dispatchers.IO) { measure(viaTunnel, socksPort) }
-            _state.value = if (ms >= 0) PingResult(ms = ms) else PingResult(error = true)
+            if (ms >= 0) {
+                _state.value = PingResult(ms = ms)
+                _failStreak.value = 0
+            } else {
+                _state.value = PingResult(error = true)
+                _failStreak.value += 1
+            }
         } finally {
             mutex.unlock()
         }

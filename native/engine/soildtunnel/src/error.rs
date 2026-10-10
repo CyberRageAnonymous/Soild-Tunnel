@@ -26,6 +26,9 @@ pub enum SoildTunnelError {
     #[error("iranian egress, rescanning")]
     IranianEgress,
 
+    #[error("migrate requested")]
+    Migrate,
+
     #[error("capsule: {0}")]
     Capsule(String),
 

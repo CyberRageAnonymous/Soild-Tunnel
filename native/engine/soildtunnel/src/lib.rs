@@ -70,6 +70,8 @@ pub async fn run() -> Result<()> {
 pub async fn run_with(args: Vec<String>) -> Result<()> {
     cli::parse_args(args)?;
 
+    let _ = std::fs::remove_file("soildtunnel-migrate.hint");
+
     let level = std::env::var("SOILDTUNNEL_LOG_LEVEL")
         .ok()
         .map(|v| v.trim().to_lowercase())
@@ -991,6 +993,11 @@ async fn run_masque(
                 log::warn!("[-] MASQUE tunnel closed; reconnecting");
                 ranked.clear();
             }
+            Err(SoildTunnelError::Migrate) => {
+                log::warn!("[-] migrate requested; re-walking gateways without rescanning");
+                last_good_peer = None;
+                continue;
+            }
             Err(SoildTunnelError::IranianEgress) => {
                 log::warn!("[-] gateway {peer} exits in IR; avoiding it and rescanning");
                 avoid.insert(peer);
@@ -1020,6 +1027,7 @@ async fn run_masque_tunnel(
     listen: SocketAddr,
     inner_path: Option<String>,
 ) -> Result<()> {
+    consume_migrate_hint();
     let (chans, internals) = quic::channels();
 
     let cfg = quic::TunnelConfig {
@@ -1123,7 +1131,22 @@ async fn run_masque_tunnel(
         tasks.push(task.abort_handle());
     }
 
-    let tunnel_result = tunnel_task.await;
+    let tunnel_result = loop {
+        tokio::select! {
+            result = &mut tunnel_task => break result,
+            _ = tokio::time::sleep(std::time::Duration::from_secs(2)) => {
+                if consume_migrate_hint() {
+                    log::warn!("[-] migrate requested; dropping the current tunnel");
+                    tunnel_task.abort();
+                    if let Some(task) = &http_task {
+                        task.abort();
+                    }
+                    socks_task.abort();
+                    return Err(SoildTunnelError::Migrate);
+                }
+            }
+        }
+    };
 
     if let Some(task) = &http_task {
         task.abort();
@@ -1135,6 +1158,10 @@ async fn run_masque_tunnel(
         Ok(Err(e)) => Err(SoildTunnelError::Other(format!("tunnel exited: {e}"))),
         Err(e) => Err(SoildTunnelError::Other(format!("tunnel task join error: {e}"))),
     }
+}
+
+fn consume_migrate_hint() -> bool {
+    std::fs::remove_file("soildtunnel-migrate.hint").is_ok()
 }
 
 const GOOL_INNER_ATTEMPTS: u32 = 2;

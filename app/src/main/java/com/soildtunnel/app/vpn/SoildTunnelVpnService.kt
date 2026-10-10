@@ -26,6 +26,7 @@ import com.soildtunnel.app.core.Diagnostics
 import com.soildtunnel.app.core.DiagnosticsLog
 import com.soildtunnel.app.core.EngineMeta
 import com.soildtunnel.app.core.AutoCandidate
+import com.soildtunnel.app.core.PingMonitor
 import com.soildtunnel.app.core.PortProbe
 import com.soildtunnel.app.core.ProfileCodec
 import com.soildtunnel.app.core.StickyServer
@@ -627,13 +628,22 @@ class SoildTunnelVpnService : VpnService() {
                     } else if (!socksOpened) {
                         // Still recovering: SOCKS never opened since the
                         // engine started, so there is nothing to declare dead.
-                    } else if (++probeFailures >= WATCHDOG_FAIL_CYCLES) {
-                        DiagnosticsLog.w(
-                            TAG,
-                            "Watchdog: tunnel dead across $WATCHDOG_FAIL_CYCLES consecutive checks -- restarting the engine.",
-                        )
-                        probeFailures = 0
-                        engine?.stop()
+                    } else {
+                        if (PingMonitor.failStreak.value >= 5) {
+                            PingMonitor.resetFailStreak()
+                            requestEngineMigrate()
+                        }
+                        if (++probeFailures == 2) {
+                            requestEngineMigrate()
+                        }
+                        if (probeFailures >= WATCHDOG_FAIL_CYCLES) {
+                            DiagnosticsLog.w(
+                                TAG,
+                                "Watchdog: tunnel dead across $WATCHDOG_FAIL_CYCLES consecutive checks -- restarting the engine.",
+                            )
+                            probeFailures = 0
+                            engine?.stop()
+                        }
                     }
                 }
                 continue
@@ -939,6 +949,13 @@ class SoildTunnelVpnService : VpnService() {
      * session still recovers automatically, and MASQUE's in-engine reconnect
      * loop gets room to finish before the app steps in.
      */
+    private fun requestEngineMigrate() {
+        val wrote = runCatching {
+            File(filesDir, "soildtunnel-migrate.hint").writeText("1")
+        }.isSuccess
+        if (wrote) DiagnosticsLog.w(TAG, "Tunnel degrading — asked the engine to migrate.")
+    }
+
     private suspend fun probeTunnelCycle(port: Int = SOCKS_PORT): Boolean {
         repeat(PROBE_ATTEMPTS) { attempt ->
             if (probeTunnelOnce(PROBE_TARGETS[attempt % PROBE_TARGETS.size], port)) return true
