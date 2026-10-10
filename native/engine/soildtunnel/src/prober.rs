@@ -417,19 +417,12 @@ pub async fn hunt_ranked_gateways(
 
     let deadline = Instant::now() + st.overall_deadline;
     let mut collected: Vec<ProbeResult> = Vec::new();
-    let mut quiet_until: Option<Instant> = None;
 
     loop {
-        let effective = match quiet_until {
-            Some(q) => q.min(deadline),
-            None => deadline,
-        };
-        let remaining = effective.saturating_duration_since(Instant::now());
+        let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
             if collected.is_empty() {
                 log::warn!("[-] scan deadline reached with no gateway");
-            } else if quiet_until.is_some() {
-                log::info!("[+] no new gateways recently, finalizing selection");
             } else {
                 log::warn!("[-] scan deadline reached");
             }
@@ -450,19 +443,12 @@ pub async fn hunt_ranked_gateways(
                         log::info!("[+] candidate ok {}:{} rtt={:?}", pr.ip, pr.port, pr.rtt);
                         collected.push(pr);
 
-                        if st.target_successes > 0
-                            && collected.len() >= st.target_successes.max(want)
-                            && quiet_until.is_none()
-                        {
+                        if collected.len() >= want {
                             log::info!(
-                                "[+] reached target of {} gateways, collecting ranked list",
+                                "[+] ranked {} gateways for walking",
                                 collected.len()
                             );
-                            if !st.quiet_after_first.is_zero() {
-                                quiet_until = Some(Instant::now() + st.quiet_after_first);
-                            } else {
-                                break;
-                            }
+                            break;
                         }
                     }
                 }
@@ -470,8 +456,6 @@ pub async fn hunt_ranked_gateways(
             _ = tokio::time::sleep(remaining) => {
                 if collected.is_empty() {
                     log::warn!("[-] scan deadline reached with no gateway");
-                } else if quiet_until.is_some() {
-                    log::info!("[+] no new gateways recently, finalizing selection");
                 } else {
                     log::warn!("[-] scan deadline reached");
                 }

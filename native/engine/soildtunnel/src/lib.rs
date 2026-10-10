@@ -929,7 +929,7 @@ async fn run_masque(
     lastconn_path: String,
     inner_path: Option<String>,
 ) -> Result<()> {
-    const RANKED_GATEWAYS: usize = 10;
+    const RANKED_GATEWAYS: usize = 6;
     let forced = std::env::var("SOILDTUNNEL_PEER").ok();
 
     let mut quick_peer: Option<SocketAddr> = None;
