@@ -382,14 +382,14 @@ class SoildTunnelVpnService : VpnService() {
      * The protocol the user chose is never swapped for another one.
      */
     private fun directPlan(profile: ConnectionProfile): List<AutoCandidate> {
-        // Gool on MASQUE always scans automatically: a stale pinned endpoint
-        // would kill its outer scan, so it is dropped back to Auto here.
+        // Carried modes always scan automatically: a stale pinned endpoint
+        // would kill the outer scan, so it is dropped back to Auto here.
         // Classic keeps pins untouched.
-        val effective = if (profile.protocol == Protocol.GOOL &&
-            profile.goolMode == GoolMode.ON_MASQUE &&
+        val effective = if ((profile.protocol == Protocol.GOOL &&
+                profile.goolMode == GoolMode.ON_MASQUE || profile.protocol == Protocol.SOILD) &&
             profile.endpointMode != EndpointMode.AUTO
         ) {
-            DiagnosticsLog.i(TAG, "Gool on MASQUE ignores the pinned endpoint and scans automatically")
+            DiagnosticsLog.i(TAG, "Carried mode ignores the pinned endpoint and scans automatically")
             profile.copy(endpointMode = EndpointMode.AUTO, manualRange = "", manualPeer = "")
         } else {
             profile
@@ -412,7 +412,9 @@ class SoildTunnelVpnService : VpnService() {
         // register + dial the inner identity; classic: a second WireGuard
         // tunnel), plus cold scans on hostile networks, so its first pass
         // gets a wider cap than a single-hop protocol.
-        val firstPassMax = if (effective.protocol == Protocol.GOOL) {
+        val firstPassMax = if (effective.protocol == Protocol.GOOL ||
+            effective.protocol == Protocol.SOILD
+        ) {
             FIRST_PASS_MAX_MS + GOOL_CARRIED_EXTRA_MS
         } else {
             FIRST_PASS_MAX_MS

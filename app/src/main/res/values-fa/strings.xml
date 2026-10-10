@@ -329,6 +329,7 @@
     <string name="server_pick_subtitle">تأخیر زنده از همین دستگاه اندازه‌گیری شده. برای پین کردن روی نود بزن.</string>
     <string name="server_anycast_note">Cloudflare ترافیک را به نزدیک‌ترین لبه مسیریابی می‌کند — کشور خروجی ممکن است با برچسب متفاوت باشد. کشور واقعی خروجی بعد از اتصال نمایش داده می‌شود.</string>
     <string name="server_masque_auto_note">گول روی MASQUE همیشه خودکار اسکن می‌کند — اینجا فقط Auto در دسترس است.</string>
+    <string name="server_soild_auto_note">سویلد همیشه خودکار اسکن می‌کند — اینجا فقط Auto در دسترس است.</string>
     <string name="banner_telegram_text">لطفاً برای اخبار و به‌روزرسانی‌ها در کانال تلگرامی ما عضو شوید.</string>
     <string name="banner_telegram_join">عضویت</string>
     <string name="server_auto_desc">همه رنج‌های لبه داخلی را اسکن و سریع‌ترین گیت‌وی زنده را نگه می‌دارد</string>

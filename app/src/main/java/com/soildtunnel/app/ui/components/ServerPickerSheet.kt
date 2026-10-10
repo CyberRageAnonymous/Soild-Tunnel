@@ -94,7 +94,13 @@ fun ServerPickerSheet(
     // protocol keep the full list.
     val masqueOnlyAuto = profile.protocol == Protocol.GOOL &&
         profile.goolMode == GoolMode.ON_MASQUE
-    val visible = if (masqueOnlyAuto) {
+    val soildOnlyAuto = profile.protocol == Protocol.SOILD
+    val autoOnlyNote = when {
+        masqueOnlyAuto -> stringResource(R.string.server_masque_auto_note)
+        soildOnlyAuto -> stringResource(R.string.server_soild_auto_note)
+        else -> null
+    }
+    val visible = if (masqueOnlyAuto || soildOnlyAuto) {
         servers.filter { it.id == ServerCatalog.AUTO_ID }
     } else {
         servers
@@ -139,11 +145,11 @@ fun ServerPickerSheet(
                 text = stringResource(R.string.server_anycast_note),
                 fontSize = 11.sp,
                 color = CardTextDim,
-                modifier = Modifier.padding(bottom = if (masqueOnlyAuto) 6.dp else 14.dp),
+                modifier = Modifier.padding(bottom = if (autoOnlyNote != null) 6.dp else 14.dp),
             )
-            if (masqueOnlyAuto) {
+            if (autoOnlyNote != null) {
                 Text(
-                    text = stringResource(R.string.server_masque_auto_note),
+                    text = autoOnlyNote,
                     fontSize = 11.sp,
                     color = CardTextDim,
                     modifier = Modifier.padding(bottom = 14.dp),

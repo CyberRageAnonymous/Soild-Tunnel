@@ -93,7 +93,7 @@ fun AdvancedPanel(
 
             // ---------- Core ----------
             SettingLabel(stringResource(R.string.protocol))
-            SegmentedSelector(
+            DropdownSelector(
                 options = Protocol.entries,
                 selected = profile.protocol,
                 onSelect = { onProfileChange(profile.copy(protocol = it)) },
