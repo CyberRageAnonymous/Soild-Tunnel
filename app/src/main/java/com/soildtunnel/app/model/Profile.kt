@@ -12,6 +12,9 @@ enum class Protocol { AUTO, MASQUE, SOILD, WIREGUARD, GOOL, TOR }
  */
 enum class GoolMode { ON_MASQUE, CLASSIC }
 
+/** MASQUE transport used by the Soild method (only used when [Protocol] is SOILD). */
+enum class SoildMode { H2, QUIC }
+
 /**
  * How Tor enters the network (only used when [Protocol] is TOR). The
  * built-in entries ship with official bridges, so they need no setup;
@@ -72,6 +75,8 @@ data class ConnectionProfile(
     val protocol: Protocol = Protocol.AUTO,
     /** Gool running mode; only consulted when [protocol] is [Protocol.GOOL]. */
     val goolMode: GoolMode = GoolMode.ON_MASQUE,
+    /** Soild transport; only consulted when [protocol] is [Protocol.SOILD]. */
+    val soildMode: SoildMode = SoildMode.H2,
     val scanMode: ScanMode = ScanMode.BALANCED,
     val ipVersion: IpVersion = IpVersion.V4,
     val quickReconnect: Boolean = true,
@@ -271,7 +276,10 @@ data class ConnectionProfile(
             // daemon plus the TUN bridge, the WARP engine stays off.
             Protocol.TOR -> { /* handled app-side, see TorManager */ }
             Protocol.MASQUE -> args += "--masque"
-            Protocol.SOILD -> args += "--soild"
+            Protocol.SOILD -> {
+                args += "--soild"
+                if (soildMode == SoildMode.QUIC) args += "--soild-quic"
+            }
             Protocol.WIREGUARD -> args += "--wg"
             Protocol.GOOL -> {
                 args += "--gool"

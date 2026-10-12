@@ -17,6 +17,7 @@ import com.soildtunnel.app.model.IpVersion
 import com.soildtunnel.app.model.Noize
 import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.model.ScanMode
+import com.soildtunnel.app.model.SoildMode
 import com.soildtunnel.app.model.SplitMode
 import com.soildtunnel.app.model.TeamAuth
 import com.soildtunnel.app.model.TorTransport
@@ -28,6 +29,7 @@ class ProfileStore(private val context: Context) {
     private object Keys {
         val protocol = stringPreferencesKey("protocol")
         val gool = stringPreferencesKey("gool")
+        val soild = stringPreferencesKey("soild")
         val scan = stringPreferencesKey("scan")
         val ip = stringPreferencesKey("ip")
         val quick = booleanPreferencesKey("quick")
@@ -99,6 +101,8 @@ class ProfileStore(private val context: Context) {
                 ?.let { runCatching { Protocol.valueOf(it) }.getOrNull() } ?: Protocol.AUTO,
             goolMode = prefs[Keys.gool]
                 ?.let { runCatching { GoolMode.valueOf(it) }.getOrNull() } ?: GoolMode.ON_MASQUE,
+            soildMode = prefs[Keys.soild]
+                ?.let { runCatching { SoildMode.valueOf(it) }.getOrNull() } ?: SoildMode.H2,
             scanMode = prefs[Keys.scan]
                 ?.let { runCatching { ScanMode.valueOf(it) }.getOrNull() } ?: ScanMode.BALANCED,
             ipVersion = prefs[Keys.ip]
@@ -169,6 +173,7 @@ class ProfileStore(private val context: Context) {
         context.dataStore.edit { prefs ->
             prefs[Keys.protocol] = profile.protocol.name
             prefs[Keys.gool] = profile.goolMode.name
+            prefs[Keys.soild] = profile.soildMode.name
             prefs[Keys.scan] = profile.scanMode.name
             prefs[Keys.ip] = profile.ipVersion.name
             prefs[Keys.quick] = profile.quickReconnect

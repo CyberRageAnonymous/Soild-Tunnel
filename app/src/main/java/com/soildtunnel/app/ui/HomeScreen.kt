@@ -23,11 +23,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.PieChart
 import androidx.compose.material.icons.rounded.Send
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Update
+import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -55,6 +59,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
@@ -76,6 +81,7 @@ import com.soildtunnel.app.core.TunnelConfig
 import com.soildtunnel.app.core.UpdateChecker
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.ConnectionState
+import com.soildtunnel.app.model.GoolMode
 import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.model.isBusy
 import com.soildtunnel.app.model.isConnected
@@ -242,17 +248,25 @@ fun HomeScreen(
 
                         Spacer(Modifier.height(18.dp))
 
-                        DrawerSectionLabel(stringResource(R.string.drawer_section_tools))
+                        DrawerSectionHeader(
+                            text = stringResource(R.string.drawer_section_network),
+                            icon = Icons.Rounded.Wifi,
+                        )
                         Spacer(Modifier.height(10.dp))
                         DiagnosticsPanel()
 
                         Spacer(Modifier.height(16.dp))
 
-                        UsagePanel()
+                        SpeedTestPanel(state = state)
 
                         Spacer(Modifier.height(16.dp))
 
-                        SpeedTestPanel(state = state)
+                        DrawerSectionHeader(
+                            text = stringResource(R.string.drawer_section_usage),
+                            icon = Icons.Rounded.PieChart,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        UsagePanel()
 
                         Spacer(Modifier.height(16.dp))
 
@@ -264,7 +278,10 @@ fun HomeScreen(
 
                         DrawerDivider()
 
-                        DrawerSectionLabel(stringResource(R.string.drawer_section_settings))
+                        DrawerSectionHeader(
+                            text = stringResource(R.string.drawer_section_settings),
+                            icon = Icons.Rounded.Settings,
+                        )
                         Spacer(Modifier.height(10.dp))
                         LanguagePanel()
 
@@ -274,7 +291,10 @@ fun HomeScreen(
 
                         DrawerDivider()
 
-                        DrawerSectionLabel(stringResource(R.string.drawer_section_about))
+                        DrawerSectionHeader(
+                            text = stringResource(R.string.drawer_section_about),
+                            icon = Icons.Rounded.Info,
+                        )
                         Spacer(Modifier.height(10.dp))
                         AboutPanel()
                     }
@@ -367,7 +387,9 @@ fun HomeScreen(
                         enabled = state.isConnected,
                         onClick = { if (state.isConnected) showTorSheet = true },
                     )
-                } else if (profile.protocol == Protocol.GOOL) {
+                } else if (profile.protocol == Protocol.GOOL &&
+                    profile.goolMode == GoolMode.CLASSIC
+                ) {
                     ServerSelectorPill(
                         profile = profile,
                         enabled = settingsEnabled,
@@ -798,15 +820,39 @@ private fun TelegramBanner(
 }
 
 @Composable
-private fun DrawerSectionLabel(text: String) {
-    Text(
-        text = text.uppercase(),
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Bold,
-        fontSize = 11.sp,
-        letterSpacing = 2.sp,
-        color = NeonCyan.copy(alpha = 0.75f),
-    )
+private fun DrawerSectionHeader(text: String, icon: ImageVector) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(26.dp)
+                .background(
+                    color = NeonCyan.copy(alpha = 0.10f),
+                    shape = RoundedCornerShape(8.dp),
+                )
+                .border(
+                    1.dp,
+                    NeonCyan.copy(alpha = 0.30f),
+                    RoundedCornerShape(8.dp),
+                ),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = NeonCyan,
+                modifier = Modifier.size(14.dp),
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = text.uppercase(),
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp,
+            letterSpacing = 2.sp,
+            color = NeonCyan.copy(alpha = 0.9f),
+        )
+    }
 }
 
 @Composable

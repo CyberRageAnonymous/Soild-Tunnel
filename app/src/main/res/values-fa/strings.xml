@@ -12,6 +12,9 @@
     <string name="protocol_wireguard">WireGuard</string>
     <string name="protocol_gool">WARP×2</string>
     <string name="gool_mode">حالت GOOL</string>
+    <string name="soild_mode">ترانسپورت سویلد</string>
+    <string name="soild_mode_h2">HTTP/2 (TCP)</string>
+    <string name="soild_mode_quic">HTTP/3 (QUIC)</string>
     <string name="gool_mode_masque">روی MASQUE</string>
     <string name="gool_mode_classic">کلاسیک</string>
 
@@ -99,7 +102,8 @@
     <string name="about_license_note">AGPL v3 — سورس کد در گیت‌هاب موجود است</string>
     <string name="menu_open">باز کردن منو</string>
     <string name="drawer_section_session">نشست</string>
-    <string name="drawer_section_tools">ابزارها</string>
+    <string name="drawer_section_network">شبکه</string>
+    <string name="drawer_section_usage">مصرف و اشتراک‌گذاری</string>
     <string name="drawer_section_settings">تنظیمات</string>
     <string name="drawer_section_about">درباره</string>
     <string name="advanced_open">باز کردن تنظیمات پیشرفته</string>

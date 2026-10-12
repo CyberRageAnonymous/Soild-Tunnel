@@ -47,6 +47,7 @@ import com.soildtunnel.app.model.IpVersion
 import com.soildtunnel.app.model.Noize
 import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.model.ScanMode
+import com.soildtunnel.app.model.SoildMode
 import com.soildtunnel.app.model.TorTransport
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.soildtunnel.app.model.SplitMode
@@ -102,8 +103,7 @@ fun AdvancedPanel(
             )
             Spacer(Modifier.height(16.dp))
 
-            if (profile.protocol == Protocol.GOOL) {
-                SettingLabel(stringResource(R.string.gool_mode))
+            if (profile.protocol == Protocol.GOOL) {                SettingLabel(stringResource(R.string.gool_mode))
                 SegmentedSelector(
                     options = GoolMode.entries,
                     selected = profile.goolMode,
@@ -120,6 +120,18 @@ fun AdvancedPanel(
                         onProfileChange(next)
                     },
                     label = { goolModeLabel(it) },
+                    enabled = enabled,
+                )
+                Spacer(Modifier.height(16.dp))
+            }
+
+            if (profile.protocol == Protocol.SOILD) {
+                SettingLabel(stringResource(R.string.soild_mode))
+                SegmentedSelector(
+                    options = SoildMode.entries,
+                    selected = profile.soildMode,
+                    onSelect = { onProfileChange(profile.copy(soildMode = it)) },
+                    label = { soildModeLabel(it) },
                     enabled = enabled,
                 )
                 Spacer(Modifier.height(16.dp))
@@ -915,6 +927,12 @@ private fun protocolLabel(protocol: Protocol): String = when (protocol) {
 private fun goolModeLabel(mode: GoolMode): String = when (mode) {
     GoolMode.ON_MASQUE -> stringResource(R.string.gool_mode_masque)
     GoolMode.CLASSIC -> stringResource(R.string.gool_mode_classic)
+}
+
+@Composable
+private fun soildModeLabel(mode: SoildMode): String = when (mode) {
+    SoildMode.H2 -> stringResource(R.string.soild_mode_h2)
+    SoildMode.QUIC -> stringResource(R.string.soild_mode_quic)
 }
 
 @Composable

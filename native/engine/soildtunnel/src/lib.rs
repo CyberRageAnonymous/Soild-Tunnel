@@ -141,7 +141,7 @@ pub async fn run_with(args: Vec<String>) -> Result<()> {
                 "[+] masque device={} carries the wireguard identity at {inner_path}",
                 identity.device_id
             );
-            let ech = resolve_ech().await;
+            let ech = if front_quic() { None } else { resolve_ech().await };
             let lastconn_path = lastconn_path(&config_path);
             run_masque(identity, ech, listen, lastconn_path, Some(inner_path)).await
         }
@@ -1264,7 +1264,14 @@ fn gool_classic() -> bool {
 pub(crate) fn front_mode() -> bool {
     matches!(
         std::env::var("SOILDTUNNEL_MASQUE_FRONT").as_deref(),
-        Ok("1") | Ok("true") | Ok("yes") | Ok("on")
+        Ok("1") | Ok("true") | Ok("yes") | Ok("on") | Ok("quic")
+    )
+}
+
+pub(crate) fn front_quic() -> bool {
+    matches!(
+        std::env::var("SOILDTUNNEL_MASQUE_FRONT").as_deref(),
+        Ok("quic")
     )
 }
 
@@ -2243,7 +2250,7 @@ impl Protocol {
 }
 
 async fn select_masque_transport() {
-    if front_mode() {
+    if front_mode() && !front_quic() {
         std::env::set_var("SOILDTUNNEL_MASQUE_HTTP2", "1");
         return;
     }

@@ -24,6 +24,7 @@ Protocol:
   --gool-peer <ip:port>    the wireguard endpoint gool dials inside the tunnel
   --soild                  soild carried over plain MASQUE/H2 (foreign exit
                            without ECH or fragmentation)
+  --soild-quic             soild carried over plain MASQUE/QUIC instead
 
 Scan mode:
   --scan <mode>            turbo | balanced | thorough | stealth
@@ -149,6 +150,10 @@ pub fn parse_args(args: Vec<String>) -> crate::error::Result<()> {
             "--soild" => {
                 set("SOILDTUNNEL_PROTOCOL", "gool");
                 set("SOILDTUNNEL_MASQUE_FRONT", "1");
+            }
+            "--soild-quic" => {
+                set("SOILDTUNNEL_PROTOCOL", "gool");
+                set("SOILDTUNNEL_MASQUE_FRONT", "quic");
             }
             "--gool-classic" => {
                 set("SOILDTUNNEL_PROTOCOL", "gool");
