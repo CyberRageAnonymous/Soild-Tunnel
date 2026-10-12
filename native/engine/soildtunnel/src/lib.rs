@@ -2250,8 +2250,12 @@ impl Protocol {
 }
 
 async fn select_masque_transport() {
-    if front_mode() && !front_quic() {
-        std::env::set_var("SOILDTUNNEL_MASQUE_HTTP2", "1");
+    if front_mode() {
+        if front_quic() {
+            std::env::remove_var("SOILDTUNNEL_MASQUE_HTTP2");
+        } else {
+            std::env::set_var("SOILDTUNNEL_MASQUE_HTTP2", "1");
+        }
         return;
     }
     if std::env::var("SOILDTUNNEL_MASQUE_HTTP2").is_ok() || std::env::var("SOILDTUNNEL_PEER").is_ok() {
