@@ -1072,16 +1072,7 @@ async fn run_masque(
 
         let tunnel_result = if front_mode() {
             match establish_soild_race(&identity, peer, ech.clone()).await {
-                Ok(est) => {
-                    serve_masque(
-                        est.stack,
-                        est.tunnel,
-                        est.bridge,
-                        listen,
-                        inner_path.clone(),
-                    )
-                    .await
-                }
+                Ok(est) => serve_masque(est, listen, inner_path.clone()).await,
                 Err(error) => Err(error),
             }
         } else {
@@ -1124,6 +1115,7 @@ struct EstablishedMasque {
     stack: netstack::StackHandle,
     tunnel: TunnelExit,
     bridge: tokio::task::JoinHandle<()>,
+    ctrl: tokio::sync::mpsc::Sender<quic::Control>,
 }
 
 async fn establish_masque(
@@ -1156,7 +1148,6 @@ async fn establish_masque(
 
     let stack =
         netstack::spawn(&identity.ipv4, &identity.ipv6, TUNNEL_MTU, inbound_rx, outbound_tx)?;
-    let _ctrl = ctrl_tx;
 
     let (addr_tx, mut addr_rx) = tokio::sync::mpsc::channel::<quic::AssignedAddr>(8);
     let bridge_stack = stack.clone();
@@ -1223,16 +1214,21 @@ async fn establish_masque(
         stack,
         tunnel: tunnel_task,
         bridge: bridge_task,
+        ctrl: ctrl_tx,
     })
 }
 
 async fn serve_masque(
-    stack: netstack::StackHandle,
-    mut tunnel_task: TunnelExit,
-    bridge: tokio::task::JoinHandle<()>,
+    est: EstablishedMasque,
     listen: SocketAddr,
     inner_path: Option<String>,
 ) -> Result<()> {
+    let EstablishedMasque {
+        stack,
+        tunnel: mut tunnel_task,
+        bridge,
+        ctrl: _ctrl,
+    } = est;
     let mut tasks = TaskGuard::new();
     tasks.push(bridge.abort_handle());
     tasks.push(tunnel_task.abort_handle());
@@ -1290,7 +1286,7 @@ async fn run_masque_tunnel(
     inner_path: Option<String>,
 ) -> Result<()> {
     let est = establish_masque(identity, peer, ech, None).await?;
-    serve_masque(est.stack, est.tunnel, est.bridge, listen, inner_path).await
+    serve_masque(est, listen, inner_path).await
 }
 
 async fn establish_soild_race(
