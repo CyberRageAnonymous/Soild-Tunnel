@@ -77,6 +77,8 @@ data class ConnectionProfile(
     val goolMode: GoolMode = GoolMode.ON_MASQUE,
     /** Soild transport; only consulted when [protocol] is [Protocol.SOILD]. */
     val soildMode: SoildMode = SoildMode.H2,
+    /** Hunt a foreign exit in Soild mode; off connects fast to the best gateway as-is. */
+    val soildHunt: Boolean = true,
     val scanMode: ScanMode = ScanMode.BALANCED,
     val ipVersion: IpVersion = IpVersion.V4,
     val quickReconnect: Boolean = true,
@@ -277,8 +279,12 @@ data class ConnectionProfile(
             Protocol.TOR -> { /* handled app-side, see TorManager */ }
             Protocol.MASQUE -> args += "--masque"
             Protocol.SOILD -> {
-                args += "--soild"
-                if (soildMode == SoildMode.QUIC) args += "--soild-quic"
+                if (soildHunt) {
+                    args += "--soild"
+                    if (soildMode == SoildMode.QUIC) args += "--soild-quic"
+                } else {
+                    args += "--soild-fast"
+                }
             }
             Protocol.WIREGUARD -> args += "--wg"
             Protocol.GOOL -> {

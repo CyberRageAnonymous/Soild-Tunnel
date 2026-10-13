@@ -104,6 +104,7 @@ object ProfileCodec {
         add("protocol=${p.protocol.name}")
         add("gool=${p.goolMode.name}")
         add("soild=${p.soildMode.name}")
+        add("soildHunt=${p.soildHunt}")
         add("scan=${p.scanMode.name}")
         add("ip=${p.ipVersion.name}")
         add("quick=${p.quickReconnect}")
@@ -158,6 +159,7 @@ object ProfileCodec {
                 protocol = map["protocol"]?.let { enumOr<Protocol>(it) } ?: d.protocol,
                 goolMode = map["gool"]?.let { enumOr<GoolMode>(it) } ?: d.goolMode,
                 soildMode = map["soild"]?.let { enumOr<SoildMode>(it) } ?: d.soildMode,
+                soildHunt = map["soildHunt"]?.toBooleanStrictOrNull() ?: d.soildHunt,
                 scanMode = map["scan"]?.let { enumOr<ScanMode>(it) } ?: d.scanMode,
                 ipVersion = map["ip"]?.let { enumOr<IpVersion>(it) } ?: d.ipVersion,
                 quickReconnect = map["quick"]?.toBooleanStrictOrNull() ?: d.quickReconnect,

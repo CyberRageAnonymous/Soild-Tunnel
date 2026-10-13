@@ -386,7 +386,8 @@ class SoildTunnelVpnService : VpnService() {
         // would kill the outer scan, so it is dropped back to Auto here.
         // Classic keeps pins untouched.
         val effective = if ((profile.protocol == Protocol.GOOL &&
-                profile.goolMode == GoolMode.ON_MASQUE || profile.protocol == Protocol.SOILD) &&
+                profile.goolMode == GoolMode.ON_MASQUE || profile.protocol == Protocol.SOILD &&
+                profile.soildHunt) &&
             profile.endpointMode != EndpointMode.AUTO
         ) {
             DiagnosticsLog.i(TAG, "Carried mode ignores the pinned endpoint and scans automatically")
@@ -413,7 +414,7 @@ class SoildTunnelVpnService : VpnService() {
         // tunnel), plus cold scans on hostile networks, so its first pass
         // gets a wider cap than a single-hop protocol.
         val firstPassMax = if (effective.protocol == Protocol.GOOL ||
-            effective.protocol == Protocol.SOILD
+            effective.protocol == Protocol.SOILD && effective.soildHunt
         ) {
             FIRST_PASS_MAX_MS + GOOL_CARRIED_EXTRA_MS
         } else {

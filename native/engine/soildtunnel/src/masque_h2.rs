@@ -83,6 +83,14 @@ fn h2_keepalive_timeout() -> Duration {
     Duration::from_secs(secs)
 }
 
+fn jittered_keepalive() -> Duration {
+    let base = h2_keepalive_interval().as_secs().max(8);
+    let span = base / 2;
+    let low = base.saturating_sub(span).max(5);
+    let high = base.saturating_add(span);
+    Duration::from_secs(low + rand::random::<u64>() % (high - low + 1))
+}
+
 pub fn enabled() -> bool {
     match std::env::var("SOILDTUNNEL_MASQUE_HTTP2") {
         Ok(v) => {
@@ -436,6 +444,8 @@ pub async fn run(
                     Ok(()) => {
                         awaiting_pong = true;
                         pong_deadline = Some(Instant::now() + keepalive_timeout);
+                        keepalive_interval = tokio::time::interval(jittered_keepalive());
+                        keepalive_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                         log::debug!("[h2] keepalive ping sent");
                     }
                     Err(e) => log::debug!("[h2] keepalive ping send failed: {e}"),

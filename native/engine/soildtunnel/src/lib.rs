@@ -116,7 +116,7 @@ pub async fn run_with(args: Vec<String>) -> Result<()> {
                 identity.ipv4,
                 identity.ipv6
             );
-            let ech = resolve_ech().await;
+            let ech = if front_mode() { None } else { resolve_ech().await };
             let lastconn_path = lastconn_path(&config_path);
             run_masque(identity, ech, listen, lastconn_path, None).await
         }

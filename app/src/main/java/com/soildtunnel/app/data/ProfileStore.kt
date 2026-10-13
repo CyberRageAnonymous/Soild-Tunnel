@@ -30,6 +30,7 @@ class ProfileStore(private val context: Context) {
         val protocol = stringPreferencesKey("protocol")
         val gool = stringPreferencesKey("gool")
         val soild = stringPreferencesKey("soild")
+        val soildHunt = booleanPreferencesKey("soildHunt")
         val scan = stringPreferencesKey("scan")
         val ip = stringPreferencesKey("ip")
         val quick = booleanPreferencesKey("quick")
@@ -103,6 +104,7 @@ class ProfileStore(private val context: Context) {
                 ?.let { runCatching { GoolMode.valueOf(it) }.getOrNull() } ?: GoolMode.ON_MASQUE,
             soildMode = prefs[Keys.soild]
                 ?.let { runCatching { SoildMode.valueOf(it) }.getOrNull() } ?: SoildMode.H2,
+            soildHunt = prefs[Keys.soildHunt] ?: true,
             scanMode = prefs[Keys.scan]
                 ?.let { runCatching { ScanMode.valueOf(it) }.getOrNull() } ?: ScanMode.BALANCED,
             ipVersion = prefs[Keys.ip]
@@ -174,6 +176,7 @@ class ProfileStore(private val context: Context) {
             prefs[Keys.protocol] = profile.protocol.name
             prefs[Keys.gool] = profile.goolMode.name
             prefs[Keys.soild] = profile.soildMode.name
+            prefs[Keys.soildHunt] = profile.soildHunt
             prefs[Keys.scan] = profile.scanMode.name
             prefs[Keys.ip] = profile.ipVersion.name
             prefs[Keys.quick] = profile.quickReconnect

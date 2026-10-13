@@ -94,7 +94,7 @@ fun ServerPickerSheet(
     // protocol keep the full list.
     val masqueOnlyAuto = profile.protocol == Protocol.GOOL &&
         profile.goolMode == GoolMode.ON_MASQUE
-    val soildOnlyAuto = profile.protocol == Protocol.SOILD
+    val soildOnlyAuto = profile.protocol == Protocol.SOILD && profile.soildHunt
     val autoOnlyNote = when {
         masqueOnlyAuto -> stringResource(R.string.server_masque_auto_note)
         soildOnlyAuto -> stringResource(R.string.server_soild_auto_note)

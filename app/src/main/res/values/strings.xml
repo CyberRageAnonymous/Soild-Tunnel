@@ -15,6 +15,8 @@
     <string name="soild_mode">Soild transport</string>
     <string name="soild_mode_h2">HTTP/2 (TCP)</string>
     <string name="soild_mode_quic">HTTP/3 (QUIC)</string>
+    <string name="soild_hunt_title">Hunt foreign exit</string>
+    <string name="soild_hunt_desc">Walk gateways until a foreign exit is found. Off connects fast to the best gateway as-is over plain H2.</string>
     <string name="gool_mode_masque">On MASQUE</string>
     <string name="gool_mode_classic">Classic</string>
 

@@ -275,17 +275,25 @@ private fun CoreSection(
             Spacer(Modifier.height(16.dp))
         }
 
-        if (profile.protocol == Protocol.SOILD) {
-            SettingLabel(stringResource(R.string.soild_mode))
-            SegmentedSelector(
-                options = SoildMode.entries,
-                selected = profile.soildMode,
-                onSelect = { onProfileChange(profile.copy(soildMode = it)) },
-                label = { soildModeLabel(it) },
-                enabled = enabled,
-            )
-            Spacer(Modifier.height(16.dp))
-        }
+            if (profile.protocol == Protocol.SOILD) {
+                SettingLabel(stringResource(R.string.soild_mode))
+                SegmentedSelector(
+                    options = SoildMode.entries,
+                    selected = profile.soildMode,
+                    onSelect = { onProfileChange(profile.copy(soildMode = it)) },
+                    label = { soildModeLabel(it) },
+                    enabled = enabled && profile.soildHunt,
+                )
+                Spacer(Modifier.height(16.dp))
+                ToggleRow(
+                    title = stringResource(R.string.soild_hunt_title),
+                    description = stringResource(R.string.soild_hunt_desc),
+                    checked = profile.soildHunt,
+                    enabled = enabled,
+                    onChange = { onProfileChange(profile.copy(soildHunt = it)) },
+                )
+                Spacer(Modifier.height(16.dp))
+            }
 
         if (profile.protocol != Protocol.TOR) {
             SettingLabel(stringResource(R.string.scan_mode))
