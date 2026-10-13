@@ -122,6 +122,62 @@ fn announce_once(message: String) {
     }
 }
 
+/// Standard WebPKI verification for a front SNI: chain against the device's
+/// own root store plus a hostname check. Used only when the SNI differs from
+/// the default MASQUE name; the pinned path above stays untouched.
+pub fn install_webpki_verification(
+    builder: &mut SslContextBuilder,
+    host: &str,
+) -> Result<()> {
+    use boring::x509::store::X509StoreBuilder;
+
+    let mut store = X509StoreBuilder::new()
+        .map_err(|e| SoildTunnelError::Tls(format!("web pki store: {e}")))?;
+    let mut loaded = 0usize;
+    let mut add_pem = |pem: &[u8], store: &mut X509StoreBuilder| {
+        if let Ok(certs) = boring::x509::X509::stack_from_pem(pem) {
+            for cert in certs {
+                if store.add_cert(cert).is_ok() {
+                    loaded += 1;
+                }
+            }
+        }
+    };
+
+    if let Ok(entries) = std::fs::read_dir("/system/etc/security/cacerts") {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            if let Ok(pem) = std::fs::read(&path) {
+                add_pem(&pem, &mut store);
+            }
+        }
+    }
+    for bundle in [
+        "/etc/ssl/certs/ca-certificates.crt",
+        "/etc/pki/tls/certs/ca-bundle.crt",
+    ] {
+        if let Ok(pem) = std::fs::read(bundle) {
+            add_pem(&pem, &mut store);
+        }
+    }
+
+    if loaded == 0 {
+        return Err(SoildTunnelError::Tls(
+            "no system CA certificates found for front verification".into(),
+        ));
+    }
+
+    builder
+        .set_verify_cert_store(store.build())
+        .map_err(|e| SoildTunnelError::Tls(format!("web pki store: {e}")))?;
+    builder.set_verify(SslVerifyMode::PEER);
+    log::info!("[+] front tls: WebPKI verification with {loaded} system roots for {host}");
+    Ok(())
+}
+
 pub fn build_config(params: &TlsParams) -> Result<quiche::Config> {
     let mut builder = SslContextBuilder::new(SslMethod::tls())
         .map_err(|e| SoildTunnelError::Tls(e.to_string()))?;

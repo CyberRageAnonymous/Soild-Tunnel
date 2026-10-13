@@ -141,7 +141,7 @@ pub async fn run_with(args: Vec<String>) -> Result<()> {
                 "[+] masque device={} carries the wireguard identity at {inner_path}",
                 identity.device_id
             );
-            let ech = if front_quic() { None } else { resolve_ech().await };
+            let ech = if front_mode() { None } else { resolve_ech().await };
             let lastconn_path = lastconn_path(&config_path);
             run_masque(identity, ech, listen, lastconn_path, Some(inner_path)).await
         }
@@ -1070,7 +1070,25 @@ async fn run_masque(
 
         last_good_peer = Some(peer);
 
-        match run_masque_tunnel(&identity, peer, ech.clone(), listen, inner_path.clone()).await {
+        let tunnel_result = if front_mode() {
+            match establish_soild_race(&identity, peer, ech.clone()).await {
+                Ok(est) => {
+                    serve_masque(
+                        est.stack,
+                        est.tunnel,
+                        est.bridge,
+                        listen,
+                        inner_path.clone(),
+                    )
+                    .await
+                }
+                Err(error) => Err(error),
+            }
+        } else {
+            run_masque_tunnel(&identity, peer, ech.clone(), listen, inner_path.clone()).await
+        };
+
+        match tunnel_result {
             Ok(()) => {
                 log::warn!("[-] MASQUE tunnel closed; reconnecting");
                 ranked.clear();
@@ -1102,13 +1120,18 @@ async fn run_masque(
     }
 }
 
-async fn run_masque_tunnel(
+struct EstablishedMasque {
+    stack: netstack::StackHandle,
+    tunnel: TunnelExit,
+    bridge: tokio::task::JoinHandle<()>,
+}
+
+async fn establish_masque(
     identity: &account::Identity,
     peer: SocketAddr,
     ech: Option<Vec<u8>>,
-    listen: SocketAddr,
-    inner_path: Option<String>,
-) -> Result<()> {
+    force_h2: Option<bool>,
+) -> Result<EstablishedMasque> {
     consume_migrate_hint();
     let (chans, internals) = quic::channels();
 
@@ -1135,8 +1158,6 @@ async fn run_masque_tunnel(
         netstack::spawn(&identity.ipv4, &identity.ipv6, TUNNEL_MTU, inbound_rx, outbound_tx)?;
     let _ctrl = ctrl_tx;
 
-    let mut tasks = TaskGuard::new();
-
     let (addr_tx, mut addr_rx) = tokio::sync::mpsc::channel::<quic::AssignedAddr>(8);
     let bridge_stack = stack.clone();
     let bridge_task = tokio::spawn(async move {
@@ -1150,11 +1171,11 @@ async fn run_masque_tunnel(
             }
         }
     });
-    tasks.push(bridge_task.abort_handle());
 
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
 
-    let mut tunnel_task = if masque_h2::enabled() {
+    let use_h2 = force_h2.unwrap_or_else(masque_h2::enabled);
+    let tunnel_task = if use_h2 {
         let h2cfg = masque_h2::H2TunnelConfig {
             peer: masque_h2::h2_peer(peer),
             sni: consts::effective_sni(),
@@ -1173,12 +1194,12 @@ async fn run_masque_tunnel(
         log::info!("[+] MASQUE transport: HTTP/3 (QUIC) to {}", peer);
         tokio::spawn(quic::run(cfg, internals, Some(addr_tx), Some(ready_tx)))
     };
-    tasks.push(tunnel_task.abort_handle());
 
     let startup_timeout = masque_startup_timeout();
     match tokio::time::timeout(startup_timeout, ready_rx).await {
         Ok(Ok(())) => {}
         Ok(Err(_)) => {
+            bridge_task.abort();
             let joined = tunnel_task.await;
             let msg = match joined {
                 Ok(Ok(())) => "tunnel exited before validation".to_string(),
@@ -1188,6 +1209,7 @@ async fn run_masque_tunnel(
             return Err(SoildTunnelError::Other(msg));
         }
         Err(_) => {
+            bridge_task.abort();
             tunnel_task.abort();
             let _ = tunnel_task.await;
             return Err(SoildTunnelError::Other(format!(
@@ -1196,6 +1218,24 @@ async fn run_masque_tunnel(
             )));
         }
     }
+
+    Ok(EstablishedMasque {
+        stack,
+        tunnel: tunnel_task,
+        bridge: bridge_task,
+    })
+}
+
+async fn serve_masque(
+    stack: netstack::StackHandle,
+    mut tunnel_task: TunnelExit,
+    bridge: tokio::task::JoinHandle<()>,
+    listen: SocketAddr,
+    inner_path: Option<String>,
+) -> Result<()> {
+    let mut tasks = TaskGuard::new();
+    tasks.push(bridge.abort_handle());
+    tasks.push(tunnel_task.abort_handle());
 
     if let Some(inner_path) = inner_path {
         return run_carried_hop(&stack, &mut tunnel_task, listen, inner_path).await;
@@ -1240,6 +1280,54 @@ async fn run_masque_tunnel(
         Ok(Err(e)) => Err(SoildTunnelError::Other(format!("tunnel exited: {e}"))),
         Err(e) => Err(SoildTunnelError::Other(format!("tunnel task join error: {e}"))),
     }
+}
+
+async fn run_masque_tunnel(
+    identity: &account::Identity,
+    peer: SocketAddr,
+    ech: Option<Vec<u8>>,
+    listen: SocketAddr,
+    inner_path: Option<String>,
+) -> Result<()> {
+    let est = establish_masque(identity, peer, ech, None).await?;
+    serve_masque(est.stack, est.tunnel, est.bridge, listen, inner_path).await
+}
+
+async fn establish_soild_race(
+    identity: &account::Identity,
+    peer: SocketAddr,
+    ech: Option<Vec<u8>>,
+) -> Result<EstablishedMasque> {
+    let prefer_h2 = !front_quic();
+    let owned = identity.clone();
+    let ech_primary = ech.clone();
+    let mut set = tokio::task::JoinSet::new();
+    set.spawn(async move { establish_masque(&owned, peer, ech_primary, Some(prefer_h2)).await });
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    match set.try_join_next() {
+        Some(Ok(Ok(est))) => return Ok(est),
+        _ => {
+            let owned = identity.clone();
+            set.spawn(async move { establish_masque(&owned, peer, ech, Some(!prefer_h2)).await });
+        }
+    }
+
+    let mut last_error =
+        SoildTunnelError::Other("both soild transports failed".into());
+    while let Some(result) = set.join_next().await {
+        match result {
+            Ok(Ok(est)) => {
+                set.abort_all();
+                return Ok(est);
+            }
+            Ok(Err(error)) => last_error = error,
+            Err(error) => {
+                last_error =
+                    SoildTunnelError::Other(format!("transport task join error: {error}"));
+            }
+        }
+    }
+    Err(last_error)
 }
 
 fn consume_migrate_hint() -> bool {

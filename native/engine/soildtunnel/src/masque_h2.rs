@@ -142,8 +142,16 @@ fn build_tls(cfg: &H2TunnelConfig) -> Result<boring::ssl::ConnectConfiguration> 
     // Install TLS verification:
     // pin_endpoint=true with pins: pin-based verification (SNI can be spoofed)
     // pin_endpoint=false: SslVerifyMode::NONE (default, required for Cloudflare MASQUE edges)
+    // front SNI (anything but the default MASQUE name): WebPKI chain plus
+    // hostname check, so filtered networks can be crossed behind an
+    // innocuous server name.
     let pin_refs: Vec<&[u8]> = cfg.expected_pins.iter().map(|p| p.as_slice()).collect();
-    tls::install_verification(&mut *builder, cfg.pin_endpoint, &pin_refs)?;
+    let fronted = cfg.sni != crate::consts::CONNECT_SNI;
+    if fronted {
+        tls::install_webpki_verification(&mut *builder, &cfg.sni)?;
+    } else {
+        tls::install_verification(&mut *builder, cfg.pin_endpoint, &pin_refs)?;
+    }
 
     let connector = builder.build();
     let mut config = connector
@@ -153,7 +161,8 @@ fn build_tls(cfg: &H2TunnelConfig) -> Result<boring::ssl::ConnectConfiguration> 
     // When using pin-based verification, SNI may be spoofed for DPI bypass,
     // so hostname verification against the cert's CN/SAN is not applicable.
     // Standard CA verification requires hostname matching.
-    let use_pin_verification = cfg.pin_endpoint && !cfg.expected_pins.is_empty();
+    let use_pin_verification =
+        !fronted && cfg.pin_endpoint && !cfg.expected_pins.is_empty();
     config.set_verify_hostname(!use_pin_verification);
     config.set_use_server_name_indication(true);
 
