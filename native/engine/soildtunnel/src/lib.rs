@@ -1431,9 +1431,45 @@ async fn carried_wg_identity(
 /// HTTP geo lookup. Only a certain "IR" answer is trusted; anything
 /// inconclusive (rate limit, timeout, parse failure) lets the hop proceed, so
 /// a flaky lookup can never block connecting.
-async fn outer_exit_country(outer: &netstack::StackHandle) -> Result<Option<String>> {
-    let ip = socks::dns_resolve(outer, "ip-api.com").await?;
-    let conn = outer.open_tcp(SocketAddr::new(ip, 80)).await?;
+enum Egress {
+    Foreign { cc: String, via: &'static str },
+    Iranian,
+    Unknown,
+}
+
+async fn exit_country(stack: &netstack::StackHandle) -> Egress {
+    let (trace, geo) = tokio::join!(
+        cloudflare_trace_country(stack),
+        ipapi_country(stack),
+    );
+    match trace {
+        Ok(cc) => {
+            return if cc == "IR" {
+                Egress::Iranian
+            } else {
+                Egress::Foreign { cc, via: "trace" }
+            };
+        }
+        Err(error) => log::debug!("egress trace unavailable: {error}"),
+    }
+    match geo {
+        Ok(cc) => {
+            if cc == "IR" {
+                Egress::Iranian
+            } else {
+                Egress::Foreign { cc, via: "geoip" }
+            }
+        }
+        Err(error) => {
+            log::debug!("egress geoip unavailable: {error}");
+            Egress::Unknown
+        }
+    }
+}
+
+async fn ipapi_country(stack: &netstack::StackHandle) -> Result<String> {
+    let ip = socks::dns_resolve(stack, "ip-api.com").await?;
+    let conn = stack.open_tcp(SocketAddr::new(ip, 80)).await?;
     let (sender, mut from_stack) = conn.into_split();
     sender
         .send(
@@ -1453,10 +1489,51 @@ async fn outer_exit_country(outer: &netstack::StackHandle) -> Result<Option<Stri
     if let Some(start) = text.find(marker) {
         let code: String = text[start + marker.len()..].chars().take(2).collect();
         if code.len() == 2 && code.bytes().all(|b| b.is_ascii_alphabetic()) {
-            return Ok(Some(code.to_uppercase()));
+            return Ok(code.to_uppercase());
         }
     }
-    Ok(None)
+    Err(SoildTunnelError::Other("no countryCode in geoip reply".into()))
+}
+
+async fn cloudflare_trace_country(stack: &netstack::StackHandle) -> Result<String> {
+    let ip = socks::dns_resolve(stack, "www.cloudflare.com").await?;
+    let conn = stack.open_tcp(SocketAddr::new(ip, 80)).await?;
+    let (sender, mut from_stack) = conn.into_split();
+    sender
+        .send(
+            b"GET http://www.cloudflare.com/cdn-cgi/trace HTTP/1.0\r\nHost: www.cloudflare.com\r\nUser-Agent: Mozilla/5.0\r\nConnection: close\r\n\r\n"
+                .to_vec(),
+        )
+        .await?;
+    let mut raw: Vec<u8> = Vec::new();
+    while let Some(chunk) = from_stack.recv().await {
+        raw.extend_from_slice(&chunk);
+        if raw.len() > 8192 {
+            break;
+        }
+    }
+    let text = String::from_utf8_lossy(&raw);
+    let mut loc: Option<String> = None;
+    let mut seen_fl = false;
+    let mut seen_ip = false;
+    for line in text.lines() {
+        if line.starts_with("fl=") {
+            seen_fl = true;
+        } else if line.starts_with("ip=") {
+            seen_ip = true;
+        } else if let Some(code) = line.strip_prefix("loc=") {
+            let code = code.trim().to_uppercase();
+            if code.len() == 2 && code.bytes().all(|b| b.is_ascii_alphabetic()) {
+                loc = Some(code);
+            }
+        }
+    }
+    match (loc, seen_fl && seen_ip) {
+        (Some(cc), true) => Ok(cc),
+        _ => Err(SoildTunnelError::Other(
+            "cloudflare trace parse failed".into(),
+        )),
+    }
 }
 
 async fn run_carried_hop(
@@ -1467,9 +1544,14 @@ async fn run_carried_hop(
 ) -> Result<()> {
     let had_saved = std::path::Path::new(&inner_path).exists();
     let mut outer_ir = false;
-    match tokio::time::timeout(std::time::Duration::from_secs(15), outer_exit_country(outer)).await
+    match tokio::time::timeout(std::time::Duration::from_secs(15), exit_country(outer)).await
     {
-        Ok(Ok(Some(country))) if country == "IR" && !had_saved => {
+        Ok(Egress::Foreign { cc, via }) => {
+            OUTER_IR_STREAK.store(0, Ordering::SeqCst);
+            log::info!("[+] gool: outer gateway exits in {cc} ({via})");
+            outer_ir = false;
+        }
+        Ok(Egress::Iranian) if !had_saved => {
             let streak = OUTER_IR_STREAK.fetch_add(1, Ordering::SeqCst) + 1;
             if streak < PIPE_AFTER_IR {
                 log::warn!("[-] gool: outer gateway exits in IR; dropping it and rescanning");
@@ -1479,12 +1561,8 @@ async fn run_carried_hop(
             outer_ir = true;
             log::warn!("[-] gool: all recent gateways exit in IR; using this one as a pipe and checking the inner exit");
         }
-        Ok(Ok(Some(country))) if country == "IR" => {
+        Ok(Egress::Iranian) => {
             log::info!("[+] gool: outer gateway exits in IR; saved identity exists, using it as a pipe");
-        }
-        Ok(Ok(Some(country))) => {
-            OUTER_IR_STREAK.store(0, Ordering::SeqCst);
-            log::info!("[+] gool: outer gateway exits in {country}");
         }
         _ => log::debug!("[*] gool: outer exit country unknown; continuing"),
     }
@@ -1513,11 +1591,11 @@ async fn run_carried_hop(
                 Ok((inner_stack, mut inner_exit)) => {
                     match tokio::time::timeout(
                         std::time::Duration::from_secs(15),
-                        outer_exit_country(&inner_stack),
+                        exit_country(&inner_stack),
                     )
                     .await
                     {
-                        Ok(Ok(Some(country))) if country == "IR" => {
+                        Ok(Egress::Iranian) => {
                             log::warn!(
                                 "[-] gool inner {inner_peer} exits in IR; trying next endpoint"
                             );
@@ -1525,8 +1603,8 @@ async fn run_carried_hop(
                             inner_exit.abort();
                             continue 'peers;
                         }
-                        Ok(Ok(Some(country))) => {
-                            log::info!("[+] gool inner exits in {country}");
+                        Ok(Egress::Foreign { cc, via }) => {
+                            log::info!("[+] gool inner exits in {cc} ({via})");
                         }
                         _ => log::debug!("[*] gool inner exit country unknown; continuing"),
                     }
