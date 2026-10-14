@@ -340,9 +340,17 @@ pub(crate) async fn dns_resolve(stack: &StackHandle, name: &str) -> Result<IpAdd
     }
     let udp = stack.open_udp().await?;
     let (sender, mut from_stack) = udp.into_split();
-    let outcome = dns_exchange(&sender, &mut from_stack, name).await;
+    match dns_exchange(&sender, &mut from_stack, name).await {
+        Ok(ip) => {
+            sender.close().await;
+            return Ok(ip);
+        }
+        Err(error) => {
+            log::debug!("in-tunnel udp dns failed for {name}: {error}; trying tcp");
+        }
+    }
     sender.close().await;
-    outcome
+    dns_exchange_tcp(stack, name).await
 }
 
 pub(crate) fn resolver_addresses() -> Vec<SocketAddr> {
@@ -379,28 +387,27 @@ async fn dns_exchange(
     from_stack: &mut mpsc::Receiver<(SocketAddr, Vec<u8>)>,
     name: &str,
 ) -> Result<IpAddr> {
-    let mut last = SoildTunnelError::Other("dns timeout".into());
-
+    let mut queries: Vec<(SocketAddr, u16)> = Vec::new();
     for server in resolver_addresses() {
         let (query, id) = build_dns_query(name, QTYPE_A);
-        if let Err(error) = sender.send_to(server, query).await {
-            last = error;
-            continue;
+        if sender.send_to(server, query).await.is_ok() {
+            queries.push((server, id));
         }
+    }
+    if queries.is_empty() {
+        return Err(SoildTunnelError::Other("dns send failed".into()));
+    }
 
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(4);
+    loop {
+        let resp = match tokio::time::timeout_at(deadline, from_stack.recv()).await {
+            Ok(Some(resp)) => resp,
+            Ok(None) => return Err(SoildTunnelError::Other("dns channel closed".into())),
+            Err(_) => break,
+        };
 
-        loop {
-            let resp = match tokio::time::timeout_at(deadline, from_stack.recv()).await {
-                Ok(Some(resp)) => resp,
-                Ok(None) => return Err(SoildTunnelError::Other("dns channel closed".into())),
-                Err(_) => {
-                    last = SoildTunnelError::Other(format!("dns timeout from {server}"));
-                    break;
-                }
-            };
-
-            if !dns_response_matches(&resp.1, id, name, QTYPE_A) {
+        for (_, id) in &queries {
+            if !dns_response_matches(&resp.1, *id, name, QTYPE_A) {
                 continue;
             }
             if let Some(ip) = parse_dns_a(&resp.1) {
@@ -410,6 +417,53 @@ async fn dns_exchange(
         }
     }
 
+    Err(SoildTunnelError::Other(format!("dns timeout for {name}")))
+}
+
+async fn dns_exchange_tcp(stack: &StackHandle, name: &str) -> Result<IpAddr> {
+    let mut last = SoildTunnelError::Other(format!("dns timeout for {name}"));
+    for server in resolver_addresses() {
+        let attempt = async {
+            let (query, id) = build_dns_query(name, QTYPE_A);
+            let conn = stack.open_tcp(server).await?;
+            let (sender, mut from_stack) = conn.into_split();
+            let mut framed = (query.len() as u16).to_be_bytes().to_vec();
+            framed.extend_from_slice(&query);
+            sender.send(framed).await?;
+            let mut buf: Vec<u8> = Vec::new();
+            while buf.len() < 2 {
+                match from_stack.recv().await {
+                    Some(chunk) => buf.extend_from_slice(&chunk),
+                    None => return Err(SoildTunnelError::Other("dns tcp closed".into())),
+                }
+            }
+            let len = u16::from_be_bytes([buf[0], buf[1]]) as usize;
+            if len > 4096 {
+                return Err(SoildTunnelError::Other("dns tcp reply too large".into()));
+            }
+            while buf.len() < 2 + len {
+                match from_stack.recv().await {
+                    Some(chunk) => buf.extend_from_slice(&chunk),
+                    None => return Err(SoildTunnelError::Other("dns tcp closed".into())),
+                }
+            }
+            let body = &buf[2..2 + len];
+            if !dns_response_matches(body, id, name, QTYPE_A) {
+                return Err(SoildTunnelError::Other(format!("dns tcp mismatch for {name}")));
+            }
+            match parse_dns_a(body) {
+                Some(ip) => Ok(ip),
+                None => Err(SoildTunnelError::Other(format!("no A record for {name}"))),
+            }
+        };
+        match tokio::time::timeout(Duration::from_secs(4), attempt).await {
+            Ok(Ok(ip)) => return Ok(ip),
+            Ok(Err(error)) => last = error,
+            Err(_) => {
+                last = SoildTunnelError::Other(format!("dns tcp timeout from {server}"));
+            }
+        }
+    }
     Err(last)
 }
 

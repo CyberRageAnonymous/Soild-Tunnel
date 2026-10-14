@@ -1467,7 +1467,7 @@ async fn run_carried_hop(
 ) -> Result<()> {
     let had_saved = std::path::Path::new(&inner_path).exists();
     let mut outer_ir = false;
-    match tokio::time::timeout(std::time::Duration::from_secs(10), outer_exit_country(outer)).await
+    match tokio::time::timeout(std::time::Duration::from_secs(15), outer_exit_country(outer)).await
     {
         Ok(Ok(Some(country))) if country == "IR" && !had_saved => {
             let streak = OUTER_IR_STREAK.fetch_add(1, Ordering::SeqCst) + 1;
@@ -1512,7 +1512,7 @@ async fn run_carried_hop(
             match establish_wg(&identity, forwarder, GOOL_INNER_MTU, false, 10, "gool").await {
                 Ok((inner_stack, mut inner_exit)) => {
                     match tokio::time::timeout(
-                        std::time::Duration::from_secs(10),
+                        std::time::Duration::from_secs(15),
                         outer_exit_country(&inner_stack),
                     )
                     .await
