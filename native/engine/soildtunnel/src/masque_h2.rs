@@ -302,6 +302,32 @@ pub async fn verify_h2(cfg: &H2TunnelConfig, timeout: Duration) -> Result<Durati
     }
 }
 
+pub async fn verify_h2_shallow(cfg: &H2TunnelConfig, timeout: Duration) -> Result<Duration> {
+    let start = Instant::now();
+
+    let attempt = async {
+        let tls_config = build_tls(cfg)?;
+        let tcp = dial(cfg.peer).await?;
+        let _ = tcp.set_nodelay(true);
+        let frag_cfg = if crate::front_mode() {
+            FragmentConfig::disabled()
+        } else {
+            FragmentConfig::from_env()
+        };
+        let fragment = FragmentingStream::new(tcp, frag_cfg);
+        let _tls = tokio_boring::connect(tls_config, &cfg.sni, fragment)
+            .await
+            .map_err(|e| SoildTunnelError::Tls(format!("h2 tls handshake: {e}")))?;
+        Ok::<(), SoildTunnelError>(())
+    };
+
+    match tokio::time::timeout(timeout, attempt).await {
+        Ok(Ok(())) => Ok(start.elapsed()),
+        Ok(Err(e)) => Err(e),
+        Err(_) => Err(SoildTunnelError::Other("h2 shallow verify timed out".into())),
+    }
+}
+
 pub async fn run(
     cfg: H2TunnelConfig,
     internals: Internals,

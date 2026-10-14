@@ -285,7 +285,7 @@ pub async fn hunt_best_gateway(
     let stream = futures::stream::iter(
         candidates
             .into_iter()
-            .map(|(ip, port)| verify_one(probe, ip, port, timeout, ironclad)),
+            .map(|(ip, port)| verify_one(probe, ip, port, timeout, ironclad, false)),
     )
     .buffer_unordered(st.concurrency);
     tokio::pin!(stream);
@@ -410,7 +410,7 @@ pub async fn hunt_ranked_gateways(
     let stream = futures::stream::iter(
         candidates
             .into_iter()
-            .map(|(ip, port)| verify_one(probe, ip, port, timeout, ironclad)),
+            .map(|(ip, port)| verify_one(probe, ip, port, timeout, ironclad, true)),
     )
     .buffer_unordered(st.concurrency);
     tokio::pin!(stream);
@@ -476,6 +476,7 @@ async fn verify_one(
     port: u16,
     timeout: Duration,
     ironclad: bool,
+    shallow: bool,
 ) -> Option<ProbeResult> {
     if ironclad {
         let params = crate::tunnelping::MasquePingParams {
@@ -515,7 +516,11 @@ async fn verify_one(
             pin_endpoint: true,
             expected_pins: crate::consts::MASQUE_PINS.iter().map(|p| p.to_vec()).collect(),
         };
-        return match crate::masque_h2::verify_h2(&cfg, timeout).await {
+        return match if shallow {
+            crate::masque_h2::verify_h2_shallow(&cfg, timeout).await
+        } else {
+            crate::masque_h2::verify_h2(&cfg, timeout).await
+        } {
             Ok(rtt) => Some(ProbeResult { ip, port, rtt }),
             Err(e) => {
                 log::trace!("h2 probe {ip}:{port} -> {e}");
