@@ -265,9 +265,11 @@ data class ConnectionProfile(
     val hasManualPeer: Boolean
         get() = endpointMode == EndpointMode.MANUAL_PEER && manualPeer.isNotBlank()
 
-    /** Command-line arguments passed to the `soildtunnel` engine binary. */
-    fun toArgs(): List<String> {
-        val args = mutableListOf<String>()
+    /**
+     * Command-line arguments passed to the `soildtunnel` engine binary.
+     * Part of the engine core contract (native/engine/CORE_CONTRACT.md).
+     */
+    fun toArgs(): List<String> {        val args = mutableListOf<String>()
 
         when (protocol) {
             // AUTO no longer reaches the engine: Smart Auto (core/SmartAuto.kt)
