@@ -26,6 +26,9 @@ pub enum SoildTunnelError {
     #[error("iranian egress, rescanning")]
     IranianEgress,
 
+    #[error("iranian egress, trying next ranked gateway")]
+    IranianEgressWalk,
+
     #[error("migrate requested")]
     Migrate,
 
