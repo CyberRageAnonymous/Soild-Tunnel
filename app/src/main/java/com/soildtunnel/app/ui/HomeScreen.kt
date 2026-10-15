@@ -1,9 +1,17 @@
 package com.soildtunnel.app.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,12 +45,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -144,7 +150,6 @@ fun HomeScreen(
 
     // Advanced settings, reachable directly from the home screen (top-right).
     var showAdvancedSheet by remember { mutableStateOf(false) }
-    val advancedSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     // The server console.
     var showServerSheet by remember { mutableStateOf(false) }
@@ -486,22 +491,42 @@ fun HomeScreen(
         )
     }
 
-    if (showAdvancedSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showAdvancedSheet = false },
-            sheetState = advancedSheetState,
-            containerColor = SheetGlass,
+    BackHandler(enabled = showAdvancedSheet) { showAdvancedSheet = false }
+    AnimatedVisibility(
+        visible = showAdvancedSheet,
+        enter = fadeIn(animationSpec = tween(220)),
+        exit = fadeOut(animationSpec = tween(220)),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.45f))
+                .clickable { showAdvancedSheet = false },
+        )
+    }
+    AnimatedVisibility(
+        visible = showAdvancedSheet,
+        enter = slideInHorizontally(animationSpec = tween(280)) { it } + fadeIn(tween(280)),
+        exit = slideOutHorizontally(animationSpec = tween(240)) { it } + fadeOut(tween(240)),
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.CenterEnd,
         ) {
             Column(
                 modifier = Modifier
-                    // The advanced card is much taller than a phone screen.
-                    // Give the sheet a bounded viewport and scroll that viewport;
-                    // otherwise Compose measures the whole card and Material's
-                    // bottom sheet clips its lower controls behind the nav bar.
-                    .fillMaxHeight(0.92f)
+                    .fillMaxHeight()
+                    .fillMaxWidth(0.88f)
+                    .background(SheetGlass)
+                    .clip(RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp))
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() },
+                    ) { }
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp)
+                    .statusBarsPadding()
                     .navigationBarsPadding()
+                    .padding(horizontal = 16.dp)
                     .padding(bottom = 32.dp),
             ) {
                 var sheetReady by remember { mutableStateOf(false) }
