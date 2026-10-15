@@ -1107,14 +1107,6 @@ async fn run_masque(
                     return Err(SoildTunnelError::IranianEgress);
                 }
             }
-            Err(SoildTunnelError::IranianEgressWalk) => {
-                if forced.is_some() {
-                    return Err(SoildTunnelError::IranianEgress);
-                }
-                log::warn!("[-] gateway {peer} exits in IR; walking next ranked gateway (kept usable, not avoided)");
-                last_good_peer = None;
-                continue;
-            }
             Err(e) => {
                 log::warn!("[-] MASQUE tunnel ended: {e}; reconnecting");
                 if inner_path.is_some() {
@@ -1559,20 +1551,24 @@ async fn run_carried_hop(
     listen: SocketAddr,
     inner_path: String,
 ) -> Result<()> {
+    let had_saved = std::path::Path::new(&inner_path).exists();
     match tokio::time::timeout(std::time::Duration::from_secs(15), exit_country(outer)).await
     {
         Ok(Egress::Foreign { cc, via }) => {
             OUTER_IR_STREAK.store(0, Ordering::SeqCst);
             log::info!("[+] gool: outer gateway exits in {cc} ({via})");
         }
-        Ok(Egress::Iranian) => {
+        Ok(Egress::Iranian) if !had_saved => {
             let streak = OUTER_IR_STREAK.fetch_add(1, Ordering::SeqCst) + 1;
             if streak < PIPE_AFTER_IR {
-                log::warn!("[-] gool: outer gateway exits in IR; trying next ranked gateway ({streak}/{PIPE_AFTER_IR})");
-                return Err(SoildTunnelError::IranianEgressWalk);
+                log::warn!("[-] gool: outer gateway exits in IR; dropping it and rescanning");
+                return Err(SoildTunnelError::IranianEgress);
             }
             OUTER_IR_STREAK.store(0, Ordering::SeqCst);
-            log::warn!("[-] gool: all recent gateways exit in IR; using this one as a pipe");
+            log::warn!("[-] gool: all recent gateways exit in IR; using this one as a pipe and checking the inner exit");
+        }
+        Ok(Egress::Iranian) => {
+            log::info!("[+] gool: outer gateway exits in IR; saved identity exists, using it as a pipe");
         }
         _ => log::debug!("[*] gool: outer exit country unknown; continuing"),
     }
