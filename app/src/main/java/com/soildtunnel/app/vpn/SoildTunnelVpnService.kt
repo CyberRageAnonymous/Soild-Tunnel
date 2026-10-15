@@ -38,6 +38,8 @@ import com.soildtunnel.app.core.SmartAuto
 import com.soildtunnel.app.core.SocksTunBridge
 import com.soildtunnel.app.core.TorDefaults
 import com.soildtunnel.app.core.TorManager
+import com.soildtunnel.app.core.PsiphonDefaults
+import com.soildtunnel.app.core.PsiphonManager
 import com.soildtunnel.app.core.TunnelConfig
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.ConnectionState
@@ -189,6 +191,10 @@ class SoildTunnelVpnService : VpnService() {
             connectTor(profile)
             return
         }
+        if (profile.protocol == Protocol.GOOL_PSIPHON) {
+            connectGoolPsiphon(profile)
+            return
+        }
 
         val resolved: ConnectionProfile =
             if (profile.protocol == Protocol.AUTO) {
@@ -326,6 +332,169 @@ class SoildTunnelVpnService : VpnService() {
                 } else {
                     DiagnosticsLog.w(TAG, "Self-test failed after tor restart — retrying.")
                     TorManager.stop()
+                }
+            }
+        }
+    }
+
+    /**
+     * GOOL + Psiphon chain: the WARP engine runs a plain GOOL underlay whose
+     * SOCKS5 (1819) only feeds the Psiphon helper as its upstream proxy; the
+     * TUN bridge points at Psiphon's own SOCKS port, so the device exit is
+     * always the Psiphon egress country. Same TUN, same self-test gate and
+     * same kill-switch behavior as every other path.
+     */
+    private suspend fun connectGoolPsiphon(profile: ConnectionProfile) {
+        SoildTunnelController.setState(ConnectionState.Launching)
+        updateNotification(getString(R.string.state_launching))
+        val underlay = profile.copy(protocol = Protocol.GOOL, goolMode = GoolMode.ON_MASQUE)
+        lockdownTunActive = false
+        cleanupNativeOnly()
+        if (!PortProbe.awaitClosed(SOCKS_HOST, SOCKS_PORT, PORT_RELEASE_WAIT_MS)) {
+            DiagnosticsLog.w(TAG, "Underlay port still busy — starting anyway.")
+        }
+        if (!launchUnderlayEngine(underlay)) {
+            throw IllegalStateException(getString(R.string.err_engine_died))
+        }
+        SoildTunnelController.setState(ConnectionState.Connecting)
+        updateNotification(getString(R.string.psiphon_starting))
+        DiagnosticsLog.i(TAG, "GOOL underlay is up — starting Psiphon on top.")
+        launchPsiphonLayer(profile)
+
+        establishTun(profile)
+        startTun2Socks(profile, PsiphonDefaults.SOCKS_PORT)
+
+        SoildTunnelController.setState(ConnectionState.Verifying)
+        updateNotification(getString(R.string.state_verifying))
+        DiagnosticsLog.i(TAG, "TUN + chain bridge started. Verifying end-to-end connectivity…")
+        if (!verifyChainExit()) {
+            DiagnosticsLog.e(TAG, "Self-test failed — refusing to report Connected.")
+            throw IllegalStateException(getString(R.string.err_selftest))
+        }
+
+        EngineMeta.setProtocol(Protocol.GOOL_PSIPHON.name)
+        val exit = SoildTunnelController.ipInfo.value?.takeIf { it.viaTunnel }
+        if (exit != null) {
+            DiagnosticsLog.i(
+                TAG,
+                "Chain exit verified: ${exit.ip} (${exit.countryCode ?: "??"}) via ${PsiphonManager.connectedRegion().ifBlank { "psiphon" }}",
+            )
+        }
+
+        SoildTunnelController.setState(ConnectionState.Connected("$SOCKS_HOST:${PsiphonDefaults.SOCKS_PORT}"))
+        updateNotification(getString(R.string.state_connected))
+        DiagnosticsLog.i(TAG, "All checks passed — tunnel is ready.")
+        UsageStore.startSession()
+        registerNetworkWatch()
+
+        superviseGoolPsiphon(underlay, profile)
+    }
+
+    private suspend fun launchUnderlayEngine(underlay: ConnectionProfile): Boolean {
+        DiagnosticsLog.i(TAG, "Launching underlay engine (GOOL)…")
+        engine = SoildTunnelProcess(applicationInfo.nativeLibraryDir, filesDir).also { it.start(underlay) }
+        val opened = PortProbe.awaitOpen(SOCKS_HOST, SOCKS_PORT, underlay.connectTimeoutMs()) {
+            engine?.isAlive() == true
+        }
+        if (!opened) {
+            DiagnosticsLog.e(TAG, "Underlay engine never opened its SOCKS5 port.")
+            engine?.stop()
+            engine = null
+        } else {
+            DiagnosticsLog.i(TAG, "Underlay SOCKS5 port is up.")
+        }
+        return opened
+    }
+
+    private suspend fun launchPsiphonLayer(profile: ConnectionProfile) {
+        try {
+            PsiphonManager.start(this, SOCKS_PORT, profile.psiphonRegion) { percent, summary ->
+                updateNotification(getString(R.string.psiphon_bootstrap, percent))
+                DiagnosticsLog.i(TAG, "Psiphon $percent% — $summary")
+            }
+        } catch (e: IllegalStateException) {
+            if (!PsiphonDefaults.hasCredentials()) {
+                throw IllegalStateException(getString(R.string.err_psiphon_nocreds), e)
+            }
+            throw e
+        }
+        val opened = PortProbe.awaitOpen(SOCKS_HOST, PsiphonDefaults.SOCKS_PORT, PSIPHON_PORT_WAIT_MS) {
+            PsiphonManager.isAlive()
+        }
+        if (!opened) {
+            PsiphonManager.stop()
+            throw IllegalStateException(getString(R.string.err_psiphon_socks))
+        }
+        DiagnosticsLog.i(TAG, "Psiphon SOCKS5 is up.")
+    }
+
+    private suspend fun verifyChainExit(): Boolean =
+        runCatching { Diagnostics.run(port = PsiphonDefaults.SOCKS_PORT) }.getOrDefault(false)
+
+    private suspend fun superviseGoolPsiphon(underlay: ConnectionProfile, profile: ConnectionProfile) {
+        var attempt = 0
+        while (currentScopeActive()) {
+            val engAlive = engine?.isAlive() == true
+            val psiAlive = PsiphonManager.isAlive()
+            if (engAlive && psiAlive) {
+                attempt = 0
+                if (probeTunnelCycle(PsiphonDefaults.SOCKS_PORT)) {
+                    probeFailures = 0
+                } else if (++probeFailures >= WATCHDOG_FAIL_CYCLES) {
+                    probeFailures = 0
+                    DiagnosticsLog.w(TAG, "Watchdog: chain exit dead — restarting Psiphon layer.")
+                    PsiphonManager.stop()
+                    val ok = runCatching { launchPsiphonLayer(profile) }.isSuccess && verifyChainExit()
+                    if (!ok) {
+                        DiagnosticsLog.w(TAG, "Psiphon layer alone did not recover — restarting full chain.")
+                        PsiphonManager.stop()
+                        engine?.stop()
+                        engine = null
+                        if (launchUnderlayEngine(underlay)) {
+                            runCatching { launchPsiphonLayer(profile) }
+                            if (!verifyChainExit()) {
+                                PsiphonManager.stop()
+                                engine?.stop()
+                                engine = null
+                            }
+                        }
+                    }
+                }
+                PsiphonManager.awaitExit(WATCHDOG_INTERVAL_MS)
+                continue
+            }
+
+            if (attempt >= maxRetries(profile)) {
+                if (profile.killSwitch || profile.strictKillSwitch) {
+                    enterLockdown(profile)
+                    return
+                }
+                throw IllegalStateException(getString(R.string.err_engine_died))
+            }
+            val backoff = BACKOFF[attempt.coerceAtMost(BACKOFF.size - 1)]
+            attempt++
+            SoildTunnelController.setState(ConnectionState.Reconnecting(attempt, maxRetries(profile)))
+            updateNotification(getString(R.string.state_reconnecting))
+            delay(backoff)
+
+            val rebuilt = if (!engAlive) {
+                PsiphonManager.stop()
+                engine?.stop()
+                engine = null
+                launchUnderlayEngine(underlay) && runCatching { launchPsiphonLayer(profile) }.isSuccess
+            } else {
+                runCatching { launchPsiphonLayer(profile) }.isSuccess
+            }
+            if (rebuilt) {
+                SoildTunnelController.setState(ConnectionState.Verifying)
+                updateNotification(getString(R.string.state_verifying))
+                if (verifyChainExit()) {
+                    attempt = 0
+                    SoildTunnelController.setState(ConnectionState.Connected("$SOCKS_HOST:${PsiphonDefaults.SOCKS_PORT}"))
+                    updateNotification(getString(R.string.state_connected))
+                } else {
+                    DiagnosticsLog.w(TAG, "Self-test failed after chain restart — retrying.")
+                    PsiphonManager.stop()
                 }
             }
         }
@@ -1012,6 +1181,7 @@ class SoildTunnelVpnService : VpnService() {
         } catch (_: Throwable) {
         }
         runCatching { TorManager.stop() }
+        runCatching { PsiphonManager.stop() }
         tunBridge?.let { runCatching { it.stop() } }
         tunBridge = null
         if (tunnelStarted) {
@@ -1052,6 +1222,7 @@ class SoildTunnelVpnService : VpnService() {
         } catch (_: Throwable) {
         }
         runCatching { TorManager.stop() }
+        runCatching { PsiphonManager.stop() }
         tunBridge?.let { runCatching { it.stop() } }
         tunBridge = null
         if (tunnelStarted) {
@@ -1175,6 +1346,8 @@ class SoildTunnelVpnService : VpnService() {
          * port before starting a new one (protocol-switch fix).
          */
         private const val PORT_RELEASE_WAIT_MS = 3_000L
+
+        private const val PSIPHON_PORT_WAIT_MS = 30_000L
 
         /**
          * Cap for the FIRST attempt of a hand-picked protocol, so a throttled

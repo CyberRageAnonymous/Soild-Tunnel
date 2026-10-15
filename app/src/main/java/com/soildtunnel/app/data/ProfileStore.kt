@@ -84,6 +84,7 @@ class ProfileStore(private val context: Context) {
         val torTransport = stringPreferencesKey("torTransport")
         val torBridges = stringPreferencesKey("torBridges")
         val torExitCountry = stringPreferencesKey("torExitCountry")
+        val psiphonRegion = stringPreferencesKey("psiphonRegion")
     }
 
     /**
@@ -168,6 +169,7 @@ class ProfileStore(private val context: Context) {
                 ?.let { runCatching { TorTransport.valueOf(it) }.getOrNull() } ?: TorTransport.OBFS4,
             torBridges = prefs[Keys.torBridges] ?: "",
             torExitCountry = prefs[Keys.torExitCountry] ?: "",
+            psiphonRegion = prefs[Keys.psiphonRegion] ?: "",
         )
     }
 
@@ -227,6 +229,7 @@ class ProfileStore(private val context: Context) {
             prefs[Keys.torTransport] = profile.torTransport.name
             prefs[Keys.torBridges] = profile.torBridges
             prefs[Keys.torExitCountry] = profile.torExitCountry
+            prefs[Keys.psiphonRegion] = profile.psiphonRegion
         }
         // Secrets go to the Keystore-sealed store, never to the prefs file.
         secrets.write(SecretStore.ACCESS_SECRET, profile.accessClientSecret)

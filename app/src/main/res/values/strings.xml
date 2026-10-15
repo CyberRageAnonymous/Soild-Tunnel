@@ -11,6 +11,7 @@
     <string name="protocol_soild">Soild</string>
     <string name="protocol_wireguard">WireGuard</string>
     <string name="protocol_gool">WARP×2</string>
+    <string name="protocol_gool_psiphon">WARP×2 + Psiphon</string>
     <string name="gool_mode">Gool mode</string>
     <string name="soild_mode">Soild transport</string>
     <string name="soild_mode_h2">HTTP/2 (TCP)</string>
@@ -372,6 +373,16 @@
     <string name="err_tor_socks">Tor did not open its local port in time.</string>
     <string name="err_tor_died">Tor stopped unexpectedly.</string>
     <string name="proxy_mode_tor_note">Not available in Tor mode — Tor always drives the whole device.</string>
+    <string name="proxy_mode_chain_note">Not available in chain mode — Psiphon always drives the whole device.</string>
+    <string name="psiphon_starting">Starting Psiphon…</string>
+    <string name="psiphon_bootstrap">Starting Psiphon… %1$d%%</string>
+    <string name="psiphon_country_title">Psiphon exit country</string>
+    <string name="psiphon_country_sub">Saved for the next connect.</string>
+    <string name="psiphon_country_sub_live">Tap a country — the Psiphon layer restarts on it in a few seconds.</string>
+    <string name="psiphon_country_auto">Fastest</string>
+    <string name="err_psiphon_socks">Psiphon did not open its local port in time.</string>
+    <string name="err_psiphon_died">Psiphon stopped unexpectedly.</string>
+    <string name="err_psiphon_nocreds">Psiphon partner credentials are not configured.</string>
 
     <!-- Theme -->
     <string name="theme_title">Theme</string>

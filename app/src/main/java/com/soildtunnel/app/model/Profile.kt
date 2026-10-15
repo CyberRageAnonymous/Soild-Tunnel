@@ -2,7 +2,7 @@ package com.soildtunnel.app.model
 
 
 /** Transport protocol, mapped 1:1 to the desktop app's CLI flags. */
-enum class Protocol { AUTO, MASQUE, SOILD, WIREGUARD, GOOL, TOR }
+enum class Protocol { AUTO, MASQUE, SOILD, WIREGUARD, GOOL, TOR, GOOL_PSIPHON }
 
 /**
  * How gool runs (only used when [Protocol] is GOOL).
@@ -222,6 +222,12 @@ data class ConnectionProfile(
      * picks the fastest exit itself.
      */
     val torExitCountry: String = "",
+    /**
+     * Pinned Psiphon egress country (two letters, e.g. "DE"). Blank means
+     * Psiphon picks the fastest exit itself. Only used when [protocol] is
+     * [Protocol.GOOL_PSIPHON].
+     */
+    val psiphonRegion: String = "",
 
 
     /**
@@ -279,6 +285,10 @@ data class ConnectionProfile(
             // TOR never reaches the engine either: Tor mode runs the tor
             // daemon plus the TUN bridge, the WARP engine stays off.
             Protocol.TOR -> { /* handled app-side, see TorManager */ }
+            // GOOL_PSIPHON never reaches the engine either: the app runs a
+            // plain GOOL underlay itself (via a copied profile) and chains
+            // the Psiphon helper on top of its SOCKS port, like TorManager.
+            Protocol.GOOL_PSIPHON -> { /* handled app-side, see PsiphonManager */ }
             Protocol.MASQUE -> args += "--masque"
             Protocol.SOILD -> {
                 if (soildHunt) {

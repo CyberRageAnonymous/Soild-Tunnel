@@ -760,10 +760,13 @@ private fun RoutingSection(
             title = stringResource(R.string.proxy_mode_title),
             description = stringResource(
                 if (profile.protocol == Protocol.TOR) R.string.proxy_mode_tor_note
+                else if (profile.protocol == Protocol.GOOL_PSIPHON) R.string.proxy_mode_chain_note
                 else R.string.proxy_mode_desc,
             ),
-            checked = profile.proxyMode && profile.protocol != Protocol.TOR,
-            enabled = enabled && profile.protocol != Protocol.TOR,
+            checked = profile.proxyMode && profile.protocol != Protocol.TOR &&
+                profile.protocol != Protocol.GOOL_PSIPHON,
+            enabled = enabled && profile.protocol != Protocol.TOR &&
+                profile.protocol != Protocol.GOOL_PSIPHON,
             onChange = { onProfileChange(profile.copy(proxyMode = it)) },
         )
         AnimatedVisibility(visible = profile.proxyMode) {
@@ -1066,6 +1069,7 @@ private fun protocolLabel(protocol: Protocol): String = when (protocol) {
     Protocol.WIREGUARD -> stringResource(R.string.protocol_wireguard)
     Protocol.GOOL -> stringResource(R.string.protocol_gool)
     Protocol.TOR -> stringResource(R.string.protocol_tor)
+    Protocol.GOOL_PSIPHON -> stringResource(R.string.protocol_gool_psiphon)
 }
 
 @Composable
