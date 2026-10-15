@@ -204,6 +204,16 @@ jobs:
           git push origin "HEAD:${GITHUB_REF_NAME}" \
             || echo "WARNING: could not push the purge commit; the next build will purge again."
 
+      # Psiphon and Tor (IPtProxy) both ship the gomobile runtime (go.*
+      # classes + libgojni.so), so the stock Psiphon AAR can never coexist
+      # with IPtProxy in one APK. The repack strips Psiphon's go.* copy
+      # (its JNI signatures are identical to IPtProxy's, verified by javap)
+      # and renames its native lib to libpsiphongo.so, which PsiphonManager
+      # loads via its HostService.loadLibrary override. IPtProxy stays
+      # byte-identical, so Tor mode is unaffected.
+      - name: Prepare Psiphon AAR (deduplicated)
+        run: bash scripts/repack-psiphon-aar.sh 2.0.41
+
       # A release must never die because an artifact repository had a bad
       # minute. The build in the release repository failed with
       # "Received status code 403 from server: Forbidden" from Maven Central on
