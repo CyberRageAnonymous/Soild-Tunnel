@@ -116,7 +116,11 @@ pub async fn run_with(args: Vec<String>) -> Result<()> {
                 identity.ipv4,
                 identity.ipv6
             );
-            let ech = if front_mode() { None } else { resolve_ech().await };
+            let ech = if front_mode() || masque_h2::enabled() {
+                None
+            } else {
+                resolve_ech().await
+            };
             let lastconn_path = lastconn_path(&config_path);
             run_masque(identity, ech, listen, lastconn_path, None).await
         }
@@ -141,7 +145,11 @@ pub async fn run_with(args: Vec<String>) -> Result<()> {
                 "[+] masque device={} carries the wireguard identity at {inner_path}",
                 identity.device_id
             );
-            let ech = if front_mode() { None } else { resolve_ech().await };
+            let ech = if front_mode() || masque_h2::enabled() {
+                None
+            } else {
+                resolve_ech().await
+            };
             let lastconn_path = lastconn_path(&config_path);
             run_masque(identity, ech, listen, lastconn_path, Some(inner_path)).await
         }
@@ -1569,9 +1577,11 @@ async fn run_carried_hop(
 
     let mut identity = carried_wg_identity(outer, &inner_path).await?;
     let mut saw_inner_ir = false;
+    let mut inner_avoid: HashSet<SocketAddr> = HashSet::new();
 
     loop {
-        let candidates = gool_inner_peers(&identity);
+        let mut candidates = gool_inner_peers(&identity);
+        candidates.retain(|p| !inner_avoid.contains(p));
         if candidates.is_empty() {
             return Err(SoildTunnelError::Other(
                 "no wireguard endpoint for the carried identity".into(),
@@ -1649,6 +1659,9 @@ async fn run_carried_hop(
                         "[-] gool wireguard {inner_peer} attempt {attempt}/{GOOL_INNER_ATTEMPTS} failed: {e}"
                     );
                     last_error = e;
+                    if attempt >= GOOL_INNER_ATTEMPTS {
+                        inner_avoid.insert(inner_peer);
+                    }
                 }
             }
         }
