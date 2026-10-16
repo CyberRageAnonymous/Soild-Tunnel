@@ -263,12 +263,7 @@ private fun TimerBlock(connectedSince: Long?, connected: Boolean, accent: Color)
             text = text,
             style = MaterialTheme.typography.displayLarge.copy(
                 fontFeatureSettings = "tnum",
-                brush = if (connected) {
-                    Brush.linearGradient(listOf(CardTextPrimary, accent))
-                } else {
-                    null
-                },
-                color = if (connected) Color.Unspecified else CardTextDim,
+                color = if (connected) CardTextPrimary else CardTextDim,
             ),
         )
     }
