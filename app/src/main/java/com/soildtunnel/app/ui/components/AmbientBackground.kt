@@ -14,9 +14,9 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
+import com.soildtunnel.app.ui.theme.AuraIndigo
+import com.soildtunnel.app.ui.theme.GlowPoolCyan
 import com.soildtunnel.app.ui.theme.GlowPoolViolet
-import com.soildtunnel.app.ui.theme.GridLine
 import com.soildtunnel.app.ui.theme.Void
 import kotlin.math.cos
 import kotlin.math.sin
@@ -27,97 +27,99 @@ fun AmbientBackground(
     active: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val primaryGlow = if (active) ACTIVE_GLOW else accent
-    val drift = rememberInfiniteTransition(label = "ambientDrift").animateFloat(
+    val drift = rememberInfiniteTransition(label = "auroraDrift").animateFloat(
         initialValue = 0f,
         targetValue = (Math.PI * 2).toFloat(),
-        animationSpec = infiniteRepeatable(tween(26_000, easing = LinearEasing)),
+        animationSpec = infiniteRepeatable(tween(24_000, easing = LinearEasing)),
         label = "drift",
     )
-    val sway = rememberInfiniteTransition(label = "ambientSway").animateFloat(
+    val sway = rememberInfiniteTransition(label = "auroraSway").animateFloat(
         initialValue = 0f,
         targetValue = (Math.PI * 2).toFloat(),
-        animationSpec = infiniteRepeatable(tween(34_000, easing = LinearEasing)),
+        animationSpec = infiniteRepeatable(tween(31_000, easing = LinearEasing)),
         label = "sway",
     )
+    val bloom = rememberInfiniteTransition(label = "auroraBloom").animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(11_000, easing = LinearEasing)),
+        label = "bloom",
+    )
+    val breathe = if (active) {
+        rememberInfiniteTransition(label = "auroraBreath").animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(2_600, easing = LinearEasing)),
+            label = "breathe",
+        )
+    } else null
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .drawBehind {
                 drawRect(Void)
-                drawGrid()
                 val t = drift.value
                 val s = sway.value
+                val liveAmp = if (active) 1.35f else 1f
+                val pulse = breathe?.value ?: 0.5f
+
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(primaryGlow.copy(alpha = 0.20f), Color.Transparent),
+                        colors = listOf(
+                            AuraIndigo.copy(alpha = (if (active) 0.26f else 0.20f) * liveAmp),
+                            Color.Transparent,
+                        ),
                         center = Offset(
-                            size.width * (0.12f + 0.10f * cos(t).toFloat()),
-                            size.height * (0.08f + 0.06f * sin(t * 1.3f).toFloat()),
+                            size.width * (0.10f + 0.08f * cos(t).toFloat()),
+                            size.height * (0.05f + 0.05f * sin(t * 1.2f).toFloat()),
+                        ),
+                        radius = size.maxDimension * (1.0f + 0.05f * pulse),
+                    ),
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            GlowPoolViolet.copy(alpha = 0.30f),
+                            Color.Transparent,
+                        ),
+                        center = Offset(
+                            size.width * (0.95f + 0.07f * sin(s).toFloat()),
+                            size.height * (0.42f + 0.10f * cos(s * 0.9f).toFloat()),
                         ),
                         radius = size.maxDimension * 0.95f,
                     ),
                 )
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(VIOLET_GLOW.copy(alpha = 0.18f), Color.Transparent),
-                        center = Offset(
-                            size.width * (0.92f + 0.08f * sin(s).toFloat()),
-                            size.height * (0.88f + 0.06f * cos(s * 0.8f).toFloat()),
+                        colors = listOf(
+                            GlowPoolCyan.copy(alpha = 0.28f),
+                            Color.Transparent,
                         ),
-                        radius = size.maxDimension * 0.85f,
-                    ),
-                )
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(MINT_GLOW.copy(alpha = 0.12f), Color.Transparent),
                         center = Offset(
-                            size.width * (0.80f + 0.12f * cos(s * 1.1f).toFloat()),
-                            size.height * (0.18f + 0.08f * sin(t).toFloat()),
+                            size.width * (0.85f + 0.10f * cos(s * 1.1f).toFloat()),
+                            size.height * (0.90f + 0.06f * sin(t).toFloat()),
                         ),
-                        radius = size.maxDimension * 0.55f,
+                        radius = size.maxDimension * 0.72f,
                     ),
                 )
                 drawRect(
                     brush = Brush.verticalGradient(
                         colors = listOf(
                             Color.Transparent,
-                            primaryGlow.copy(alpha = 0.06f),
+                            accent.copy(alpha = if (active) 0.10f else 0.05f),
                             Color.Transparent,
                         ),
-                        startY = size.height * 0.30f,
-                        endY = size.height * 0.62f,
+                        startY = size.height * 0.34f,
+                        endY = size.height * 0.66f,
                     ),
                 )
                 drawRect(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.45f)),
-                        center = Offset(size.width / 2f, size.height / 2f),
-                        radius = size.maxDimension * 0.75f,
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
+                        radius = size.maxDimension * 0.80f,
                     ),
                 )
             },
     )
 }
-
-/** Blueprint grid: hairline verticals + horizontals on a fixed pitch. */
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGrid() {
-    val step = GRID_STEP.toPx()
-    if (step <= 0f) return
-    val color = GridLine
-    var x = 0f
-    while (x <= size.width) {
-        drawLine(color, Offset(x, 0f), Offset(x, size.height), 1f)
-        x += step
-    }
-    var y = 0f
-    while (y <= size.height) {
-        drawLine(color, Offset(0f, y), Offset(size.width, y), 1f)
-        y += step
-    }
-}
-
-private val ACTIVE_GLOW = Color(0xFF2BE8C0)
-private val VIOLET_GLOW = GlowPoolViolet
-private val MINT_GLOW = Color(0xFF3DFFC8)
-private val GRID_STEP = 44.dp

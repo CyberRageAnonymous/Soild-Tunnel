@@ -8,6 +8,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,14 +19,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Autorenew
 import androidx.compose.material.icons.rounded.Check
@@ -42,19 +42,24 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soildtunnel.app.R
+import com.soildtunnel.app.ui.theme.AuraIndigo
 import com.soildtunnel.app.ui.theme.CardSubSurface
+import com.soildtunnel.app.ui.theme.CardTextDim
+import com.soildtunnel.app.ui.theme.NeonCyan
+import com.soildtunnel.app.ui.theme.NeonMint
+import com.soildtunnel.app.ui.theme.NeonRed
 
 enum class ButtonMode { IDLE, BUSY, CONNECTED, ERROR }
 
@@ -65,45 +70,32 @@ fun ConnectButton(
     modifier: Modifier = Modifier,
 ) {
     val accent = when (mode) {
-        ButtonMode.IDLE -> NeonTokens.idle
-        ButtonMode.BUSY -> NeonTokens.busy
-        ButtonMode.CONNECTED -> NeonTokens.connected
-        ButtonMode.ERROR -> NeonTokens.error
+        ButtonMode.IDLE -> NeonCyan
+        ButtonMode.BUSY -> AuraIndigo
+        ButtonMode.CONNECTED -> NeonMint
+        ButtonMode.ERROR -> NeonRed
     }
     val animatedAccent by animateColorAsState(accent, tween(600), label = "accent")
 
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val pressScale by animateFloatAsState(
-        targetValue = if (pressed) 0.97f else 1f,
+        targetValue = if (pressed) 0.965f else 1f,
         animationSpec = tween(150),
         label = "pressScale",
     )
 
     val breathe = if (mode == ButtonMode.CONNECTED) {
-        val t = rememberInfiniteTransition(label = "btnBreathe")
-        t.animateFloat(
+        rememberInfiniteTransition(label = "orbBreathe").animateFloat(
             initialValue = 1f,
-            targetValue = 1.025f,
+            targetValue = 1.02f,
             animationSpec = infiniteRepeatable(
-                animation = tween(1_800, easing = LinearEasing),
+                animation = tween(1_900, easing = LinearEasing),
                 repeatMode = RepeatMode.Reverse,
             ),
             label = "breathe",
-        ).value
-    } else 1f
-
-    // Slow ambient wave tinting the pill background left/right edges.
-    val amb = rememberInfiniteTransition(label = "btnAmbient")
-    val wave by amb.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2_400, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "wave",
-    )
+        )
+    } else null
 
     val label = when (mode) {
         ButtonMode.IDLE -> stringResource(R.string.tap_to_connect)
@@ -118,181 +110,241 @@ fun ConnectButton(
         ButtonMode.ERROR -> stringResource(R.string.btn_hint_error)
     }
     val glyph: ImageVector = when (mode) {
-        ButtonMode.BUSY -> Icons.Rounded.Autorenew
         ButtonMode.CONNECTED -> Icons.Rounded.Check
         else -> Icons.Rounded.PowerSettingsNew
     }
 
-    Box(
-        contentAlignment = Alignment.Center,
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
             .fillMaxWidth()
-            .scale(pressScale * breathe),
+            .scale(pressScale * (breathe?.value ?: 1f)),
     ) {
-        if (mode == ButtonMode.CONNECTED) {
-            PulseRings(accent = animatedAccent)
-        }
         Box(
-            modifier = Modifier
-                .width(PILL_WIDTH)
-                .height(PILL_HEIGHT)
-                .shadow(
-                    elevation = 18.dp,
-                    shape = RoundedCornerShape(PILL_HEIGHT / 2),
-                    ambientColor = animatedAccent.copy(alpha = 0.45f),
-                    spotColor = animatedAccent.copy(alpha = 0.45f),
-                )
-                .background(
-                    brush = Brush.horizontalGradient(
-                        colors = listOf(
-                            animatedAccent.copy(alpha = 0.08f + 0.07f * wave),
-                            CardSubSurface,
-                            animatedAccent.copy(alpha = 0.08f + 0.07f * (1f - wave)),
-                        ),
-                    ),
-                    shape = RoundedCornerShape(PILL_HEIGHT / 2),
-                )
-                .border(
-                    width = 1.5.dp,
-                    brush = Brush.horizontalGradient(
-                        colors = listOf(
-                            animatedAccent.copy(alpha = 0.15f),
-                            animatedAccent.copy(alpha = 0.75f),
-                            animatedAccent.copy(alpha = 0.15f),
-                        ),
-                    ),
-                    shape = RoundedCornerShape(PILL_HEIGHT / 2),
-                )
-                .clip(RoundedCornerShape(PILL_HEIGHT / 2))
-                .clickable(
-                    interactionSource = interaction,
-                    indication = null,
-                    onClick = onClick,
-                ),
             contentAlignment = Alignment.Center,
+            modifier = Modifier.size(ORB_EXT),
         ) {
-            if (mode == ButtonMode.IDLE) {
-                ShineSweep(accent = animatedAccent)
+            OrbHalo(animatedAccent, strong = mode == ButtonMode.CONNECTED)
+            if (mode == ButtonMode.CONNECTED) {
+                PulseRings(animatedAccent)
             }
-            if (mode == ButtonMode.ERROR) {
-                ErrorWash()
-            }
-            // Glass reflection along the top edge.
+            OrbRing(animatedAccent, spinning = mode == ButtonMode.BUSY)
             Box(
+                contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth(0.82f)
-                    .height(1.5.dp)
+                    .size(ORB_IN)
+                    .shadow(
+                        elevation = 26.dp,
+                        shape = CircleShape,
+                        ambientColor = animatedAccent.copy(alpha = 0.50f),
+                        spotColor = animatedAccent.copy(alpha = 0.50f),
+                    )
                     .background(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                Color.White.copy(alpha = 0.20f),
-                                Color.Transparent,
+                        brush = Brush.verticalGradient(
+                            listOf(
+                                animatedAccent.copy(alpha = 0.20f),
+                                CardSubSurface,
                             ),
                         ),
+                        shape = CircleShape,
+                    )
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.00f to Color.White.copy(alpha = 0.22f),
+                                0.18f to Color.Transparent,
+                            ),
+                        ),
+                        shape = CircleShape,
+                    )
+                    .border(
+                        width = 1.dp,
+                        brush = Brush.verticalGradient(
+                            listOf(
+                                Color.White.copy(alpha = 0.30f),
+                                Color.White.copy(alpha = 0.04f),
+                            ),
+                        ),
+                        shape = CircleShape,
+                    )
+                    .clip(CircleShape)
+                    .clickable(
+                        interactionSource = interaction,
+                        indication = null,
+                        onClick = onClick,
                     ),
-            )
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 7.dp),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                if (mode == ButtonMode.BUSY) {
+                    SpinningGlyph(Icons.Rounded.Autorenew, animatedAccent)
+                } else {
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .size(34.dp)
+                            .size(58.dp)
                             .background(
-                                color = animatedAccent.copy(alpha = 0.16f),
+                                brush = Brush.verticalGradient(
+                                    listOf(
+                                        animatedAccent.copy(alpha = 0.26f),
+                                        animatedAccent.copy(alpha = 0.10f),
+                                    ),
+                                ),
                                 shape = CircleShape,
-                            )
-                            .border(
-                                1.dp,
-                                animatedAccent.copy(alpha = 0.5f),
-                                CircleShape,
                             ),
                     ) {
-                        if (mode == ButtonMode.BUSY) {
-                            SpinningGlyph(glyph, animatedAccent)
-                        } else {
-                            Icon(
-                                imageVector = glyph,
-                                contentDescription = null,
-                                tint = animatedAccent,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
-                    }
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        text = label,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        letterSpacing = 0.4.sp,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            shadow = Shadow(
-                                color = animatedAccent.copy(
-                                    alpha = if (mode == ButtonMode.CONNECTED) 0.5f else 0.25f,
-                                ),
-                                blurRadius = 12f,
-                            ),
-                        ),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Spacer(Modifier.height(3.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = hint,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 10.sp,
-                        color = animatedAccent.copy(alpha = 0.85f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (mode == ButtonMode.CONNECTED) {
-                        Spacer(Modifier.width(7.dp))
-                        EqualizerBars(tint = animatedAccent)
+                        Icon(
+                            imageVector = glyph,
+                            contentDescription = null,
+                            tint = animatedAccent,
+                            modifier = Modifier.size(26.dp),
+                        )
                     }
                 }
+                OrbStatusDot(mode, animatedAccent, Modifier.align(Alignment.BottomCenter))
             }
         }
+
+        Spacer(Modifier.height(14.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (mode == ButtonMode.CONNECTED) {
+                Spacer(Modifier.width(8.dp))
+                EqualizerBars(animatedAccent)
+            }
+        }
+        Spacer(Modifier.height(3.dp))
+        Text(
+            text = hint,
+            style = MaterialTheme.typography.bodySmall,
+            color = CardTextDim,
+        )
     }
 }
 
-/** Two expanding pill outlines radiating from the button while connected. */
+@Composable
+private fun OrbHalo(accent: Color, strong: Boolean) {
+    Canvas(Modifier.size(ORB_EXT)) {
+        val r = size.minDimension / 2f
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(
+                    accent.copy(alpha = if (strong) 0.30f else 0.15f),
+                    Color.Transparent,
+                ),
+                radius = r,
+            ),
+        )
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(accent.copy(alpha = 0.10f), Color.Transparent),
+                radius = r * 0.6f,
+                center = Offset(size.width * 0.26f, size.height * 0.24f),
+            ),
+        )
+    }
+}
+
 @Composable
 private fun PulseRings(accent: Color) {
     val t by rememberInfiniteTransition(label = "pulse").animateFloat(
         initialValue = 0f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2_000, easing = LinearEasing)),
+        animationSpec = infiniteRepeatable(tween(2_200, easing = LinearEasing)),
         label = "pulseT",
     )
     for (i in 0 until 2) {
         val p = (t + i * 0.5f) % 1f
         Box(
             modifier = Modifier
-                .width(PILL_WIDTH)
-                .height(PILL_HEIGHT)
+                .size(ORB_IN)
                 .graphicsLayer {
-                    scaleX = 1f + p * 0.38f
-                    scaleY = 1f + p * 0.38f
+                    scaleX = 1f + p * 0.42f
+                    scaleY = 1f + p * 0.42f
                     alpha = (1f - p) * 0.30f
                 }
-                .border(1.5.dp, accent, RoundedCornerShape(PILL_HEIGHT / 2)),
+                .border(1.5.dp, accent, CircleShape),
         )
     }
 }
 
-/** Three bottom-aligned bars bouncing out of phase — "live traffic" feel. */
+@Composable
+private fun OrbRing(accent: Color, spinning: Boolean) {
+    val spinT by rememberInfiniteTransition(label = "orbSpin").animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (spinning) 1_300 else 9_000, easing = LinearEasing),
+        ),
+        label = "spinT",
+    )
+    val gap = if (spinning) 0.70f else 0.30f
+    Box(
+        modifier = Modifier
+            .size(ORB_RING)
+            .rotate(spinT),
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val c = Offset(size.width / 2f, size.height / 2f)
+            val r = size.minDimension / 2f - RING_STROKE.toPx() / 2f
+            drawCircle(
+                brush = Brush.sweepGradient(
+                    0f to Color.Transparent,
+                    gap / 2f to accent.copy(alpha = 0.12f),
+                    0.5f to accent,
+                    0.5f + (1f - gap) / 2f to accent.copy(alpha = 0.5f),
+                    1f to Color.Transparent,
+                ),
+                radius = r,
+                center = c,
+                style = Stroke(RING_STROKE.toPx()),
+            )
+        }
+    }
+}
+
+@Composable
+private fun OrbStatusDot(
+    mode: ButtonMode,
+    accent: Color,
+    modifier: Modifier,
+) {
+    val dot by rememberInfiniteTransition(label = "orbDot").animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "dot",
+    )
+    val color = when (mode) {
+        ButtonMode.CONNECTED, ButtonMode.ERROR -> accent
+        else -> accent.copy(alpha = 0.35f + 0.65f * dot)
+    }
+    Box(
+        modifier = modifier
+            .offset(y = 9.dp),
+    ) {
+        Canvas(Modifier.size(10.dp)) {
+            drawCircle(
+                brush = Brush.radialGradient(
+                    listOf(color.copy(alpha = 0.65f), Color.Transparent),
+                    radius = size.minDimension / 2f,
+                ),
+            )
+            drawCircle(color, radius = size.minDimension * 0.30f)
+        }
+    }
+}
+
 @Composable
 private fun EqualizerBars(tint: Color) {
     val transition = rememberInfiniteTransition(label = "eq")
@@ -316,59 +368,15 @@ private fun EqualizerBars(tint: Color) {
                 modifier = Modifier
                     .width(3.dp)
                     .height(h.dp)
-                    .background(tint, RoundedCornerShape(1.5.dp)),
+                    .background(tint, CircleShape),
             )
         }
     }
 }
 
 @Composable
-private fun ShineSweep(accent: Color) {
-    val shift = rememberInfiniteTransition(label = "btnShine").animateFloat(
-        initialValue = -1f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2_800, easing = LinearEasing)),
-        label = "shift",
-    )
-    Box(
-        modifier = Modifier
-            .width(PILL_WIDTH)
-            .height(PILL_HEIGHT)
-            .offset(x = (shift.value * PILL_WIDTH.value).dp)
-            .background(
-                brush = Brush.horizontalGradient(
-                    colors = listOf(
-                        Color.Transparent,
-                        accent.copy(alpha = 0.14f),
-                        Color.Transparent,
-                    ),
-                ),
-            ),
-    )
-}
-
-@Composable
-private fun ErrorWash() {
-    val blink = rememberInfiniteTransition(label = "btnErrorWash").animateFloat(
-        initialValue = 0.04f,
-        targetValue = 0.12f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(900, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "blink",
-    )
-    Box(
-        modifier = Modifier
-            .width(PILL_WIDTH)
-            .height(PILL_HEIGHT)
-            .background(color = NeonTokens.error.copy(alpha = blink.value)),
-    )
-}
-
-@Composable
 private fun SpinningGlyph(glyph: ImageVector, tint: Color) {
-    val rotation = rememberInfiniteTransition(label = "btnSpin").animateFloat(
+    val rotation = rememberInfiniteTransition(label = "orbGlyphSpin").animateFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(tween(1_400, easing = LinearEasing)),
@@ -379,17 +387,12 @@ private fun SpinningGlyph(glyph: ImageVector, tint: Color) {
         contentDescription = null,
         tint = tint,
         modifier = Modifier
-            .size(18.dp)
+            .size(26.dp)
             .rotate(rotation.value),
     )
 }
 
-private object NeonTokens {
-    val idle = Color(0xFF35E0FF)
-    val busy = Color(0xFF35E0FF)
-    val connected = Color(0xFF3DFFC8)
-    val error = Color(0xFFFF4D6F)
-}
-
-private val PILL_WIDTH = 228.dp
-private val PILL_HEIGHT = 68.dp
+private val ORB_EXT = 196.dp
+private val ORB_RING = 176.dp
+private val ORB_IN = 160.dp
+private val RING_STROKE = 4.dp

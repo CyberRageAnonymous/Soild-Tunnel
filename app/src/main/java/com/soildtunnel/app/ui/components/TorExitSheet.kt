@@ -29,7 +29,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
@@ -137,19 +136,18 @@ private fun ExitRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                fontFamily = FontFamily.Monospace,
+                style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
-                fontSize = 14.sp,
-                letterSpacing = 1.2.sp,
                 color = if (selected) NeonMint else CardTextPrimary,
             )
             if (code.isNotBlank()) {
                 Text(
                     text = code,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 10.sp,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        textDirection = TextDirection.Ltr,
+                        fontFeatureSettings = "tnum",
+                    ),
                     color = CardTextDim,
-                    style = MaterialTheme.typography.labelSmall.copy(textDirection = TextDirection.Ltr),
                 )
             }
         }

@@ -18,7 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import com.soildtunnel.app.R
 import com.soildtunnel.app.core.UsageStore
@@ -78,7 +78,10 @@ fun UsagePanel(modifier: Modifier = Modifier) {
                             formatBytes(s.rxBytes),
                             formatBytes(s.txBytes),
                         ),
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            textDirection = TextDirection.Ltr,
+                            fontFeatureSettings = "tnum",
+                        ),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -109,7 +112,10 @@ private fun UsageRow(label: String, value: String) {
         )
         Text(
             text = value,
-            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            style = MaterialTheme.typography.bodySmall.copy(
+                textDirection = TextDirection.Ltr,
+                fontFeatureSettings = "tnum",
+            ),
             color = MaterialTheme.colorScheme.onSurface,
         )
     }

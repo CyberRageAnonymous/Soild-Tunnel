@@ -45,7 +45,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
@@ -240,10 +239,8 @@ private fun ServerRow(
                 }
                 Text(
                     text = title,
-                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    letterSpacing = 0.8.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     color = if (selected) NeonMint else CardTextPrimary,
@@ -252,21 +249,23 @@ private fun ServerRow(
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = codeLabel,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 10.sp,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            textDirection = TextDirection.Ltr,
+                            fontFeatureSettings = "tnum",
+                        ),
                         color = CardTextDim,
-                        style = MaterialTheme.typography.labelSmall.copy(textDirection = TextDirection.Ltr),
                     )
                 }
             }
             Text(
                 text = if (isAuto) stringResource(R.string.server_auto_desc) else node.rangeSpec,
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    textDirection = TextDirection.Ltr,
+                    fontFeatureSettings = "tnum",
+                ),
                 color = CardTextMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Ltr),
             )
         }
 
@@ -348,11 +347,11 @@ private fun PingBadge(nodeId: String) {
     ) {
         Text(
             text = text,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Bold,
-            fontSize = 11.sp,
             color = color,
-            style = MaterialTheme.typography.labelSmall.copy(textDirection = TextDirection.Ltr),
+            style = MaterialTheme.typography.labelSmall.copy(
+                textDirection = TextDirection.Ltr,
+                fontFeatureSettings = "tnum",
+            ),
         )
     }
 }

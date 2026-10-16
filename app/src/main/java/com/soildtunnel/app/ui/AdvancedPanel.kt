@@ -41,7 +41,6 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import com.soildtunnel.app.R
@@ -1168,8 +1167,10 @@ private fun ProxyEndpointRow(label: String, value: String) {
             )
             Text(
                 text = value,
-                style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Ltr),
-                fontFamily = FontFamily.Monospace,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    textDirection = TextDirection.Ltr,
+                    fontFeatureSettings = "tnum",
+                ),
                 color = MaterialTheme.colorScheme.onSurface,
             )
         }

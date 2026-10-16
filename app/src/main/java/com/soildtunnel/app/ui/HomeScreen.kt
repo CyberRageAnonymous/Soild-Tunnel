@@ -61,17 +61,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -92,6 +88,7 @@ import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.model.isBusy
 import com.soildtunnel.app.model.isConnected
 import com.soildtunnel.app.ui.components.AmbientBackground
+import com.soildtunnel.app.ui.components.LedDot
 import com.soildtunnel.app.ui.components.ButtonMode
 import com.soildtunnel.app.ui.components.ConnectButton
 import com.soildtunnel.app.ui.components.ConnectionCard
@@ -189,15 +186,20 @@ fun HomeScreen(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
                                 .size(52.dp)
-                                .background(
-                                    color = NeonCyan.copy(alpha = 0.10f),
-                                    shape = CircleShape,
-                                )
-                                .border(
-                                    1.dp,
-                                    NeonCyan.copy(alpha = 0.35f),
-                                    CircleShape,
+                            .background(
+                                brush = Brush.radialGradient(
+                                    listOf(
+                                        NeonCyan.copy(alpha = 0.16f),
+                                        Color.Transparent,
+                                    ),
                                 ),
+                                shape = CircleShape,
+                            )
+                            .border(
+                                1.dp,
+                                NeonCyan.copy(alpha = 0.35f),
+                                CircleShape,
+                            ),
                         ) {
                             Image(
                                 painter = painterResource(R.drawable.ic_logo),
@@ -209,15 +211,8 @@ fun HomeScreen(
                         Column {
                             Text(
                                 text = stringResource(R.string.app_name),
-                                style = MaterialTheme.typography.titleLarge.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp,
-                                    shadow = Shadow(
-                                        color = NeonCyan.copy(alpha = 0.45f),
-                                        blurRadius = 14f,
-                                    ),
-                                ),
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onBackground,
                             )
                             Text(
@@ -319,29 +314,7 @@ fun HomeScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Top,
             ) {
-                // Console brand block.
-                Spacer(Modifier.height(26.dp))
-                Image(
-                    painter = painterResource(R.drawable.ic_logo),
-                    contentDescription = null,
-                    modifier = Modifier.size(56.dp),
-                )
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    text = stringResource(R.string.app_name),
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 2.sp,
-                    ),
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
-                Text(
-                    text = stringResource(R.string.tagline),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                )
+                Spacer(Modifier.height(52.dp))
 
                 // Update available banner
                 if (updateResult.hasUpdate) {
@@ -402,7 +375,7 @@ fun HomeScreen(
                     )
                 }
 
-                Spacer(Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(26.dp))
 
                 ConnectButton(mode = mode, onClick = onToggleConnection)
 
@@ -592,11 +565,8 @@ private fun ServerSelectorPill(
             .padding(horizontal = 14.dp, vertical = 11.dp),
     ) {
         Text(
-            text = stringResource(R.string.server_title).uppercase(),
-            fontFamily = FontFamily.Monospace,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.6.sp,
+            text = stringResource(R.string.server_title),
+            style = MaterialTheme.typography.labelSmall,
             color = CardTextDim,
         )
         Spacer(Modifier.width(2.dp))
@@ -605,10 +575,8 @@ private fun ServerSelectorPill(
         }
         Text(
             text = name,
-            fontFamily = FontFamily.Monospace,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
-            fontSize = 14.sp,
-            letterSpacing = 1.4.sp,
             color = if (isAuto) CardTextPrimary else NeonCyan,
         )
         if (selected != null) {
@@ -656,11 +624,8 @@ private fun TorExitPill(
             .padding(horizontal = 14.dp, vertical = 11.dp),
     ) {
         Text(
-            text = stringResource(R.string.protocol_tor).uppercase(),
-            fontFamily = FontFamily.Monospace,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.6.sp,
+            text = stringResource(R.string.protocol_tor),
+            style = MaterialTheme.typography.labelSmall,
             color = CardTextDim,
         )
         Spacer(Modifier.width(2.dp))
@@ -669,10 +634,8 @@ private fun TorExitPill(
         }
         Text(
             text = name,
-            fontFamily = FontFamily.Monospace,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
-            fontSize = 14.sp,
-            letterSpacing = 1.4.sp,
             color = NeonMint,
         )
         Spacer(Modifier.weight(1f))
@@ -712,11 +675,11 @@ private fun HomePingBadge(nodeId: String) {
     ) {
         Text(
             text = text,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Bold,
-            fontSize = 10.sp,
             color = color,
-            style = MaterialTheme.typography.labelSmall.copy(textDirection = TextDirection.Ltr),
+            style = MaterialTheme.typography.labelSmall.copy(
+                textDirection = TextDirection.Ltr,
+                fontFeatureSettings = "tnum",
+            ),
         )
     }
 }
@@ -847,34 +810,13 @@ private fun TelegramBanner(
 @Composable
 private fun DrawerSectionHeader(text: String, icon: ImageVector) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(26.dp)
-                .background(
-                    color = NeonCyan.copy(alpha = 0.10f),
-                    shape = RoundedCornerShape(8.dp),
-                )
-                .border(
-                    1.dp,
-                    NeonCyan.copy(alpha = 0.30f),
-                    RoundedCornerShape(8.dp),
-                ),
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = NeonCyan,
-                modifier = Modifier.size(14.dp),
-            )
+        androidx.compose.foundation.Canvas(modifier = Modifier.size(7.dp)) {
+            drawCircle(NeonCyan.copy(alpha = 0.9f), radius = this.size.minDimension / 2f)
         }
         Spacer(Modifier.width(10.dp))
         Text(
-            text = text.uppercase(),
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Bold,
-            fontSize = 11.sp,
-            letterSpacing = 2.sp,
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
             color = NeonCyan.copy(alpha = 0.9f),
         )
     }
@@ -882,15 +824,15 @@ private fun DrawerSectionHeader(text: String, icon: ImageVector) {
 
 @Composable
 private fun DrawerStatusCard(state: ConnectionState, isTor: Boolean) {
-    val (statusColor, glowAlpha) = when (state) {
-        is ConnectionState.Connected -> NeonMint to 0.45f
+    val statusColor = when (state) {
+        is ConnectionState.Connected -> NeonMint
         is ConnectionState.Reconnecting,
         is ConnectionState.Connecting,
         is ConnectionState.Launching,
         is ConnectionState.Verifying,
-        is ConnectionState.Disconnecting -> NeonAmber to 0.35f
-        is ConnectionState.Error -> NeonRed to 0.40f
-        is ConnectionState.Idle -> NeonCyan to 0.20f
+        is ConnectionState.Disconnecting -> NeonAmber
+        is ConnectionState.Error -> NeonRed
+        is ConnectionState.Idle -> NeonCyan
     }
     val title = stateTitle(state, isTor)
     val subtitle = stateSubtitle(state)
@@ -911,29 +853,19 @@ private fun DrawerStatusCard(state: ConnectionState, isTor: Boolean) {
     ) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(9.dp)
-                        .background(statusColor, CircleShape)
-                        .shadow(8.dp, CircleShape, ambientColor = statusColor.copy(alpha = glowAlpha)),
-                )
+                LedDot(color = statusColor, size = 9.dp, glowing = true)
                 Spacer(Modifier.width(9.dp))
                 Text(
                     text = stringResource(R.string.drawer_section_session),
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 10.sp,
-                    letterSpacing = 1.4.sp,
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Spacer(Modifier.height(9.dp))
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.6.sp,
-                ),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
                 color = statusColor,
             )
             Spacer(Modifier.height(3.dp))

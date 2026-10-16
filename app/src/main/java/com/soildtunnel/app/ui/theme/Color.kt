@@ -5,104 +5,62 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 
-// Control Room palette. Every screen reads colors through these same names;
-// the light theme only changes which value each name resolves to, so no
-// screen has to care which theme is active. (Some names still say "dark" —
-// they date from when the app was dark-only and were kept to avoid churn.)
-
-/** Flipped by the theme setting before composition; the colors follow it. */
 object Palette {
     var light: Boolean by mutableStateOf(false)
 }
 
-// ---- Neon accents (same ink in both themes) --------------------------------
-
-/** Idle/standby accent, borders, focus states. */
-val NeonCyan = Color(0xFF35E0FF)
-/** "GO" state: tunnel up. Kept in the mint family for brand continuity. */
-val NeonMint = Color(0xFF3DFFC8)
-/** Secondary light: used for upload, secondary glow bands, gradients. */
+val AuraIndigo = Color(0xFF7C6BFF)
+val NeonCyan = Color(0xFF4CC9FF)
+val NeonMint = Color(0xFF46F2B8)
 val NeonViolet = Color(0xFF9D7BFF)
-/** Caution: slow latency, degraded links. */
 val NeonAmber = Color(0xFFFFC24B)
-/** Fault: errors, unreachable nodes, kill-switch. */
-val NeonRed = Color(0xFFFF4D6F)
+val NeonRed = Color(0xFFFF5470)
 
-// Back-compat aliases (older panels still import these).
 val SoildTunnelBlue = NeonCyan
 val SoildTunnelCyan = NeonViolet
 val SoildTunnelMint = NeonMint
 val SoildTunnelGlowCyan = NeonViolet
 val SoildTunnelError = NeonRed
 
-// ---- Text ------------------------------------------------------------------
+private val LightInk = Color(0xFF121621)
+private val LightInkMuted = Color(0xFF5D6679)
 
-private val LightInk = Color(0xFF10151B)
-private val LightInkMuted = Color(0xFF5B6B7A)
+val OnDark: Color get() = if (Palette.light) LightInk else Color(0xFFF4F6FB)
+val OnDarkMuted: Color get() = if (Palette.light) LightInkMuted else Color(0xFF9AA3BD)
 
-val OnDark: Color get() = if (Palette.light) LightInk else Color(0xFFF2F8FC)
-val OnDarkMuted: Color get() = if (Palette.light) LightInkMuted else Color(0xFF93A4B4)
+val CardTextPrimary: Color get() = if (Palette.light) LightInk else Color(0xFFF4F6FB)
+val CardTextMuted: Color get() = if (Palette.light) LightInkMuted else Color(0xFF9AA3BD)
+val CardTextDim: Color get() = if (Palette.light) Color(0xFF8891A5) else Color(0xFF5C6478)
 
-val CardTextPrimary: Color get() = if (Palette.light) LightInk else Color(0xFFF2F8FC)
-val CardTextMuted: Color get() = if (Palette.light) LightInkMuted else Color(0xFF93A4B4)
-val CardTextDim: Color get() = if (Palette.light) Color(0xFF93A4B4) else Color(0xFF5A6875)
-
-// ---- Console surfaces ------------------------------------------------------
-
-private val LightVoid = Color(0xFFF2F4F6)
+private val LightVoid = Color(0xFFF4F5F8)
 private val LightPanelTop = Color(0xD1FFFFFF)
-private val LightPanelBottom = Color(0xF0F3F5F7)
-private val LightCardSub = Color(0xE6FBFCFD)
+private val LightPanelBottom = Color(0xF0F3F5F8)
+private val LightCardSub = Color(0xE6FBFCFE)
 
-/** Void behind everything: near-black with slight blue tint. */
-val Void: Color get() = if (Palette.light) LightVoid else Color(0xFF030408)
+val Void: Color get() = if (Palette.light) LightVoid else Color(0xFF04050B)
+val PanelTop: Color get() = if (Palette.light) LightPanelTop else Color(0xAA14172B)
+val PanelBottom: Color get() = if (Palette.light) LightPanelBottom else Color(0xE60B0D18)
+val CardSubSurface: Color get() = if (Palette.light) LightCardSub else Color(0xDE141726)
 
-/** Translucent console panel, top of the vertical gradient. */
-val PanelTop: Color get() = if (Palette.light) LightPanelTop else Color(0xA610141B)
-/** Same panel, bottom: slightly more opaque so text always sits on enough ink. */
-val PanelBottom: Color get() = if (Palette.light) LightPanelBottom else Color(0xE207090C)
-/** Sub-containers inside a panel (IP pill, speed strip, meta strip). Just
- *  translucent enough that the void glow pools bleed through, liquid-glass
- *  style, without hurting text legibility. */
-val CardSubSurface: Color get() = if (Palette.light) LightCardSub else Color(0xDE0B0E14)
-
-// Back-compat aliases.
 val CardSurfaceTop: Color get() = PanelTop
 val CardSurfaceBottom: Color get() = PanelBottom
 
-// ---- Hairline edges --------------------------------------------------------
+val EdgeNeon: Color get() = if (Palette.light) Color(0x597C6BFF) else Color(0x267C6BFF)
+val EdgeNeonBright: Color get() = if (Palette.light) Color(0x807C6BFF) else Color(0x407C6BFF)
+val GlassEdge: Color get() = if (Palette.light) Color(0x28000000) else Color(0x2EFFFFFF)
+val GlassEdgeBright: Color get() = if (Palette.light) Color(0x40000000) else Color(0x45FFFFFF)
 
-/** Standard 1px edge on panels: faint cyan. */
-val EdgeNeon: Color get() = if (Palette.light) Color(0x5935B8D8) else Color(0x2935E0FF)
-/** Brighter edge for elevated surfaces (power orb ring, drawer). */
-val EdgeNeonBright: Color get() = if (Palette.light) Color(0x8035B8D8) else Color(0x4035E0FF)
-/** Hairline used inside glass chips: white on dark, ink on light. */
-val GlassEdge: Color get() = if (Palette.light) Color(0x30000000) else Color(0x30FFFFFF)
-val GlassEdgeBright: Color get() = if (Palette.light) Color(0x47000000) else Color(0x47FFFFFF)
+val GlowPoolCyan: Color get() = if (Palette.light) Color(0xFFC5E9F7) else Color(0xFF14496B)
+val GlowPoolViolet: Color get() = if (Palette.light) Color(0xFFD9D2F9) else Color(0xFF33286E)
 
-// ---- Backdrop --------------------------------------------------------------
+val GlassFillTop: Color get() = if (Palette.light) Color(0x1A000000) else Color(0x2EFFFFFF)
+val GlassFillBottom: Color get() = if (Palette.light) Color(0x0D000000) else Color(0x10FFFFFF)
+val GlassSheenTop: Color get() = if (Palette.light) Color(0x15000000) else Color(0x26FFFFFF)
 
-/** Grid lines over the background. Alpha-first so it stays whisper-quiet. */
-val GridLine: Color get() = if (Palette.light) Color(0x2E0E9DBC) else Color(0x1135E0FF)
-/** Corner glow pools behind everything: neon on dark, pastel on light. */
-val GlowPoolCyan: Color get() = if (Palette.light) Color(0xFFBFE9F5) else Color(0xFF1E6E85)
-val GlowPoolViolet: Color get() = if (Palette.light) Color(0xFFD9CFF7) else Color(0xFF4A3B8C)
-
-// ---- Liquid-glass fills (white lift on dark, ink shade on light) -----------
-
-val GlassFillTop: Color get() = if (Palette.light) Color(0x1A000000) else Color(0x30FFFFFF)
-val GlassFillBottom: Color get() = if (Palette.light) Color(0x0D000000) else Color(0x12FFFFFF)
-val GlassSheenTop: Color get() = if (Palette.light) Color(0x15000000) else Color(0x24FFFFFF)
-
-/** Drawer surface: nearly opaque so logs stay readable. */
-val DrawerGlass: Color get() = if (Palette.light) Color(0xF7F6F8FA) else Color(0xF5030508)
-/** Bottom-sheet surface, slightly more opaque for legibility. */
-val SheetGlass: Color get() = if (Palette.light) Color(0xFAF6F8FA) else Color(0xFA070A0F)
-/** Small circular chips behind the top-bar icons. */
-val ChipFillTop: Color get() = if (Palette.light) Color(0x14000000) else Color(0x21FFFFFF)
-val ChipFillBottom: Color get() = if (Palette.light) Color(0x0A000000) else Color(0x0FFFFFFF)
-
-// ---- Latency badges --------------------------------------------------------
+val DrawerGlass: Color get() = if (Palette.light) Color(0xF7F6F8FA) else Color(0xF5060710)
+val SheetGlass: Color get() = if (Palette.light) Color(0xFAF6F8FA) else Color(0xFA080A12)
+val ChipFillTop: Color get() = if (Palette.light) Color(0x14000000) else Color(0x24FFFFFF)
+val ChipFillBottom: Color get() = if (Palette.light) Color(0x0A000000) else Color(0x12FFFFFF)
 
 fun latencyColor(ms: Long): Color = when {
     ms < 0 -> CardTextDim
