@@ -28,8 +28,6 @@ import com.soildtunnel.app.core.SoildTunnelController
 import com.soildtunnel.app.core.DiagnosticsLog
 import com.soildtunnel.app.core.IpEndpoint
 import com.soildtunnel.app.core.NetProbe
-import com.soildtunnel.app.core.PsiphonDefaults
-import com.soildtunnel.app.core.PsiphonManager
 import com.soildtunnel.app.core.TorBridges
 import com.soildtunnel.app.core.TorDefaults
 import com.soildtunnel.app.core.TorManager
@@ -248,7 +246,6 @@ class MainActivity : ComponentActivity() {
                             },
                             onToggleConnection = { toggleConnection(state) },
                             onTorExitSelected = { onTorExitSelected(it) },
-                            onPsiphonRegionSelected = { onPsiphonRegionSelected(it) },
                         )
                     }
                 }
@@ -291,31 +288,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun onPsiphonRegionSelected(code: String) {
-        val updated = (uiProfile.value ?: return).copy(psiphonRegion = code)
-        uiProfile.value = updated
-        profileSaves.tryEmit(updated)
-        lifecycleScope.launch(Dispatchers.IO) {
-            if (PsiphonManager.isAlive()) {
-                val ok = runCatching {
-                    PsiphonManager.switchRegion(this@MainActivity, code) { _, _ -> }
-                }.isSuccess
-                DiagnosticsLog.i("psiphon", "Live region switch to '${code.ifBlank { "auto" }}': $ok")
-                if (ok) refreshTunnelIp(updated)
-            }
-        }
-    }
-
     /** Re-reads the exit IP after a live switch (new circuits need a moment). */
     private suspend fun refreshTunnelIp(profile: ConnectionProfile) {
         val port =
             if (profile.protocol == Protocol.TOR) TorDefaults.SOCKS_PORT
-            else if (profile.protocol == Protocol.GOOL_PSIPHON) PsiphonDefaults.SOCKS_PORT
             else TunnelConfig.SOCKS_PORT
         val pinned =
-            if (profile.protocol == Protocol.TOR) profile.torExitCountry.trim().uppercase()
-            else if (profile.protocol == Protocol.GOOL_PSIPHON) profile.psiphonRegion.trim().uppercase()
-            else ""
+            if (profile.protocol == Protocol.TOR) profile.torExitCountry.trim().uppercase() else ""
         SoildTunnelController.setIpInfo(null)
         SoildTunnelController.setIpLoading(true)
         try {

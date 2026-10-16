@@ -99,7 +99,6 @@ import com.soildtunnel.app.ui.components.DiagnosticsPanel
 import com.soildtunnel.app.ui.components.LanguagePanel
 import com.soildtunnel.app.ui.components.ThemePanel
 import com.soildtunnel.app.ui.components.TorExitSheet
-import com.soildtunnel.app.ui.components.PsiphonCountrySheet
 import com.soildtunnel.app.ui.components.UsagePanel
 import com.soildtunnel.app.ui.components.ServerPickerSheet
 import com.soildtunnel.app.ui.components.SpeedTestPanel
@@ -128,7 +127,6 @@ fun HomeScreen(
     onProfileChange: (ConnectionProfile) -> Unit,
     onToggleConnection: () -> Unit,
     onTorExitSelected: (String) -> Unit,
-    onPsiphonRegionSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val mode = when {
@@ -157,7 +155,6 @@ fun HomeScreen(
     var showServerSheet by remember { mutableStateOf(false) }
     // Tor exit picker (replaces the server console in Tor mode).
     var showTorSheet by remember { mutableStateOf(false) }
-    var showPsiphonSheet by remember { mutableStateOf(false) }
     var updateResult by remember { mutableStateOf(UpdateChecker.getCachedResult()) }
     // One-shot Telegram channel banner (once per install, then never again).
     var telegramBannerSeen by remember {
@@ -395,12 +392,6 @@ fun HomeScreen(
                         enabled = state.isConnected,
                         onClick = { if (state.isConnected) showTorSheet = true },
                     )
-                } else if (profile.protocol == Protocol.GOOL_PSIPHON) {
-                    PsiphonExitPill(
-                        exitCountry = profile.psiphonRegion,
-                        enabled = state.isConnected,
-                        onClick = { if (state.isConnected) showPsiphonSheet = true },
-                    )
                 } else if (profile.protocol == Protocol.GOOL &&
                     profile.goolMode == GoolMode.CLASSIC
                 ) {
@@ -497,15 +488,6 @@ fun HomeScreen(
             connected = state.isConnected,
             onSelect = { onTorExitSelected(it) },
             onDismiss = { showTorSheet = false },
-        )
-    }
-
-    if (showPsiphonSheet) {
-        PsiphonCountrySheet(
-            selected = profile.psiphonRegion,
-            connected = state.isConnected,
-            onSelect = { onPsiphonRegionSelected(it) },
-            onDismiss = { showPsiphonSheet = false },
         )
     }
 
@@ -675,67 +657,6 @@ private fun TorExitPill(
     ) {
         Text(
             text = stringResource(R.string.protocol_tor).uppercase(),
-            fontFamily = FontFamily.Monospace,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.6.sp,
-            color = CardTextDim,
-        )
-        Spacer(Modifier.width(2.dp))
-        if (flag.isNotEmpty()) {
-            Text(text = flag, fontSize = 13.sp)
-        }
-        Text(
-            text = name,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Bold,
-            fontSize = 14.sp,
-            letterSpacing = 1.4.sp,
-            color = NeonMint,
-        )
-        Spacer(Modifier.weight(1f))
-        Icon(
-            imageVector = Icons.Rounded.KeyboardArrowDown,
-            contentDescription = null,
-            tint = CardTextMuted,
-            modifier = Modifier.size(20.dp),
-        )
-    }
-}
-
-/**
- * The Psiphon-chain pill: PSIPHON label + picked exit country + chevron.
- * Locked until the session is up; once connected it opens the region
- * sheet, which restarts the Psiphon layer on the picked region.
- */
-@Composable
-private fun PsiphonExitPill(
-    exitCountry: String,
-    enabled: Boolean,
-    onClick: () -> Unit,
-) {
-    val shape = RoundedCornerShape(16.dp)
-    val name = if (exitCountry.isBlank()) {
-        stringResource(R.string.psiphon_country_auto)
-    } else {
-        NetProbe.countryName(exitCountry).ifBlank { exitCountry }
-    }
-    val flag = if (exitCountry.isBlank()) "" else NetProbe.flagEmoji(exitCountry)
-    val alpha = if (enabled) 1f else 0.55f
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .alpha(alpha)
-            .background(color = CardSubSurface, shape = shape)
-            .border(1.dp, EdgeNeon, shape)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 11.dp),
-    ) {
-        Text(
-            text = stringResource(R.string.protocol_gool_psiphon).uppercase(),
             fontFamily = FontFamily.Monospace,
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
