@@ -34,10 +34,6 @@ object PsiphonManager : PsiphonTunnel.HostService {
     override fun getContext(): Context =
         appContext ?: throw IllegalStateException("PsiphonManager not started")
 
-    override fun loadLibrary(library: String) {
-        System.loadLibrary(if (library == "gojni") "psiphongo" else library)
-    }
-
     override fun getPsiphonConfig(): String = buildConfigJson()
 
     override fun onConnecting() {

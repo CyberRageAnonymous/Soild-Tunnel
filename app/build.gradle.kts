@@ -244,7 +244,7 @@ dependencies {
     // ship on Maven Central, so no extra repository is needed.
     implementation("info.guardianproject:tor-android:0.4.7.14")
     implementation("com.netzarchitekten:IPtProxy:5.5.1")
-    implementation(files("libs/psiphontunnel-2.0.41-nogo.aar"))
+    implementation("ca.psiphon:psiphontunnel:2.0.41")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

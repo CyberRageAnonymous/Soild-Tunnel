@@ -54,6 +54,13 @@ dependencyResolutionManagement {
             name = "MavenCentralMirrorGoogle"
             url = uri("https://maven-central.storage-download.googleapis.com/maven2/")
         }
+        maven {
+            name = "PsiphonTunnelCore"
+            url = uri("https://raw.githubusercontent.com/Psiphon-Labs/psiphon-tunnel-core-Android-library/master")
+            content {
+                includeGroup("ca.psiphon")
+            }
+        }
     }
 }
 
