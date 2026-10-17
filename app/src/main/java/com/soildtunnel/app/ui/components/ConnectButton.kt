@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -40,12 +41,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -114,6 +112,11 @@ fun ConnectButton(
         ButtonMode.CONNECTED -> Icons.Rounded.Check
         else -> Icons.Rounded.PowerSettingsNew
     }
+    val hairline = if (com.soildtunnel.app.ui.theme.Palette.light) {
+        Color.Black.copy(alpha = 0.10f)
+    } else {
+        Color.White.copy(alpha = 0.16f)
+    }
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -130,44 +133,37 @@ fun ConnectButton(
                 PulseRings(animatedAccent)
             }
             OrbRing(animatedAccent, spinning = mode == ButtonMode.BUSY)
+            Canvas(Modifier.size(ORB_IN)) {
+                val c = Offset(size.width / 2f, size.height / 2f)
+                val r = size.minDimension / 2f
+                val glowStep = r / 14f
+                var g = 1
+                while (g <= 12) {
+                    drawCircle(
+                        color = animatedAccent.copy(alpha = 0.020f * (13 - g)),
+                        radius = r + (g * glowStep),
+                        center = c,
+                        style = Stroke(glowStep),
+                    )
+                    g++
+                }
+                drawCircle(color = CardSubSurface, radius = r, center = c)
+                drawCircle(
+                    color = animatedAccent.copy(alpha = 0.14f),
+                    radius = r,
+                    center = c,
+                )
+                drawCircle(
+                    color = hairline,
+                    radius = r - 2.dp.toPx(),
+                    center = c,
+                    style = Stroke(1.dp.toPx()),
+                )
+            }
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .size(ORB_IN)
-                    .shadow(
-                        elevation = 26.dp,
-                        shape = CircleShape,
-                        ambientColor = animatedAccent.copy(alpha = 0.50f),
-                        spotColor = animatedAccent.copy(alpha = 0.50f),
-                    )
-                    .background(
-                        brush = Brush.verticalGradient(
-                            listOf(
-                                animatedAccent.copy(alpha = 0.20f),
-                                CardSubSurface,
-                            ),
-                        ),
-                        shape = CircleShape,
-                    )
-                    .background(
-                        brush = Brush.verticalGradient(
-                            colorStops = arrayOf(
-                                0.00f to Color.White.copy(alpha = 0.22f),
-                                0.18f to Color.Transparent,
-                            ),
-                        ),
-                        shape = CircleShape,
-                    )
-                    .border(
-                        width = 1.dp,
-                        brush = Brush.verticalGradient(
-                            listOf(
-                                Color.White.copy(alpha = 0.30f),
-                                Color.White.copy(alpha = 0.04f),
-                            ),
-                        ),
-                        shape = CircleShape,
-                    )
                     .clip(CircleShape)
                     .clickable(
                         interactionSource = interaction,
@@ -182,15 +178,8 @@ fun ConnectButton(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
                             .size(58.dp)
-                            .background(
-                                brush = Brush.verticalGradient(
-                                    listOf(
-                                        animatedAccent.copy(alpha = 0.26f),
-                                        animatedAccent.copy(alpha = 0.10f),
-                                    ),
-                                ),
-                                shape = CircleShape,
-                            ),
+                            .background(animatedAccent.copy(alpha = 0.16f), CircleShape)
+                            .border(1.dp, animatedAccent.copy(alpha = 0.32f), CircleShape),
                     ) {
                         Icon(
                             imageVector = glyph,
@@ -233,23 +222,21 @@ fun ConnectButton(
 @Composable
 private fun OrbHalo(accent: Color, strong: Boolean) {
     Canvas(Modifier.size(ORB_EXT)) {
-        val r = size.minDimension / 2f
-        drawCircle(
-            brush = Brush.radialGradient(
-                listOf(
-                    accent.copy(alpha = if (strong) 0.30f else 0.15f),
-                    Color.Transparent,
+        val c = Offset(size.width / 2f, size.height / 2f)
+        val inner = ORB_IN.toPx() / 2f
+        val outer = size.minDimension / 2f
+        val steps = 10
+        for (i in 0 until steps) {
+            val f = i / (steps - 1f)
+            drawCircle(
+                color = accent.copy(
+                    alpha = (if (strong) 0.030f else 0.016f) * (1f - f),
                 ),
-                radius = r,
-            ),
-        )
-        drawCircle(
-            brush = Brush.radialGradient(
-                listOf(accent.copy(alpha = 0.10f), Color.Transparent),
-                radius = r * 0.6f,
-                center = Offset(size.width * 0.26f, size.height * 0.24f),
-            ),
-        )
+                radius = inner + (outer - inner) * f,
+                center = c,
+                style = Stroke(((outer - inner) / steps) + 1f),
+            )
+        }
     }
 }
 
@@ -286,30 +273,28 @@ private fun OrbRing(accent: Color, spinning: Boolean) {
         ),
         label = "spinT",
     )
-    Canvas(
-        Modifier
+    val gap = if (spinning) 0.70f else 0.30f
+    Box(
+        modifier = Modifier
             .size(ORB_RING)
             .rotate(spinT),
     ) {
-        val stroke = RING_STROKE.toPx()
-        val r = size.minDimension / 2f - stroke / 2f
-        val topLeft = Offset(size.width / 2f - r, size.height / 2f - r)
-        val arcSize = Size(r * 2f, r * 2f)
-        drawCircle(
-            color = accent.copy(alpha = 0.18f),
-            radius = r,
-            center = Offset(size.width / 2f, size.height / 2f),
-            style = Stroke(stroke),
-        )
-        drawArc(
-            color = accent,
-            startAngle = -90f,
-            sweepAngle = if (spinning) 300f else 90f,
-            useCenter = false,
-            topLeft = topLeft,
-            size = arcSize,
-            style = Stroke(stroke, cap = StrokeCap.Round),
-        )
+        Canvas(Modifier.fillMaxSize()) {
+            val c = Offset(size.width / 2f, size.height / 2f)
+            val r = size.minDimension / 2f - RING_STROKE.toPx() / 2f
+            drawCircle(
+                brush = Brush.sweepGradient(
+                    0f to Color.Transparent,
+                    gap / 2f to accent.copy(alpha = 0.12f),
+                    0.5f to accent,
+                    0.5f + (1f - gap) / 2f to accent.copy(alpha = 0.5f),
+                    1f to Color.Transparent,
+                ),
+                radius = r,
+                center = c,
+                style = Stroke(RING_STROKE.toPx()),
+            )
+        }
     }
 }
 
