@@ -194,7 +194,6 @@ class SoildTunnelVpnService : VpnService() {
         val resolved: ConnectionProfile =
             when {
                 profile.protocol == Protocol.AUTO -> connectSmartAuto(profile)
-                profile.protocol == Protocol.ULTIMA -> connectSmartAuto(profile, forceDeep = true)
                 // An explicitly chosen protocol keeps that protocol; the
                 // engine still selects its own endpoint (see [directPlan]).
                 else -> {
@@ -335,18 +334,17 @@ class SoildTunnelVpnService : VpnService() {
     }
 
     /**
-     * SMART AUTO / ULTIMA (root-cause rework of the broken Auto protocol):
+     * SMART AUTO (root-cause rework of the broken Auto protocol):
      * fingerprint the network's DPI first (see [SmartAuto]), then walk an
      * ordered ladder of concrete strategies — protocol + obfuscation + the IP
      * ranges that actually answered on THIS network — until one passes the
-     * full 4-step self-test. ULTIMA walks the deep ladder on every network
-     * and a 24 hour strategy memory (see [StrategyMemo]) pins winning rungs
-     * per network fingerprint. Returns the strategy that won so the
-     * supervisor restarts the engine with the SAME working configuration.
+     * full 4-step self-test. A 24 hour strategy memory (see [StrategyMemo])
+     * pins winning rungs per network fingerprint. Returns the strategy that
+     * won so the supervisor restarts the engine with the SAME working
+     * configuration.
      */
     private suspend fun connectSmartAuto(
         userProfile: ConnectionProfile,
-        forceDeep: Boolean = false,
     ): ConnectionProfile {
         SoildTunnelController.setState(ConnectionState.Launching)
         updateNotification(getString(R.string.state_analyzing))
@@ -362,7 +360,6 @@ class SoildTunnelVpnService : VpnService() {
             userProfile,
             fingerprint,
             sticky?.range,
-            forceDeep,
             memo,
         )
         val won = try {

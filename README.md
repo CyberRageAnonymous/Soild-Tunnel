@@ -42,8 +42,7 @@ No accounts. No logs. No trackers. One tap and you're free.
 | **WireGuard** | Blazing-fast modern VPN protocol. Best speed when not blocked. |
 | **GOOL** | Double-tunnel mode (WARP inside WARP) for maximum anti-DPI. |
 | **Tor** | Routes the whole device through the Tor network with official built-in bridges (or your own) and a pinnable exit country. |
-| **Smart Auto** | Fingerprints your network's DPI and picks the best protocol automatically. |
-| **Ultima** | Maximum-resilience variant of Smart Auto: deep ladder on every network, Soild-hunt rungs, IPv6-plane racing and a 24h per-network strategy memory. |
+| **Smart Auto** | Fingerprints your network's DPI and picks the best protocol automatically, with IPv6-plane racing and a 24h per-network strategy memory. |
 
 ### Anti-DPI Obfuscation
 
@@ -291,8 +290,7 @@ The release build is fully automated via
 4. **EXECUTE** — Tries each strategy with a time budget; first one that
    passes the self-test wins
 5. **REMEMBER** — The winning strategy is pinned per network for 24 hours
-   (see the **Ultima** protocol: it walks the deep ladder on every network
-   and reuses the remembered winner first on reconnects)
+   and reused first on reconnects so there is no probing warm-up
 
 Every decision is logged to the in-app diagnostics panel.
 

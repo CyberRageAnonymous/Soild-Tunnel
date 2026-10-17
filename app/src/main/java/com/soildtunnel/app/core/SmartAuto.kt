@@ -159,7 +159,6 @@ object SmartAuto {
         user: ConnectionProfile,
         fp: NetworkFingerprint,
         stickyRange: String? = null,
-        forceDeep: Boolean = false,
         memo: StrategyMemo.Recipe? = null,
     ): List<AutoCandidate> {
         // Prefer the ranges that actually answered, fastest first. Narrowing
@@ -171,10 +170,6 @@ object SmartAuto {
         if (!stickyRange.isNullOrBlank()) bestRanges = stickyRange.trim()
         // NEVER override an endpoint the user pinned manually in Settings.
         val keepUserEndpoint = user.endpointMode != EndpointMode.AUTO
-
-        // Ultima walks the deep ladder even when the network looks friendlier,
-        // the other classes tune the ladder to the observed fingerprint.
-        val effectiveClass = if (forceDeep) DpiClass.HOSTILE else fp.dpiClass
         val unlockDual = { dual: Boolean -> fp.v6EdgeOk && dual && user.ipVersion == IpVersion.V4 }
 
         fun rung(
@@ -217,7 +212,7 @@ object SmartAuto {
             return remembered.copy(label = "${remembered.label} · remembered winner")
         }
 
-        val ladder = when (effectiveClass) {
+        val ladder = when (fp.dpiClass) {
             DpiClass.OPEN -> listOf(
                 rung(Protocol.WIREGUARD, Noize.OFF, dual = true),
                 rung(Protocol.MASQUE, Noize.OFF, dual = true),
@@ -263,7 +258,7 @@ object SmartAuto {
         )
 
         val plan = (withMemory + ladder + fallback).distinctBy { it.profile }
-        DiagnosticsLog.i(TAG, "Strategy ladder for ${if (forceDeep) "ULTIMA" else fp.dpiClass} (${plan.size} steps):")
+        DiagnosticsLog.i(TAG, "Strategy ladder for ${fp.dpiClass} (${plan.size} steps):")
         plan.forEachIndexed { i, c -> DiagnosticsLog.i(TAG, "  ${i + 1}. ${c.label}") }
         return plan
     }

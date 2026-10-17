@@ -18,12 +18,13 @@ import androidx.compose.ui.graphics.Color
 import com.soildtunnel.app.ui.theme.AuraIndigo
 import com.soildtunnel.app.ui.theme.GlowPoolCyan
 import com.soildtunnel.app.ui.theme.GlowPoolViolet
+import com.soildtunnel.app.ui.theme.NeonBusy
 import com.soildtunnel.app.ui.theme.NeonOk
 import com.soildtunnel.app.ui.theme.NeonPrimary
-import com.soildtunnel.app.ui.theme.NeonTertiary
 import com.soildtunnel.app.ui.theme.Palette
 import com.soildtunnel.app.ui.theme.Skin
 import com.soildtunnel.app.ui.theme.Void
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -126,17 +127,17 @@ private fun NeonBackdrop(
     active: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val scan = rememberInfiniteTransition(label = "neonScan").animateFloat(
+    val grid = rememberInfiniteTransition(label = "neonGrid").animateFloat(
         initialValue = 0f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(9_000, easing = LinearEasing)),
-        label = "scan",
+        animationSpec = infiniteRepeatable(tween(14_000, easing = LinearEasing)),
+        label = "grid",
     )
-    val shimmer = rememberInfiniteTransition(label = "neonPulse").animateFloat(
+    val pulse = rememberInfiniteTransition(label = "neonPulse").animateFloat(
         initialValue = 0f,
         targetValue = (Math.PI * 2).toFloat(),
-        animationSpec = infiniteRepeatable(tween(7_000, easing = LinearEasing)),
-        label = "shimmer",
+        animationSpec = infiniteRepeatable(tween(6_000, easing = LinearEasing)),
+        label = "pulse",
     )
 
     Box(
@@ -144,71 +145,88 @@ private fun NeonBackdrop(
             .fillMaxSize()
             .drawBehind {
                 drawRect(Void)
-                val live = if (active) 1.40f else 1f
-                val sh = shimmer.value
+                val live = if (active) 1.45f else 1f
+                val p = pulse.value
 
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            NeonTertiary.copy(alpha = 0.14f * live),
+                            NeonOk.copy(alpha = (if (active) 0.34f else 0.22f) * live),
                             Color.Transparent,
                         ),
-                        center = Offset(size.width * 0.08f, size.height * 0.80f),
-                        radius = size.maxDimension * 0.70f,
+                        center = Offset(size.width * 0.5f, size.height * 1.06f),
+                        radius = size.maxDimension * 1.00f,
                     ),
                 )
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            NeonPrimary.copy(alpha = (if (active) 0.22f else 0.15f) * live),
+                            NeonBusy.copy(alpha = (if (active) 0.20f else 0.13f) * live),
                             Color.Transparent,
                         ),
                         center = Offset(
-                            size.width * 0.24f,
-                            size.height * (0.13f + 0.02f * cos(sh).toFloat()),
+                            size.width * (0.14f + 0.03f * sin(p).toFloat()),
+                            size.height * (0.10f + 0.02f * cos(p).toFloat()),
                         ),
-                        radius = size.maxDimension * 0.78f,
+                        radius = size.maxDimension * 0.55f,
                     ),
                 )
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            NeonOk.copy(alpha = 0.09f * live),
+                            NeonPrimary.copy(alpha = 0.10f),
                             Color.Transparent,
                         ),
-                        center = Offset(size.width * 0.88f, size.height * 0.90f),
-                        radius = size.maxDimension * 0.52f,
+                        center = Offset(size.width * 0.92f, size.height * 0.26f),
+                        radius = size.maxDimension * 0.45f,
                     ),
                 )
 
-                val step = size.height / 46f
-                var sy = (scan.value * step) - step
-                while (sy < size.height) {
+                val stepX = size.width / 15f
+                var gx = (grid.value * stepX) - stepX
+                while (gx < size.width) {
                     drawRect(
-                        color = Color.White.copy(alpha = 0.028f),
-                        topLeft = Offset(0f, sy),
-                        size = Size(size.width, 1.5f),
+                        color = NeonPrimary.copy(alpha = 0.045f),
+                        topLeft = Offset(gx, 0f),
+                        size = Size(1.5f, size.height),
                     )
-                    sy += step
+                    gx += stepX
                 }
 
-                val horizonTop = size.height * 0.55f
-                val horizonBottom = size.height * 0.67f
+                val pulseAlpha = (if (active) 0.55f else 0.22f) * (0.6f + 0.4f * abs(sin(p)).toFloat())
+                drawRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            NeonBusy.copy(alpha = pulseAlpha),
+                            Color.Transparent,
+                        ),
+                    ),
+                    topLeft = Offset(0f, 0f),
+                    size = Size(size.width, 2.5f),
+                )
+
+                val horizonTop = size.height * 0.74f
                 drawRect(
                     brush = Brush.verticalGradient(
                         colors = listOf(
                             Color.Transparent,
-                            accent.copy(alpha = (if (active) 0.26f else 0.13f) * live),
+                            accent.copy(alpha = (if (active) 0.24f else 0.12f) * live),
                             Color.Transparent,
                         ),
-                        startY = horizonTop,
-                        endY = horizonBottom,
+                        startY = horizonTop - size.height * 0.06f,
+                        endY = horizonTop + size.height * 0.06f,
                     ),
                 )
                 drawRect(
-                    color = NeonPrimary.copy(alpha = 0.38f * live),
-                    topLeft = Offset(0f, size.height * 0.61f - 1f),
+                    color = NeonPrimary.copy(alpha = 0.42f * live),
+                    topLeft = Offset(0f, size.height * 0.80f - 1f),
                     size = Size(size.width, 2f),
+                )
+                drawRect(
+                    color = NeonBusy.copy(alpha = 0.30f * live),
+                    topLeft = Offset(0f, size.height * 0.80f - 4f),
+                    size = Size(size.width, 1.5f),
                 )
 
                 drawRect(

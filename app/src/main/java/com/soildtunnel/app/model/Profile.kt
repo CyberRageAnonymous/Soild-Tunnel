@@ -2,7 +2,7 @@ package com.soildtunnel.app.model
 
 
 /** Transport protocol, mapped 1:1 to the desktop app's CLI flags. */
-enum class Protocol { AUTO, ULTIMA, MASQUE, SOILD, WIREGUARD, GOOL, TOR }
+enum class Protocol { AUTO, MASQUE, SOILD, WIREGUARD, GOOL, TOR }
 
 /**
  * How gool runs (only used when [Protocol] is GOOL).
@@ -276,7 +276,6 @@ data class ConnectionProfile(
             // fingerprints the network's DPI and resolves AUTO to a concrete,
             // tuned protocol BEFORE launch. Kept only for exhaustiveness.
             Protocol.AUTO -> { /* resolved by SmartAuto before launch */ }
-            Protocol.ULTIMA -> { /* resolved by the deep ladder before launch */ }
             // TOR never reaches the engine either: Tor mode runs the tor
             // daemon plus the TUN bridge, the WARP engine stays off.
             Protocol.TOR -> { /* handled app-side, see TorManager */ }

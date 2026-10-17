@@ -21,12 +21,12 @@ val AuraTertiary = Color(0xFF9D7BFF)
 val AuraWarn = Color(0xFFFFC24B)
 val AuraError = Color(0xFFFF5470)
 
-val NeonPrimary = Color(0xFFFF3D81)
-val NeonBusy = Color(0xFFE1379E)
-val NeonOk = Color(0xFFC6FF4D)
-val NeonTertiary = Color(0xFFB24BF3)
-val NeonWarn = Color(0xFFFFD84D)
-val NeonError = Color(0xFFFF3D54)
+val NeonPrimary = Color(0xFF3D7BFF)
+val NeonBusy = Color(0xFFFF3B3B)
+val NeonOk = Color(0xFF35A0FF)
+val NeonTertiary = Color(0xFFFF5257)
+val NeonWarn = Color(0xFFFF7043)
+val NeonError = Color(0xFFFF2E43)
 
 private val neon: Boolean get() = Palette.skin == Skin.NEON
 
@@ -47,31 +47,31 @@ private val LightInk = Color(0xFF121621)
 private val LightInkMuted = Color(0xFF5D6679)
 
 val OnDark: Color get() = when {
-    neon -> Color(0xFFF8F8FA)
+    neon -> Color(0xFFF2F4F8)
     Palette.light -> LightInk
     else -> Color(0xFFF4F6FB)
 }
 
 val OnDarkMuted: Color get() = when {
-    neon -> Color(0xFFA7ACBF)
+    neon -> Color(0xFF9BA6C2)
     Palette.light -> LightInkMuted
     else -> Color(0xFF9AA3BD)
 }
 
 val CardTextPrimary: Color get() = when {
-    neon -> Color(0xFFF8F8FA)
+    neon -> Color(0xFFF2F4F8)
     Palette.light -> LightInk
     else -> Color(0xFFF4F6FB)
 }
 
 val CardTextMuted: Color get() = when {
-    neon -> Color(0xFFA7ACBF)
+    neon -> Color(0xFF9BA6C2)
     Palette.light -> LightInkMuted
     else -> Color(0xFF9AA3BD)
 }
 
 val CardTextDim: Color get() = when {
-    neon -> Color(0xFF565D71)
+    neon -> Color(0xFF5A6379)
     Palette.light -> Color(0xFF8891A5)
     else -> Color(0xFF5C6478)
 }
@@ -82,25 +82,25 @@ private val LightPanelBottom = Color(0xF0F3F5F8)
 private val LightCardSub = Color(0xE6FBFCFE)
 
 val Void: Color get() = when {
-    neon -> Color(0xFF050508)
+    neon -> Color(0xFF030407)
     Palette.light -> LightVoid
     else -> Color(0xFF04050B)
 }
 
 val PanelTop: Color get() = when {
-    neon -> Color(0xFF14141A)
+    neon -> Color(0xFF0E1322)
     Palette.light -> LightPanelTop
     else -> Color(0xAA14172B)
 }
 
 val PanelBottom: Color get() = when {
-    neon -> Color(0xFF0A0A0E)
+    neon -> Color(0xFF070A12)
     Palette.light -> LightPanelBottom
     else -> Color(0xE60B0D18)
 }
 
 val CardSubSurface: Color get() = when {
-    neon -> Color(0xFF17171E)
+    neon -> Color(0xFF0F1424)
     Palette.light -> LightCardSub
     else -> Color(0xDE141726)
 }
@@ -109,13 +109,13 @@ val CardSurfaceTop: Color get() = PanelTop
 val CardSurfaceBottom: Color get() = PanelBottom
 
 val EdgeNeon: Color get() = when {
-    neon -> Color(0x66FF3D81)
+    neon -> Color(0x593D7BFF)
     Palette.light -> Color(0x597C6BFF)
     else -> Color(0x267C6BFF)
 }
 
 val EdgeNeonBright: Color get() = when {
-    neon -> Color(0xB3FF3D81)
+    neon -> Color(0x993D7BFF)
     Palette.light -> Color(0x807C6BFF)
     else -> Color(0x407C6BFF)
 }
@@ -133,13 +133,13 @@ val GlassEdgeBright: Color get() = when {
 }
 
 val GlowPoolCyan: Color get() = when {
-    neon -> Color(0xFF1E3C45)
+    neon -> Color(0xFF122A55)
     Palette.light -> Color(0xFFC5E9F7)
     else -> Color(0xFF14496B)
 }
 
 val GlowPoolViolet: Color get() = when {
-    neon -> Color(0xFF45202E)
+    neon -> Color(0xFF3B1220)
     Palette.light -> Color(0xFFD9D2F9)
     else -> Color(0xFF33286E)
 }
@@ -163,13 +163,13 @@ val GlassSheenTop: Color get() = when {
 }
 
 val DrawerGlass: Color get() = when {
-    neon -> Color(0xF508080C)
+    neon -> Color(0xF505070D)
     Palette.light -> Color(0xF7F6F8FA)
     else -> Color(0xF5060710)
 }
 
 val SheetGlass: Color get() = when {
-    neon -> Color(0xFA0C0C11)
+    neon -> Color(0xFA0A0F18)
     Palette.light -> Color(0xFAF6F8FA)
     else -> Color(0xFA080A12)
 }
@@ -186,10 +186,10 @@ val ChipFillBottom: Color get() = when {
     else -> Color(0x12FFFFFF)
 }
 
-val PanelRadius: Dp get() = if (neon) 14.dp else 24.dp
-val InnerCardRadius: Dp get() = if (neon) 10.dp else 18.dp
-val SheetRadius: Dp get() = if (neon) 16.dp else 28.dp
-val ChipIconRadius: Dp get() = if (neon) 8.dp else 12.dp
+val PanelRadius: Dp get() = if (neon) 12.dp else 24.dp
+val InnerCardRadius: Dp get() = if (neon) 6.dp else 18.dp
+val SheetRadius: Dp get() = if (neon) 12.dp else 28.dp
+val ChipIconRadius: Dp get() = if (neon) 4.dp else 12.dp
 
 fun latencyColor(ms: Long): Color = when {
     ms < 0 -> CardTextDim
