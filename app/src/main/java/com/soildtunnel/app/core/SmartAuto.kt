@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.EndpointMode
 import com.soildtunnel.app.model.GoolMode
+import com.soildtunnel.app.model.IpVersion
 import com.soildtunnel.app.model.Noize
 import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.model.ScanMode
@@ -49,6 +50,8 @@ data class NetworkFingerprint(
     val iranCellular: Boolean,
     /** WARP range CIDR -> TCP connect latency in ms (-1 = unreachable). */
     val edgeLatencyMs: Map<String, Long>,
+    /** True when at least one IPv6 WARP edge answers at TCP/443. */
+    val v6EdgeOk: Boolean,
 )
 
 /** One concrete, ready-to-launch strategy in the Smart Auto ladder. */
@@ -100,6 +103,12 @@ object SmartAuto {
         "8.6.112.0/24" to "8.6.112.1",
     )
 
+    /** IPv6 WARP edge carriers inside 2606:4700:d0::/48 and d1::/48. */
+    private val V6_EDGES = listOf(
+        "2606:4700:d0::a29f:c001",
+        "2606:4700:d1::a29f:4001",
+    )
+
     // ---- Stage 1+2: probe the network and classify its DPI ----------------
 
     suspend fun fingerprint(context: Context): NetworkFingerprint = withContext(Dispatchers.IO) {
@@ -115,11 +124,15 @@ object SmartAuto {
             val udpCf = async { udpDnsProbe("1.1.1.1") }
             val udpGoog = async { udpDnsProbe("8.8.8.8") }
             val tls = async { tlsSniProbe() }
+            val v6Jobs = V6_EDGES.map { host ->
+                async { tcpLatencyMs(host, 443) }
+            }
             val edgeJobs = EDGES.map { (cidr, probeIp) ->
                 async { cidr to tcpLatencyMs(probeIp, 443) }
             }
             val udpOk = udpCf.await() || udpGoog.await()
             val tlsOk = tls.await()
+            val v6Ok = v6Jobs.awaitAll().any { it >= 0 }
             val edges = edgeJobs.awaitAll().toMap()
             val cls = when {
                 udpOk && tlsOk -> DpiClass.OPEN
@@ -127,7 +140,7 @@ object SmartAuto {
                 tlsOk -> DpiClass.UDP_THROTTLED
                 else -> DpiClass.HOSTILE
             }
-            NetworkFingerprint(cls, udpOk, tlsOk, operatorName, iranCellular, edges)
+            NetworkFingerprint(cls, udpOk, tlsOk, operatorName, iranCellular, edges, v6Ok)
         }
         val edgeSummary = fp.edgeLatencyMs.entries.joinToString(", ") { (range, ms) ->
             "$range=${if (ms < 0) "unreachable" else "${ms}ms"}"
@@ -135,14 +148,20 @@ object SmartAuto {
         DiagnosticsLog.i(
             TAG,
             "DPI fingerprint ready in ${System.currentTimeMillis() - started} ms: " +
-                "udp=${fp.udpOk} tlsSni=${fp.tlsSniOk} → ${fp.dpiClass} | edges: $edgeSummary",
+                "udp=${fp.udpOk} tlsSni=${fp.tlsSniOk} v6=${fp.v6EdgeOk} → ${fp.dpiClass} | edges: $edgeSummary",
         )
         fp
     }
 
     // ---- Stage 3: turn the fingerprint into an ordered strategy ladder ----
 
-    fun buildPlan(user: ConnectionProfile, fp: NetworkFingerprint, stickyRange: String? = null): List<AutoCandidate> {
+    fun buildPlan(
+        user: ConnectionProfile,
+        fp: NetworkFingerprint,
+        stickyRange: String? = null,
+        forceDeep: Boolean = false,
+        memo: StrategyMemo.Recipe? = null,
+    ): List<AutoCandidate> {
         // Prefer the ranges that actually answered, fastest first. Narrowing
         // the scan to live ranges is what makes each attempt FAST; the last
         // resort below still covers the full built-in ranges.
@@ -153,75 +172,86 @@ object SmartAuto {
         // NEVER override an endpoint the user pinned manually in Settings.
         val keepUserEndpoint = user.endpointMode != EndpointMode.AUTO
 
-        fun cand(
+        // Ultima walks the deep ladder even when the network looks friendlier,
+        // the other classes tune the ladder to the observed fingerprint.
+        val effectiveClass = if (forceDeep) DpiClass.HOSTILE else fp.dpiClass
+        val unlockDual = { dual: Boolean -> fp.v6EdgeOk && dual && user.ipVersion == IpVersion.V4 }
+
+        fun rung(
             proto: Protocol,
             noize: Noize,
             h2: Boolean = false,
             frag: Boolean = false,
             ech: Boolean = false,
-        ): AutoCandidate {
-            // Respect a stronger user-chosen obfuscation; bias bare profiles to
-            // LIGHT noize on Iranian cellular where fingerprinting is routine.
-            var mergedNoize = if (user.noize.ordinal >= noize.ordinal) user.noize else noize
-            if (mergedNoize == Noize.OFF && fp.iranCellular) mergedNoize = Noize.LIGHT
-            var p = user.copy(
-                protocol = proto,
-                noize = mergedNoize,
-                masqueHttp2 = user.masqueHttp2 || (h2 && proto == Protocol.MASQUE),
-                fragment = user.fragment || frag,
-                ech = user.ech || ech,
-                // TURBO per attempt: the ladder's speed comes from trying the
-                // NEXT strategy quickly, not from one long exhaustive scan.
-                scanMode = ScanMode.TURBO,
+            dual: Boolean = false,
+            forceHunt: Boolean = false,
+        ): AutoCandidate =
+            candidateFor(
+                user,
+                fp,
+                bestRanges,
+                keepUserEndpoint,
+                proto,
+                noize,
+                h2,
+                frag,
+                ech,
+                unlockDual(dual),
+                forceHunt,
             )
-            if (!keepUserEndpoint && bestRanges.isNotEmpty()) {
-                p = p.copy(endpointMode = EndpointMode.MANUAL_RANGE, manualRange = bestRanges)
-            }
-            // Gool on MASQUE always scans automatically: a pinned range
-            // would kill its outer scan, so force Auto for this candidate.
-            if (proto == Protocol.GOOL && p.goolMode == GoolMode.ON_MASQUE) {
-                p = p.copy(endpointMode = EndpointMode.AUTO, manualRange = "")
-            }
-            val label = buildString {
-                append(proto.name)
-                append(" · noize=").append(p.noize.name.lowercase())
-                if (p.masqueHttp2) append(" · h2")
-                if (p.fragment) append(" · fragment")
-                if (p.ech) append(" · ech")
-                if (!keepUserEndpoint && bestRanges.isNotEmpty()) append(" · ranges[").append(bestRanges).append("]")
-                append(" · scan=turbo")
-            }
-            return AutoCandidate(p, p.connectTimeoutMs(), label)
+
+        fun memoRung(): AutoCandidate {
+            val remembered = candidateFor(
+                user,
+                fp,
+                memo?.range?.trim().orEmpty(),
+                keepUserEndpoint,
+                memo?.protocol ?: Protocol.MASQUE,
+                memo?.noize ?: Noize.BALANCED,
+                memo?.masqueHttp2 == true,
+                memo?.fragment == true,
+                memo?.ech == true,
+                dual = false,
+                forceHunt = memo?.protocol == Protocol.SOILD,
+            )
+            return remembered.copy(label = "${remembered.label} · remembered winner")
         }
 
-        val ladder = when (fp.dpiClass) {
+        val ladder = when (effectiveClass) {
             DpiClass.OPEN -> listOf(
-                cand(Protocol.WIREGUARD, Noize.OFF),
-                cand(Protocol.MASQUE, Noize.OFF),
-                cand(Protocol.GOOL, Noize.LIGHT),
+                rung(Protocol.WIREGUARD, Noize.OFF, dual = true),
+                rung(Protocol.MASQUE, Noize.OFF, dual = true),
+                rung(Protocol.GOOL, Noize.LIGHT),
             )
             DpiClass.SNI_FILTERING -> listOf(
-                cand(Protocol.WIREGUARD, Noize.BALANCED),
-                cand(Protocol.GOOL, Noize.BALANCED),
-                cand(Protocol.MASQUE, Noize.FIREWALL, frag = true, ech = true),
+                rung(Protocol.WIREGUARD, Noize.BALANCED, dual = true),
+                rung(Protocol.GOOL, Noize.BALANCED),
+                rung(Protocol.MASQUE, Noize.FIREWALL, frag = true, ech = true),
             )
             DpiClass.UDP_THROTTLED -> listOf(
-                cand(Protocol.MASQUE, Noize.LIGHT, h2 = true, frag = true, ech = true),
-                cand(Protocol.GOOL, Noize.AGGRESSIVE),
-                cand(Protocol.WIREGUARD, Noize.GFW),
+                rung(Protocol.MASQUE, Noize.LIGHT, h2 = true, frag = true, ech = true),
+                rung(Protocol.SOILD, Noize.FIREWALL, forceHunt = true),
+                rung(Protocol.GOOL, Noize.AGGRESSIVE),
+                rung(Protocol.WIREGUARD, Noize.GFW),
             )
             DpiClass.HOSTILE -> listOf(
-                cand(Protocol.MASQUE, Noize.GFW, h2 = true, frag = true, ech = true),
-                cand(Protocol.GOOL, Noize.AGGRESSIVE),
-                cand(Protocol.WIREGUARD, Noize.AGGRESSIVE),
+                rung(Protocol.MASQUE, Noize.GFW, h2 = true, frag = true, ech = true),
+                rung(Protocol.SOILD, Noize.GFW, forceHunt = true),
+                rung(Protocol.GOOL, Noize.AGGRESSIVE),
+                rung(Protocol.GOOL, Noize.GFW, frag = true, ech = true),
+                rung(Protocol.WIREGUARD, Noize.GFW),
             )
         }
+
+        // Ultima never waits on the dpi-class loop below and starts the deep
+        // family straight away; remember-what-won candidates head the plan.
+        val withMemory = if (memo != null) listOf(memoRung()) else emptyList()
 
         // Last resort: the top strategy again, but scanning the engine's FULL
         // built-in ranges with the user's own scan mode — covers the rare case
         // where the probe-narrowed ranges themselves were the problem.
-        val first = ladder.first()
-        var fbProfile = first.profile.copy(scanMode = user.scanMode)
+        val firstRung = ladder.first()
+        var fbProfile = firstRung.profile.copy(scanMode = user.scanMode)
         if (!keepUserEndpoint) {
             fbProfile = fbProfile.copy(endpointMode = EndpointMode.AUTO, manualRange = user.manualRange)
         }
@@ -232,10 +262,67 @@ object SmartAuto {
                 "· scan=${user.scanMode.name.lowercase()} (last resort)",
         )
 
-        val plan = (ladder + fallback).distinctBy { it.profile }
-        DiagnosticsLog.i(TAG, "Strategy ladder for ${fp.dpiClass} (${plan.size} steps):")
+        val plan = (withMemory + ladder + fallback).distinctBy { it.profile }
+        DiagnosticsLog.i(TAG, "Strategy ladder for ${if (forceDeep) "ULTIMA" else fp.dpiClass} (${plan.size} steps):")
         plan.forEachIndexed { i, c -> DiagnosticsLog.i(TAG, "  ${i + 1}. ${c.label}") }
         return plan
+    }
+
+    /**
+     * One concrete strategy in the ladder: user settings merged upward with
+     * the hardening the rung needs, narrowed to the ranges that answered,
+     * and pinned endpoints honoured for every non-carried mode.
+     */
+    private fun candidateFor(
+        user: ConnectionProfile,
+        fp: NetworkFingerprint,
+        ranges: String,
+        keepUserEndpoint: Boolean,
+        proto: Protocol,
+        noize: Noize,
+        h2: Boolean,
+        frag: Boolean,
+        ech: Boolean,
+        dual: Boolean,
+        forceHunt: Boolean,
+    ): AutoCandidate {
+        // Respect a stronger user-chosen obfuscation; bias bare profiles to
+        // LIGHT noize on Iranian cellular where fingerprinting is routine.
+        var mergedNoize = if (user.noize.ordinal >= noize.ordinal) user.noize else noize
+        if (mergedNoize == Noize.OFF && fp.iranCellular) mergedNoize = Noize.LIGHT
+        var p = user.copy(
+            protocol = proto,
+            noize = mergedNoize,
+            masqueHttp2 = user.masqueHttp2 || (h2 && proto == Protocol.MASQUE),
+            fragment = user.fragment || frag,
+            ech = user.ech || ech,
+            ipVersion = if (dual) IpVersion.BOTH else user.ipVersion,
+            soildHunt = if (proto == Protocol.SOILD && forceHunt) true else user.soildHunt,
+            // TURBO per attempt: the ladder's speed comes from trying the
+            // NEXT strategy quickly, not from one long exhaustive scan.
+            scanMode = ScanMode.TURBO,
+        )
+        if (!keepUserEndpoint && ranges.isNotEmpty()) {
+            p = p.copy(endpointMode = EndpointMode.MANUAL_RANGE, manualRange = ranges)
+        }
+        // Gool on MASQUE and Soild-hunt always scan automatically: a pinned
+        // range would kill their outer scan, so force Auto for this rung.
+        val carried = (proto == Protocol.GOOL && p.goolMode == GoolMode.ON_MASQUE) ||
+            (proto == Protocol.SOILD && p.soildHunt)
+        if (carried) {
+            p = p.copy(endpointMode = EndpointMode.AUTO, manualRange = "")
+        }
+        val label = buildString {
+            append(proto.name)
+            append(" · noize=").append(p.noize.name.lowercase())
+            if (p.masqueHttp2) append(" · h2")
+            if (p.fragment) append(" · fragment")
+            if (p.ech) append(" · ech")
+            if (p.ipVersion == com.soildtunnel.app.model.IpVersion.BOTH) append(" · dual")
+            if (!keepUserEndpoint && ranges.isNotEmpty()) append(" · ranges[").append(ranges).append("]")
+            append(" · scan=turbo")
+        }
+        return AutoCandidate(p, p.connectTimeoutMs(), label)
     }
 
     // ---- Probes ------------------------------------------------------------

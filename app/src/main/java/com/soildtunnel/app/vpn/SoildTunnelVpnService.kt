@@ -35,6 +35,7 @@ import com.soildtunnel.app.core.HevTunnel
 import com.soildtunnel.app.core.RoutingEngine
 import com.soildtunnel.app.core.ShareBridge
 import com.soildtunnel.app.core.SmartAuto
+import com.soildtunnel.app.core.StrategyMemo
 import com.soildtunnel.app.core.SocksTunBridge
 import com.soildtunnel.app.core.TorDefaults
 import com.soildtunnel.app.core.TorManager
@@ -191,13 +192,15 @@ class SoildTunnelVpnService : VpnService() {
         }
 
         val resolved: ConnectionProfile =
-            if (profile.protocol == Protocol.AUTO) {
-                connectSmartAuto(profile)
-            } else {
+            when {
+                profile.protocol == Protocol.AUTO -> connectSmartAuto(profile)
+                profile.protocol == Protocol.ULTIMA -> connectSmartAuto(profile, forceDeep = true)
                 // An explicitly chosen protocol keeps that protocol; the
                 // engine still selects its own endpoint (see [directPlan]).
-                SoildTunnelController.setState(ConnectionState.Launching)
-                runLadder(directPlan(profile), getString(R.string.err_protocol_failed))
+                else -> {
+                    SoildTunnelController.setState(ConnectionState.Launching)
+                    runLadder(directPlan(profile), getString(R.string.err_protocol_failed))
+                }
             }
 
         // Desktop-parity info row : publish the protocol that actually
@@ -332,15 +335,18 @@ class SoildTunnelVpnService : VpnService() {
     }
 
     /**
-     * SMART AUTO (root-cause rework of the broken Auto protocol): fingerprint
-     * the network's DPI first (see [SmartAuto]), then walk an ordered ladder
-     * of concrete strategies — protocol + obfuscation + the IP ranges that
-     * actually answered on THIS network — until one passes the full 4-step
-     * self-test. Returns the strategy that won so the supervisor restarts the
-     * engine with the SAME working configuration.
+     * SMART AUTO / ULTIMA (root-cause rework of the broken Auto protocol):
+     * fingerprint the network's DPI first (see [SmartAuto]), then walk an
+     * ordered ladder of concrete strategies — protocol + obfuscation + the IP
+     * ranges that actually answered on THIS network — until one passes the
+     * full 4-step self-test. ULTIMA walks the deep ladder on every network
+     * and a 24 hour strategy memory (see [StrategyMemo]) pins winning rungs
+     * per network fingerprint. Returns the strategy that won so the
+     * supervisor restarts the engine with the SAME working configuration.
      */
     private suspend fun connectSmartAuto(
         userProfile: ConnectionProfile,
+        forceDeep: Boolean = false,
     ): ConnectionProfile {
         SoildTunnelController.setState(ConnectionState.Launching)
         updateNotification(getString(R.string.state_analyzing))
@@ -348,8 +354,25 @@ class SoildTunnelVpnService : VpnService() {
         // country stays put instead of re-selecting on every connect.
         val sticky = StickyServer.usable(this)
         val fingerprint = SmartAuto.fingerprint(this)
-        val plan = SmartAuto.buildPlan(userProfile, fingerprint, sticky?.range)
-        val won = runLadder(plan, getString(R.string.err_auto_failed))
+        val memo = StrategyMemo.recall(this, fingerprint)
+        if (memo != null) {
+            DiagnosticsLog.i(TAG, "Strategy memory hit: ${memo.protocol.name} wins before — trying it first.")
+        }
+        val plan = SmartAuto.buildPlan(
+            userProfile,
+            fingerprint,
+            sticky?.range,
+            forceDeep,
+            memo,
+        )
+        val won = try {
+            runLadder(plan, getString(R.string.err_auto_failed))
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            StrategyMemo.forget(this, fingerprint)
+            throw e
+        }
+        StrategyMemo.record(this, fingerprint, StrategyMemo.recipeOf(won))
         val userOwnsEndpoint = userProfile.endpointMode != EndpointMode.AUTO
         if (!userOwnsEndpoint && won.manualRange.isNotBlank()) {
             if (sticky != null) {

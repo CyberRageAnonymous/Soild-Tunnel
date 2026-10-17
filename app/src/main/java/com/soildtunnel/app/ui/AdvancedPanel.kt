@@ -1060,6 +1060,7 @@ private fun ToggleRow(
 @Composable
 private fun protocolLabel(protocol: Protocol): String = when (protocol) {
     Protocol.AUTO -> stringResource(R.string.protocol_auto)
+    Protocol.ULTIMA -> stringResource(R.string.protocol_ultima)
     Protocol.MASQUE -> stringResource(R.string.protocol_masque)
     Protocol.SOILD -> stringResource(R.string.protocol_soild)
     Protocol.WIREGUARD -> stringResource(R.string.protocol_wireguard)
