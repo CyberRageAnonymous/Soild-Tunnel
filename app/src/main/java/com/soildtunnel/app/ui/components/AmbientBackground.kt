@@ -39,20 +39,6 @@ fun AmbientBackground(
         animationSpec = infiniteRepeatable(tween(31_000, easing = LinearEasing)),
         label = "sway",
     )
-    val bloom = rememberInfiniteTransition(label = "auroraBloom").animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(11_000, easing = LinearEasing)),
-        label = "bloom",
-    )
-    val breathe = if (active) {
-        rememberInfiniteTransition(label = "auroraBreath").animateFloat(
-            initialValue = 0f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(2_600, easing = LinearEasing)),
-            label = "breathe",
-        )
-    } else null
 
     Box(
         modifier = modifier
@@ -62,7 +48,6 @@ fun AmbientBackground(
                 val t = drift.value
                 val s = sway.value
                 val liveAmp = if (active) 1.35f else 1f
-                val pulse = breathe?.value ?: 0.5f
 
                 drawCircle(
                     brush = Brush.radialGradient(
@@ -74,7 +59,7 @@ fun AmbientBackground(
                             size.width * (0.10f + 0.08f * cos(t).toFloat()),
                             size.height * (0.05f + 0.05f * sin(t * 1.2f).toFloat()),
                         ),
-                        radius = size.maxDimension * (1.0f + 0.05f * pulse),
+                        radius = size.maxDimension * 1.60f,
                     ),
                 )
                 drawCircle(
@@ -87,7 +72,7 @@ fun AmbientBackground(
                             size.width * (0.95f + 0.07f * sin(s).toFloat()),
                             size.height * (0.42f + 0.10f * cos(s * 0.9f).toFloat()),
                         ),
-                        radius = size.maxDimension * 0.95f,
+                        radius = size.maxDimension * 1.50f,
                     ),
                 )
                 drawCircle(
@@ -100,7 +85,7 @@ fun AmbientBackground(
                             size.width * (0.85f + 0.10f * cos(s * 1.1f).toFloat()),
                             size.height * (0.90f + 0.06f * sin(t).toFloat()),
                         ),
-                        radius = size.maxDimension * 0.72f,
+                        radius = size.maxDimension * 1.35f,
                     ),
                 )
                 drawRect(

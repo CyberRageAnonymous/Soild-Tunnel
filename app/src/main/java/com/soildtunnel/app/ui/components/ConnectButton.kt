@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -43,8 +42,10 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -285,28 +286,30 @@ private fun OrbRing(accent: Color, spinning: Boolean) {
         ),
         label = "spinT",
     )
-    val gap = if (spinning) 0.70f else 0.30f
-    Box(
-        modifier = Modifier
+    Canvas(
+        Modifier
             .size(ORB_RING)
             .rotate(spinT),
     ) {
-        Canvas(Modifier.fillMaxSize()) {
-            val c = Offset(size.width / 2f, size.height / 2f)
-            val r = size.minDimension / 2f - RING_STROKE.toPx() / 2f
-            drawCircle(
-                brush = Brush.sweepGradient(
-                    0f to Color.Transparent,
-                    gap / 2f to accent.copy(alpha = 0.12f),
-                    0.5f to accent,
-                    0.5f + (1f - gap) / 2f to accent.copy(alpha = 0.5f),
-                    1f to Color.Transparent,
-                ),
-                radius = r,
-                center = c,
-                style = Stroke(RING_STROKE.toPx()),
-            )
-        }
+        val stroke = RING_STROKE.toPx()
+        val r = size.minDimension / 2f - stroke / 2f
+        val topLeft = Offset(size.width / 2f - r, size.height / 2f - r)
+        val arcSize = Size(r * 2f, r * 2f)
+        drawCircle(
+            color = accent.copy(alpha = 0.18f),
+            radius = r,
+            center = Offset(size.width / 2f, size.height / 2f),
+            style = Stroke(stroke),
+        )
+        drawArc(
+            color = accent,
+            startAngle = -90f,
+            sweepAngle = if (spinning) 300f else 90f,
+            useCenter = false,
+            topLeft = topLeft,
+            size = arcSize,
+            style = Stroke(stroke, cap = StrokeCap.Round),
+        )
     }
 }
 
