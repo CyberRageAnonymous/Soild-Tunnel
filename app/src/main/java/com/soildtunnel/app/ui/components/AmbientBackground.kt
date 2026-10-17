@@ -12,6 +12,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import com.soildtunnel.app.ui.theme.AuraIndigo
@@ -186,7 +187,7 @@ private fun NeonBackdrop(
                     drawRect(
                         color = Color.White.copy(alpha = 0.028f),
                         topLeft = Offset(0f, sy),
-                        size = Offset(size.width, 1.5f),
+                        size = Size(size.width, 1.5f),
                     )
                     sy += step
                 }
@@ -207,7 +208,7 @@ private fun NeonBackdrop(
                 drawRect(
                     color = NeonPrimary.copy(alpha = 0.38f * live),
                     topLeft = Offset(0f, size.height * 0.61f - 1f),
-                    size = Offset(size.width, 2f),
+                    size = Size(size.width, 2f),
                 )
 
                 drawRect(
