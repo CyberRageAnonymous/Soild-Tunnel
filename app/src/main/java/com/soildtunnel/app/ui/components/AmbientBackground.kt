@@ -17,6 +17,11 @@ import androidx.compose.ui.graphics.Color
 import com.soildtunnel.app.ui.theme.AuraIndigo
 import com.soildtunnel.app.ui.theme.GlowPoolCyan
 import com.soildtunnel.app.ui.theme.GlowPoolViolet
+import com.soildtunnel.app.ui.theme.NeonOk
+import com.soildtunnel.app.ui.theme.NeonPrimary
+import com.soildtunnel.app.ui.theme.NeonTertiary
+import com.soildtunnel.app.ui.theme.Palette
+import com.soildtunnel.app.ui.theme.Skin
 import com.soildtunnel.app.ui.theme.Void
 import kotlin.math.cos
 import kotlin.math.sin
@@ -27,6 +32,11 @@ fun AmbientBackground(
     active: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    if (Palette.skin == Skin.NEON) {
+        NeonBackdrop(accent, active, modifier)
+        return
+    }
+
     val drift = rememberInfiniteTransition(label = "auroraDrift").animateFloat(
         initialValue = 0f,
         targetValue = (Math.PI * 2).toFloat(),
@@ -103,6 +113,107 @@ fun AmbientBackground(
                     brush = Brush.radialGradient(
                         colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.40f)),
                         radius = size.maxDimension * 1.30f,
+                    ),
+                )
+            },
+    )
+}
+
+@Composable
+private fun NeonBackdrop(
+    accent: Color,
+    active: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val scan = rememberInfiniteTransition(label = "neonScan").animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(9_000, easing = LinearEasing)),
+        label = "scan",
+    )
+    val shimmer = rememberInfiniteTransition(label = "neonPulse").animateFloat(
+        initialValue = 0f,
+        targetValue = (Math.PI * 2).toFloat(),
+        animationSpec = infiniteRepeatable(tween(7_000, easing = LinearEasing)),
+        label = "shimmer",
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .drawBehind {
+                drawRect(Void)
+                val live = if (active) 1.40f else 1f
+                val sh = shimmer.value
+
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            NeonTertiary.copy(alpha = 0.14f * live),
+                            Color.Transparent,
+                        ),
+                        center = Offset(size.width * 0.08f, size.height * 0.80f),
+                        radius = size.maxDimension * 0.70f,
+                    ),
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            NeonPrimary.copy(alpha = (if (active) 0.22f else 0.15f) * live),
+                            Color.Transparent,
+                        ),
+                        center = Offset(
+                            size.width * 0.24f,
+                            size.height * (0.13f + 0.02f * cos(sh).toFloat()),
+                        ),
+                        radius = size.maxDimension * 0.78f,
+                    ),
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            NeonOk.copy(alpha = 0.09f * live),
+                            Color.Transparent,
+                        ),
+                        center = Offset(size.width * 0.88f, size.height * 0.90f),
+                        radius = size.maxDimension * 0.52f,
+                    ),
+                )
+
+                val step = size.height / 46f
+                var sy = (scan.value * step) - step
+                while (sy < size.height) {
+                    drawRect(
+                        color = Color.White.copy(alpha = 0.028f),
+                        topLeft = Offset(0f, sy),
+                        size = Offset(size.width, 1.5f),
+                    )
+                    sy += step
+                }
+
+                val horizonTop = size.height * 0.55f
+                val horizonBottom = size.height * 0.67f
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            accent.copy(alpha = (if (active) 0.26f else 0.13f) * live),
+                            Color.Transparent,
+                        ),
+                        startY = horizonTop,
+                        endY = horizonBottom,
+                    ),
+                )
+                drawRect(
+                    color = NeonPrimary.copy(alpha = 0.38f * live),
+                    topLeft = Offset(0f, size.height * 0.61f - 1f),
+                    size = Offset(size.width, 2f),
+                )
+
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
+                        radius = size.maxDimension * 1.05f,
                     ),
                 )
             },

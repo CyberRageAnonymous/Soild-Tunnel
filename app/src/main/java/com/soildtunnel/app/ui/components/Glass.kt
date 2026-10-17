@@ -35,62 +35,85 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.soildtunnel.app.ui.theme.ChipIconRadius
 import com.soildtunnel.app.ui.theme.EdgeNeon
 import com.soildtunnel.app.ui.theme.GlassEdge
 import com.soildtunnel.app.ui.theme.GlassEdgeBright
 import com.soildtunnel.app.ui.theme.GlassFillBottom
 import com.soildtunnel.app.ui.theme.GlassFillTop
 import com.soildtunnel.app.ui.theme.GlassSheenTop
+import com.soildtunnel.app.ui.theme.InnerCardRadius
 import com.soildtunnel.app.ui.theme.NeonCyan
+import com.soildtunnel.app.ui.theme.Palette
 import com.soildtunnel.app.ui.theme.PanelBottom
+import com.soildtunnel.app.ui.theme.PanelRadius
 import com.soildtunnel.app.ui.theme.PanelTop
+import com.soildtunnel.app.ui.theme.Skin
 
-fun Modifier.neonPanel(shape: Shape, edge: Color = EdgeNeon): Modifier = this
-    .background(
-        brush = Brush.verticalGradient(listOf(PanelTop, PanelBottom)),
-        shape = shape,
-    )
-    .background(
-        brush = Brush.verticalGradient(
-            colorStops = arrayOf(
-                0.00f to GlassSheenTop,
-                0.35f to Color.Transparent,
-                0.80f to Color.Transparent,
-                1.00f to GlassSheenTop.copy(alpha = 0.35f),
-            ),
-        ),
-        shape = shape,
-    )
-    .border(
-        width = 1.dp,
-        brush = Brush.verticalGradient(
-            listOf(edge, edge.copy(alpha = edge.alpha * 0.30f)),
-        ),
-        shape = shape,
-    )
+fun Modifier.neonPanel(shape: Shape, edge: Color = EdgeNeon): Modifier =
+    if (Palette.skin == Skin.NEON) {
+        this
+            .background(PanelTop, shape)
+            .border(2.dp, edge.copy(alpha = edge.alpha * 0.35f), shape)
+            .border(1.dp, edge, shape)
+    } else {
+        this
+            .background(
+                brush = Brush.verticalGradient(listOf(PanelTop, PanelBottom)),
+                shape = shape,
+            )
+            .background(
+                brush = Brush.verticalGradient(
+                    colorStops = arrayOf(
+                        0.00f to GlassSheenTop,
+                        0.35f to Color.Transparent,
+                        0.80f to Color.Transparent,
+                        1.00f to GlassSheenTop.copy(alpha = 0.35f),
+                    ),
+                ),
+                shape = shape,
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.verticalGradient(
+                    listOf(edge, edge.copy(alpha = edge.alpha * 0.30f)),
+                ),
+                shape = shape,
+            )
+    }
 
-fun Modifier.glassPane(shape: Shape, brightRim: Boolean = false): Modifier = this
-    .background(
-        brush = Brush.verticalGradient(listOf(GlassFillTop, GlassFillBottom)),
-        shape = shape,
-    )
-    .background(
-        brush = Brush.verticalGradient(
-            colorStops = arrayOf(
-                0.00f to GlassSheenTop,
-                0.35f to Color.Transparent,
-                0.80f to Color.Transparent,
-                1.00f to GlassSheenTop.copy(alpha = 0.35f),
-            ),
-        ),
-        shape = shape,
-    )
-    .border(1.dp, if (brightRim) GlassEdgeBright else GlassEdge, shape)
+fun Modifier.glassPane(shape: Shape, brightRim: Boolean = false): Modifier =
+    if (Palette.skin == Skin.NEON) {
+        this
+            .background(ChipFillTopSolid, shape)
+            .border(1.dp, if (brightRim) GlassEdgeBright else GlassEdge, shape)
+    } else {
+        this
+            .background(
+                brush = Brush.verticalGradient(listOf(GlassFillTop, GlassFillBottom)),
+                shape = shape,
+            )
+            .background(
+                brush = Brush.verticalGradient(
+                    colorStops = arrayOf(
+                        0.00f to GlassSheenTop,
+                        0.35f to Color.Transparent,
+                        0.80f to Color.Transparent,
+                        1.00f to GlassSheenTop.copy(alpha = 0.35f),
+                    ),
+                ),
+                shape = shape,
+            )
+            .border(1.dp, if (brightRim) GlassEdgeBright else GlassEdge, shape)
+    }
+
+private val ChipFillTopSolid
+    get() = if (Palette.skin == Skin.NEON) com.soildtunnel.app.ui.theme.CardSubSurface else com.soildtunnel.app.ui.theme.ChipFillTop
 
 @Composable
 fun NeonPanel(
     modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(24.dp),
+    shape: Shape = RoundedCornerShape(PanelRadius),
     contentPadding: Dp = 16.dp,
     edge: Color = EdgeNeon,
     content: @Composable ColumnScope.() -> Unit,
@@ -106,7 +129,7 @@ fun NeonPanel(
 @Composable
 fun GlassPanel(
     modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(24.dp),
+    shape: Shape = RoundedCornerShape(PanelRadius),
     contentPadding: Dp = 16.dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -162,7 +185,7 @@ fun PanelCard(
     subtitleColor: Color = Color.Unspecified,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(InnerCardRadius)
     val arrow by animateFloatAsState(if (expanded) 180f else 0f, tween(320), label = "panelArrow")
     Column(
         modifier = modifier
@@ -184,9 +207,9 @@ fun PanelCard(
                         brush = Brush.verticalGradient(
                             listOf(accent.copy(alpha = 0.16f), accent.copy(alpha = 0.05f)),
                         ),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(ChipIconRadius),
                     )
-                    .border(1.dp, accent.copy(alpha = 0.24f), RoundedCornerShape(12.dp)),
+                    .border(1.dp, accent.copy(alpha = 0.24f), RoundedCornerShape(ChipIconRadius)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(19.dp))

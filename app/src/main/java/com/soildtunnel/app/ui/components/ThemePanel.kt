@@ -73,6 +73,11 @@ fun ThemePanel(modifier: Modifier = Modifier) {
                 selected = current == ThemeMode.LIGHT,
                 onClick = { pick(ThemeMode.LIGHT) },
             )
+            ThemeRow(
+                label = stringResource(R.string.theme_neon),
+                selected = current == ThemeMode.NEON,
+                onClick = { pick(ThemeMode.NEON) },
+            )
         }
     }
 }
@@ -106,5 +111,6 @@ private fun ThemeRow(label: String, selected: Boolean, onClick: () -> Unit) {
 private fun themeLabel(mode: ThemeMode): String = when (mode) {
     ThemeMode.DARK -> stringResource(R.string.theme_dark)
     ThemeMode.LIGHT -> stringResource(R.string.theme_light)
+    ThemeMode.NEON -> stringResource(R.string.theme_neon)
     ThemeMode.SYSTEM -> stringResource(R.string.theme_system)
 }

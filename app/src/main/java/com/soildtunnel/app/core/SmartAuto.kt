@@ -290,6 +290,12 @@ object SmartAuto {
         // LIGHT noize on Iranian cellular where fingerprinting is routine.
         var mergedNoize = if (user.noize.ordinal >= noize.ordinal) user.noize else noize
         if (mergedNoize == Noize.OFF && fp.iranCellular) mergedNoize = Noize.LIGHT
+        val hunt = proto == Protocol.SOILD && (user.soildHunt || forceHunt)
+        val carriedOuter = proto == Protocol.MASQUE || hunt ||
+            (proto == Protocol.GOOL && user.goolMode == GoolMode.ON_MASQUE)
+        if (carriedOuter && mergedNoize.ordinal > Noize.FIREWALL.ordinal) {
+            mergedNoize = Noize.FIREWALL
+        }
         var p = user.copy(
             protocol = proto,
             noize = mergedNoize,

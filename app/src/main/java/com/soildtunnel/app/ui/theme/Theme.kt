@@ -12,25 +12,32 @@ import androidx.core.view.WindowCompat
 import androidx.compose.ui.platform.LocalView
 
 // Always-dark pinned scheme. Dynamic color is disabled.
+private val AuroraVoidDark = Color(0xFF04050B)
+private val AuroraPanelDark = Color(0xE60B0D18)
+private val AuroraCardSubDark = Color(0xDE141726)
+private val AuroraInk = Color(0xFFF4F6FB)
+private val AuroraInkMuted = Color(0xFF9AA3BD)
+private val AuroraEdge = Color(0x267C6BFF)
+
 private val ControlRoomScheme = darkColorScheme(
-    primary = NeonCyan,
+    primary = AuraPrimary,
     onPrimary = Color(0xFF00232B),
-    secondary = NeonMint,
+    secondary = AuraOk,
     onSecondary = Color(0xFF00291E),
-    tertiary = NeonViolet,
+    tertiary = AuraTertiary,
     onTertiary = Color(0xFF1D1240),
-    background = Void,
-    onBackground = OnDark,
-    surface = PanelBottom,
-    onSurface = OnDark,
-    surfaceVariant = CardSubSurface,
-    onSurfaceVariant = OnDarkMuted,
+    background = AuroraVoidDark,
+    onBackground = AuroraInk,
+    surface = AuroraPanelDark,
+    onSurface = AuroraInk,
+    surfaceVariant = AuroraCardSubDark,
+    onSurfaceVariant = AuroraInkMuted,
     surfaceContainer = Color(0xFF0B0E14),
     surfaceContainerHigh = Color(0xFF11151C),
     surfaceContainerHighest = Color(0xFF161B24),
-    error = NeonRed,
+    error = AuraError,
     onError = Color(0xFF2B040C),
-    outline = EdgeNeon,
+    outline = AuroraEdge,
     outlineVariant = Color(0x1A35E0FF),
 )
 
@@ -58,18 +65,39 @@ private val DayScheme = lightColorScheme(
     outlineVariant = Color(0x5935B8D8),
 )
 
+private val NeonScheme = darkColorScheme(
+    primary = NeonPrimary,
+    onPrimary = Color(0xFF2B0011),
+    secondary = NeonOk,
+    onSecondary = Color(0xFF16250A),
+    tertiary = NeonTertiary,
+    onTertiary = Color(0xFF220633),
+    background = Color(0xFF050508),
+    onBackground = Color(0xFFF8F8FA),
+    surface = Color(0xFF0A0A0E),
+    onSurface = Color(0xFFF8F8FA),
+    surfaceVariant = Color(0xFF17171E),
+    onSurfaceVariant = Color(0xFFA7ACBF),
+    surfaceContainer = Color(0xFF0C0C10),
+    surfaceContainerHigh = Color(0xFF111118),
+    surfaceContainerHighest = Color(0xFF16161D),
+    error = NeonError,
+    onError = Color(0xFF2B070C),
+    outline = Color(0x66FF3D81),
+    outlineVariant = Color(0x26FF3D81),
+)
+
 @Composable
 fun SoildTunnelTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     content: @Composable () -> Unit,
 ) {
     val dark = when (themeMode) {
-        ThemeMode.DARK -> true
+        ThemeMode.DARK, ThemeMode.NEON -> true
         ThemeMode.LIGHT -> false
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
     }
-    // Must run before the colors below are read: every custom color in
-    // Color.kt resolves through this flag at composition time.
+    Palette.skin = if (themeMode == ThemeMode.NEON) Skin.NEON else Skin.AURORA
     Palette.light = !dark
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -81,7 +109,11 @@ fun SoildTunnelTheme(
     }
 
     MaterialTheme(
-        colorScheme = if (dark) ControlRoomScheme else DayScheme,
+        colorScheme = when {
+            themeMode == ThemeMode.NEON -> NeonScheme
+            dark -> ControlRoomScheme
+            else -> DayScheme
+        },
         typography = SoildTunnelTypography,
         content = content,
     )

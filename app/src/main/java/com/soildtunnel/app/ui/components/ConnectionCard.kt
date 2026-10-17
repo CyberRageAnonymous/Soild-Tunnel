@@ -79,9 +79,12 @@ import com.soildtunnel.app.ui.theme.CardSubSurface
 import com.soildtunnel.app.ui.theme.CardTextDim
 import com.soildtunnel.app.ui.theme.CardTextMuted
 import com.soildtunnel.app.ui.theme.CardTextPrimary
+import com.soildtunnel.app.ui.theme.EdgeNeon
+import com.soildtunnel.app.ui.theme.InnerCardRadius
 import com.soildtunnel.app.ui.theme.NeonCyan
 import com.soildtunnel.app.ui.theme.NeonMint
 import com.soildtunnel.app.ui.theme.NeonRed
+import com.soildtunnel.app.ui.theme.PanelRadius
 import com.soildtunnel.app.ui.theme.latencyColor
 
 @Composable
@@ -681,11 +684,11 @@ private fun formatBytes(v: Long): String {
 
 private fun formatRate(v: Long): String = formatBytes(v) + "/s"
 
-private val CARD_SHAPE = RoundedCornerShape(24.dp)
-private val SUB_SHAPE = RoundedCornerShape(16.dp)
-private val SUB_BORDER = Color(0x227C6BFF)
+private val CARD_SHAPE get() = RoundedCornerShape(PanelRadius)
+private val SUB_SHAPE get() = RoundedCornerShape(InnerCardRadius)
+private val SUB_BORDER get() = EdgeNeon
 private val DIVIDER = Color(0x1FFFFFFF)
-private val IDLE_ACCENT = NeonCyan
-private val ERROR_ACCENT = NeonRed
-private val NEUTRAL_ACCENT = NeonCyan
+private val IDLE_ACCENT get() = NeonCyan
+private val ERROR_ACCENT get() = NeonRed
+private val NEUTRAL_ACCENT get() = NeonCyan
 private const val LATENCY_REFRESH_MS = 4_000L
