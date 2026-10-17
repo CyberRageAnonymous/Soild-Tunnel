@@ -101,8 +101,8 @@ fun AmbientBackground(
                 )
                 drawRect(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
-                        radius = size.maxDimension * 0.80f,
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.40f)),
+                        radius = size.maxDimension * 1.30f,
                     ),
                 )
             },
