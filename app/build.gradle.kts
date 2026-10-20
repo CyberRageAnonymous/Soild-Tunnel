@@ -68,8 +68,8 @@ android {
         applicationId = "com.soildtunnel.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 15
-        versionName = "1.2.1"
+        versionCode = 16
+        versionName = "1.3.0"
 
         ndk {
             // We ship arm64 (primary) and arm builds.
