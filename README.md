@@ -124,8 +124,8 @@ IPv6 can be switched off with the IPv6 Leak Protection toggle.
 ### Appearance
 
 Dark glass by default, with a Light theme, System-follow option and the
-separate **Soild Neon** skin (magenta/lime on near-black, scanline backdrop,
-flat panels with neon casing) in the Theme card in settings.
+separate **Soild Neon** skin (electric blue and red on near-black, grid
+backdrop, flat panels with neon casing) in the Theme card in settings.
 
 ---
 

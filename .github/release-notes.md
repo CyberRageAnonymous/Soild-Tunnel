@@ -1,17 +1,31 @@
-# SoildTunnel v1.1.0
+# SoildTunnel v1.1.1
 
-If Gool ever gave you an Iranian IP or kept dropping on rough networks, this release is for you.
+The app you know is now wearing a new face, and the way it finds a working
+connection got a lot sharper.
 
-**Gool you can finally rely on:**
-- The app now checks where every gateway really exits and skips the Iranian ones, walking down the list until it lands you a foreign exit.
-- Reconnects are much faster — your last working setup is reused first instead of rescanning everything from zero.
-- Dropped tunnels recover calmly now: the watchdog waits patiently while the engine finds its way back instead of pulling the plug mid-recovery.
-- Short network stalls no longer kill the tunnel at the first hiccup.
+**A whole new look:**
+- Every screen was redrawn around a dark aurora look: the connect button is a
+  living orb with a light that sweeps around it, the background breathes behind
+  your cards, and the panels are soft glass instead of flat boxes.
+- The first launch now has a proper animated welcome: a spinning core, a
+  strategy ladder that comes alive, and a privacy eye that closes itself.
+- There is a second skin called **Soild Neon** if you like it loud — electric
+  blue and red on near-black, with a grid backdrop and flat panels that light
+  up at the edges.
 
-**Small touches you'll notice:**
-- WARP servers shuffle when you hit refresh, so the list always feels fresh.
-- Find our website and X account in About — and you'll get a one-time hello inviting you to our Telegram channel.
+**Smart Auto that learns your network:**
+- When a strategy works, the app remembers it for that network and tries it
+  first next time, so reconnects are quick instead of a fresh search every
+  time.
+- If your provider throttles IPv4, the tunnel now also reaches for IPv6 and
+  keeps whichever path answers.
+- The ladder itself is deeper for rough networks, and the heavy obfuscation
+  profiles no longer sit on the TLS handshake that carries the tunnel.
 
-Thanks for sticking with us, and enjoy the cleaner exits.
+**Also in this release:**
+- The engine exposes its core contract, so an alternative core can be dropped
+  in later without touching the app.
+- Reading the logs is easier now, and the speed test and server list got the
+  same treatment as the rest of the app.
 
-Version: SoildTunnel 1.1.0 (version code 11).
+Version: SoildTunnel 1.1.1 (version code 12).
