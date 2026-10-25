@@ -84,6 +84,11 @@ class ProfileStore(private val context: Context) {
         val torTransport = stringPreferencesKey("torTransport")
         val torBridges = stringPreferencesKey("torBridges")
         val torExitCountry = stringPreferencesKey("torExitCountry")
+        // TUIC (server credentials go to SecretStore)
+        val tuicServer = stringPreferencesKey("tuicServer")
+        val tuicSni = stringPreferencesKey("tuicSni")
+        val tuicCc = stringPreferencesKey("tuicCc")
+        val tuicInsecure = booleanPreferencesKey("tuicInsecure")
     }
 
     /**
@@ -168,6 +173,12 @@ class ProfileStore(private val context: Context) {
                 ?.let { runCatching { TorTransport.valueOf(it) }.getOrNull() } ?: TorTransport.OBFS4,
             torBridges = prefs[Keys.torBridges] ?: "",
             torExitCountry = prefs[Keys.torExitCountry] ?: "",
+            tuicServer = prefs[Keys.tuicServer] ?: "",
+            tuicUuid = secrets.read(SecretStore.TUIC_UUID),
+            tuicPassword = secrets.read(SecretStore.TUIC_PASSWORD),
+            tuicSni = prefs[Keys.tuicSni] ?: "",
+            tuicCc = prefs[Keys.tuicCc] ?: "",
+            tuicInsecure = prefs[Keys.tuicInsecure] ?: false,
         )
     }
 
@@ -227,10 +238,16 @@ class ProfileStore(private val context: Context) {
             prefs[Keys.torTransport] = profile.torTransport.name
             prefs[Keys.torBridges] = profile.torBridges
             prefs[Keys.torExitCountry] = profile.torExitCountry
+            prefs[Keys.tuicServer] = profile.tuicServer
+            prefs[Keys.tuicSni] = profile.tuicSni
+            prefs[Keys.tuicCc] = profile.tuicCc
+            prefs[Keys.tuicInsecure] = profile.tuicInsecure
         }
         // Secrets go to the Keystore-sealed store, never to the prefs file.
         secrets.write(SecretStore.ACCESS_SECRET, profile.accessClientSecret)
         secrets.write(SecretStore.ACCESS_TOKEN, profile.accessToken)
+        secrets.write(SecretStore.TUIC_UUID, profile.tuicUuid)
+        secrets.write(SecretStore.TUIC_PASSWORD, profile.tuicPassword)
     }
 
     /** Wipes the sealed Zero Trust secrets (used by "Reset settings"). */

@@ -7,7 +7,7 @@ use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::sync::mpsc;
 
 use crate::error::{SoildTunnelError, Result};
-use crate::netstack::{StackHandle, TcpSender, UdpSender};
+use crate::netstack::{StackHandle, UdpSender};
 use crate::routing::{Action, Host, RuleSet};
 
 /// Kernel socket buffers for hot-path TCP relays. The long-haul tunnel leg has
@@ -61,8 +61,8 @@ const REP_GENERAL: u8 = 0x01;
 const REP_NOT_ALLOWED: u8 = 0x02;
 const REP_NOT_SUPPORTED: u8 = 0x07;
 
-#[derive(Debug)]
-enum Target {
+#[derive(Debug, Clone)]
+pub(crate) enum Target {
     Ip(IpAddr),
     Domain(String),
 }
@@ -72,6 +72,159 @@ impl std::fmt::Display for Target {
         match self {
             Target::Ip(ip) => write!(f, "{ip}"),
             Target::Domain(name) => write!(f, "{name}"),
+        }
+    }
+}
+
+/// Where proxied traffic goes. `Stack` is the existing in-tunnel TCP/IP stack;
+/// `Out` hands the connection to an outbound protocol that speaks for itself
+/// and can keep a name as a name instead of resolving it here.
+#[derive(Clone)]
+pub(crate) enum Backend {
+    Stack(StackHandle),
+    Out(std::sync::Arc<crate::outbound::Outbound>),
+}
+
+pub(crate) enum TcpUp {
+    Stack(crate::netstack::TcpSender),
+    Out(crate::outbound::PipeSender),
+}
+
+impl TcpUp {
+    pub async fn send(&self, data: Vec<u8>) -> Result<()> {
+        match self {
+            TcpUp::Stack(sender) => sender.send(data).await,
+            TcpUp::Out(sender) => sender.send(data).await,
+        }
+    }
+
+    pub async fn close(&self) {
+        match self {
+            TcpUp::Stack(sender) => sender.close().await,
+            TcpUp::Out(sender) => sender.close().await,
+        }
+    }
+}
+
+pub(crate) enum UdpUp {
+    Stack(crate::netstack::UdpSender),
+    Out(crate::outbound::UdpSender),
+}
+
+impl UdpUp {
+    pub async fn send_to(&self, dst: SocketAddr, data: Vec<u8>) -> Result<()> {
+        match self {
+            UdpUp::Stack(sender) => sender.send_to(dst, data).await,
+            UdpUp::Out(sender) => {
+                sender
+                    .send_to(crate::outbound::UdpTarget::Ip(dst), data)
+                    .await
+            }
+        }
+    }
+
+    /// Send without resolving a name locally. `Stack` has to look it up itself,
+    /// `Out` forwards the name so the exit does the resolving.
+    pub async fn send_target(&self, target: &Target, port: u16, data: Vec<u8>) -> Result<()> {
+        match self {
+            UdpUp::Stack(sender) => match target {
+                Target::Ip(ip) => sender.send_to(SocketAddr::new(*ip, port), data).await,
+                Target::Domain(name) => match tokio::net::lookup_host((name.as_str(), port)).await {
+                    Ok(mut found) => match found.next() {
+                        Some(addr) => sender.send_to(addr, data).await,
+                        None => Err(SoildTunnelError::Other(format!(
+                            "no address for {name}"
+                        ))),
+                    },
+                    Err(error) => Err(SoildTunnelError::Other(format!(
+                        "cannot resolve {name}: {error}"
+                    ))),
+                },
+            },
+            UdpUp::Out(sender) => {
+                let target = match target {
+                    Target::Ip(ip) => crate::outbound::UdpTarget::Ip(SocketAddr::new(*ip, port)),
+                    Target::Domain(name) => {
+                        crate::outbound::UdpTarget::Name(name.clone(), port)
+                    }
+                };
+                sender.send_to(target, data).await
+            }
+        }
+    }
+
+    pub async fn close(&self) {
+        match self {
+            UdpUp::Stack(sender) => sender.close().await,
+            UdpUp::Out(sender) => sender.close().await,
+        }
+    }
+}
+
+impl Backend {
+    async fn open_tcp(
+        &self,
+        target: &Target,
+        port: u16,
+    ) -> Result<(TcpUp, mpsc::Receiver<Vec<u8>>)> {
+        match self {
+            Backend::Stack(stack) => {
+                let ip = resolve(stack, target.clone()).await?;
+                let conn = stack.open_tcp(SocketAddr::new(ip, port)).await?;
+                let (sender, from_stack) = conn.into_split();
+                Ok((TcpUp::Stack(sender), from_stack))
+            }
+            Backend::Out(outbound) => {
+                let host = match target {
+                    Target::Domain(name) => name.clone(),
+                    Target::Ip(ip) => ip.to_string(),
+                };
+                let pipe = outbound.open_tcp(&host, port).await?;
+                let (sender, from_stack) = pipe.into_split();
+                Ok((TcpUp::Out(sender), from_stack))
+            }
+        }
+    }
+
+    async fn open_tcp_addr(
+        &self,
+        dst: SocketAddr,
+    ) -> Result<(TcpUp, mpsc::Receiver<Vec<u8>>)> {
+        match self {
+            Backend::Stack(stack) => {
+                let conn = stack.open_tcp(dst).await?;
+                let (sender, from_stack) = conn.into_split();
+                Ok((TcpUp::Stack(sender), from_stack))
+            }
+            Backend::Out(outbound) => {
+                let pipe = outbound.open_tcp(&dst.ip().to_string(), dst.port()).await?;
+                let (sender, from_stack) = pipe.into_split();
+                Ok((TcpUp::Out(sender), from_stack))
+            }
+        }
+    }
+
+    async fn open_udp(&self) -> Result<(UdpUp, mpsc::Receiver<(SocketAddr, Vec<u8>)>)> {
+        match self {
+            Backend::Stack(stack) => {
+                let conn = stack.open_udp().await?;
+                let (sender, from_stack) = conn.into_split();
+                Ok((UdpUp::Stack(sender), from_stack))
+            }
+            Backend::Out(outbound) => {
+                let pipe = outbound.open_udp().await?;
+                let (sender, from_stack) = pipe.into_split();
+                Ok((UdpUp::Out(sender), from_stack))
+            }
+        }
+    }
+
+    async fn dns(&self, name: &str) -> Result<IpAddr> {
+        match self {
+            Backend::Stack(stack) => dns_resolve(stack, name).await,
+            // The outbound path carries one UDP session for the client, so a
+            // second one for a lookup would push it aside. TCP keeps them apart.
+            Backend::Out(_) => dns_exchange_tcp(self, name).await,
         }
     }
 }
@@ -160,14 +313,26 @@ pub async fn bind_listener(listen: SocketAddr) -> Result<TcpListener> {
 }
 
 pub async fn serve(listen: SocketAddr, stack: StackHandle) -> Result<()> {
+    serve_backend(listen, Backend::Stack(stack)).await
+}
+
+pub(crate) async fn serve_backend(listen: SocketAddr, backend: Backend) -> Result<()> {
     let listener = bind_listener(listen).await?;
-    serve_on(listener, listen, stack).await
+    serve_on_backend(listener, listen, backend).await
 }
 
 pub async fn serve_on(
     listener: TcpListener,
     listen: SocketAddr,
     stack: StackHandle,
+) -> Result<()> {
+    serve_on_backend(listener, listen, Backend::Stack(stack)).await
+}
+
+async fn serve_on_backend(
+    listener: TcpListener,
+    listen: SocketAddr,
+    backend: Backend,
 ) -> Result<()> {
     log::info!("socks5 listening on {listen}");
     let bind_ip = listen.ip();
@@ -190,10 +355,10 @@ pub async fn serve_on(
                         return Err(error.into());
                     }
                 };
-                let stack = stack.clone();
+                let backend = backend.clone();
                 tune_tcp(&sock);
                 clients.spawn(async move {
-                    if let Err(e) = handle_client(sock, stack, bind_ip).await {
+                    if let Err(e) = handle_client(sock, backend, bind_ip).await {
                         log::debug!("socks client {peer} ended: {e}");
                     }
                 });
@@ -228,7 +393,7 @@ pub fn accept_backoff(error: &std::io::Error) -> Option<std::time::Duration> {
     }
 }
 
-async fn handle_client(mut sock: TcpStream, stack: StackHandle, bind_ip: IpAddr) -> Result<()> {
+async fn handle_client(mut sock: TcpStream, backend: Backend, bind_ip: IpAddr) -> Result<()> {
     handshake(&mut sock).await?;
 
     let mut head = [0u8; 4];
@@ -242,9 +407,9 @@ async fn handle_client(mut sock: TcpStream, stack: StackHandle, bind_ip: IpAddr)
     let (target, port) = read_target(&mut sock, atyp).await?;
 
     match cmd {
-        CMD_CONNECT => handle_connect(sock, stack, target, port).await,
+        CMD_CONNECT => handle_connect(sock, backend, target, port).await,
         CMD_UDP_ASSOCIATE => {
-            handle_udp_associate(sock, stack, bind_ip, target, port).await
+            handle_udp_associate(sock, backend, bind_ip, target, port).await
         }
         _ => {
             reply(&mut sock, REP_NOT_SUPPORTED).await?;
@@ -350,7 +515,7 @@ pub(crate) async fn dns_resolve(stack: &StackHandle, name: &str) -> Result<IpAdd
         }
     }
     sender.close().await;
-    dns_exchange_tcp(stack, name).await
+    dns_exchange_tcp(&Backend::Stack(stack.clone()), name).await
 }
 
 pub(crate) fn resolver_addresses() -> Vec<SocketAddr> {
@@ -420,13 +585,12 @@ async fn dns_exchange(
     Err(SoildTunnelError::Other(format!("dns timeout for {name}")))
 }
 
-async fn dns_exchange_tcp(stack: &StackHandle, name: &str) -> Result<IpAddr> {
+async fn dns_exchange_tcp(backend: &Backend, name: &str) -> Result<IpAddr> {
     let mut last = SoildTunnelError::Other(format!("dns timeout for {name}"));
     for server in resolver_addresses() {
         let attempt = async {
             let (query, id) = build_dns_query(name, QTYPE_A);
-            let conn = stack.open_tcp(server).await?;
-            let (sender, mut from_stack) = conn.into_split();
+            let (sender, mut from_stack) = backend.open_tcp_addr(server).await?;
             let mut framed = (query.len() as u16).to_be_bytes().to_vec();
             framed.extend_from_slice(&query);
             sender.send(framed).await?;
@@ -635,7 +799,7 @@ async fn read_sniff_head(sock: &mut TcpStream) -> Option<Vec<u8>> {
 
 async fn handle_connect(
     mut sock: TcpStream,
-    stack: StackHandle,
+    backend: Backend,
     target: Target,
     port: u16,
 ) -> Result<()> {
@@ -685,23 +849,12 @@ async fn handle_connect(
                 Target::Domain(name) => name.clone(),
                 Target::Ip(ip) => ip.to_string(),
             };
-            match open_through_gateway(&stack, proxy, &authority, port).await {
+            match open_through_gateway(&backend, proxy, &authority, port).await {
                 Ok(conn) => conn,
                 Err(e) => {
                     retire_gateway(&e.to_string());
-                    let ip = match resolve(&stack, target).await {
-                        Ok(ip) => ip,
-                        Err(e) => {
-                            let _ = reply(&mut sock, REP_GENERAL).await;
-                            return Err(e);
-                        }
-                    };
-                    let dst = SocketAddr::new(ip, port);
-                    match stack.open_tcp(dst).await {
-                        Ok(c) => {
-                            let (sender, from_stack) = c.into_split();
-                            (sender, from_stack, Vec::new())
-                        }
+                    match backend.open_tcp(&target, port).await {
+                        Ok(c) => (c.0, c.1, Vec::new()),
                         Err(e) => {
                             let _ = reply(&mut sock, REP_GENERAL).await;
                             return Err(e);
@@ -710,27 +863,13 @@ async fn handle_connect(
                 }
             }
         }
-        None => {
-            let ip = match resolve(&stack, target).await {
-                Ok(ip) => ip,
-                Err(e) => {
-                    let _ = reply(&mut sock, REP_GENERAL).await;
-                    return Err(e);
-                }
-            };
-
-            let dst = SocketAddr::new(ip, port);
-            match stack.open_tcp(dst).await {
-                Ok(c) => {
-                    let (sender, from_stack) = c.into_split();
-                    (sender, from_stack, Vec::new())
-                }
-                Err(e) => {
-                    let _ = reply(&mut sock, REP_GENERAL).await;
-                    return Err(e);
-                }
+        None => match backend.open_tcp(&target, port).await {
+            Ok(c) => (c.0, c.1, Vec::new()),
+            Err(e) => {
+                let _ = reply(&mut sock, REP_GENERAL).await;
+                return Err(e);
             }
-        }
+        },
     };
 
     if !replied {
@@ -867,7 +1006,7 @@ async fn handle_direct(
 const GATEWAY_HEAD_LIMIT: usize = 8192;
 const GATEWAY_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
-type GatewayChannel = (TcpSender, mpsc::Receiver<Vec<u8>>, Vec<u8>);
+type GatewayChannel = (TcpUp, mpsc::Receiver<Vec<u8>>, Vec<u8>);
 
 pub(crate) fn find_head_end(buffer: &[u8]) -> Option<usize> {
     buffer
@@ -877,15 +1016,15 @@ pub(crate) fn find_head_end(buffer: &[u8]) -> Option<usize> {
 }
 
 async fn open_through_gateway(
-    stack: &StackHandle,
+    backend: &Backend,
     proxy: SocketAddr,
     authority: &str,
     port: u16,
 ) -> Result<GatewayChannel> {
-    let conn = tokio::time::timeout(GATEWAY_PROBE_TIMEOUT, stack.open_tcp(proxy))
-        .await
-        .map_err(|_| SoildTunnelError::Other(format!("gateway {proxy} did not accept a connection")))??;
-    let (sender, mut from_stack) = conn.into_split();
+    let (sender, mut from_stack) =
+        tokio::time::timeout(GATEWAY_PROBE_TIMEOUT, backend.open_tcp_addr(proxy))
+            .await
+            .map_err(|_| SoildTunnelError::Other(format!("gateway {proxy} did not accept a connection")))??;
 
     sender.send(build_proxy_connect(authority, port)).await?;
 
@@ -931,7 +1070,7 @@ async fn open_through_gateway(
 
 async fn handle_udp_associate(
     mut sock: TcpStream,
-    stack: StackHandle,
+    backend: Backend,
     bind_ip: IpAddr,
     requested: Target,
     _requested_port: u16,
@@ -943,8 +1082,7 @@ async fn handle_udp_associate(
     let relay_addr = relay.local_addr()?;
     reply_bound(&mut sock, relay_addr).await?;
 
-    let udp = stack.open_udp().await?;
-    let (sender, mut from_stack) = udp.into_split();
+    let (sender, mut from_stack) = backend.open_udp().await?;
 
     let direct_relay = UdpSocket::bind("0.0.0.0:0").await?;
 
@@ -1002,16 +1140,7 @@ async fn handle_udp_associate(
                         Action::Proxy => {}
                     }
 
-                    let dst = match dst {
-                        Target::Ip(ip) => SocketAddr::new(ip, dst_port),
-                        Target::Domain(name) => {
-                            match dns_resolve(&stack, &name).await {
-                                Ok(ip) => SocketAddr::new(ip, dst_port),
-                                Err(_) => continue,
-                            }
-                        }
-                    };
-                    let _ = sender.send_to(dst, payload.1).await;
+                    let _ = sender.send_target(&dst, dst_port, payload.1).await;
                 }
             }
 
@@ -1401,6 +1530,10 @@ mod tests {
 const HTTP_HEAD_LIMIT: usize = 16 * 1024;
 
 pub async fn serve_http(listen: SocketAddr, stack: StackHandle) -> Result<()> {
+    serve_http_backend(listen, Backend::Stack(stack)).await
+}
+
+pub(crate) async fn serve_http_backend(listen: SocketAddr, backend: Backend) -> Result<()> {
     let listener = TcpListener::bind(listen).await?;
     log::info!("http proxy listening on {listen}");
 
@@ -1420,9 +1553,9 @@ pub async fn serve_http(listen: SocketAddr, stack: StackHandle) -> Result<()> {
             }
         };
 
-        let stack = stack.clone();
+        let backend = backend.clone();
         tokio::spawn(async move {
-            if let Err(e) = handle_http_client(sock, stack).await {
+            if let Err(e) = handle_http_client(sock, backend).await {
                 log::debug!("http proxy client {peer} ended: {e}");
             }
         });
@@ -1522,7 +1655,7 @@ async fn read_head(sock: &mut TcpStream) -> Result<Vec<u8>> {
 }
 
 async fn open_tunneled(
-    stack: &StackHandle,
+    backend: &Backend,
     target: Target,
     port: u16,
 ) -> Result<GatewayChannel> {
@@ -1533,19 +1666,17 @@ async fn open_tunneled(
             Target::Domain(name) => name.clone(),
             Target::Ip(ip) => ip.to_string(),
         };
-        match open_through_gateway(stack, proxy, &authority, port).await {
+        match open_through_gateway(backend, proxy, &authority, port).await {
             Ok(conn) => return Ok(conn),
             Err(e) => retire_gateway(&e.to_string()),
         }
     }
 
-    let ip = resolve(stack, target).await?;
-    let conn = stack.open_tcp(SocketAddr::new(ip, port)).await?;
-    let (sender, from_stack) = conn.into_split();
+    let (sender, from_stack) = backend.open_tcp(&target, port).await?;
     Ok((sender, from_stack, Vec::new()))
 }
 
-async fn handle_http_client(mut sock: TcpStream, stack: StackHandle) -> Result<()> {
+async fn handle_http_client(mut sock: TcpStream, backend: Backend) -> Result<()> {
     let head = read_head(&mut sock).await?;
     let text = String::from_utf8_lossy(&head).to_string();
     let first_line = text.lines().next().unwrap_or_default();
@@ -1579,7 +1710,7 @@ async fn handle_http_client(mut sock: TcpStream, stack: StackHandle) -> Result<(
             log::debug!("[route] direct http {}:{}", request.authority, request.port);
             return relay_http_direct(sock, &request, &head).await;
         }
-        Action::Proxy => match open_tunneled(&stack, target, request.port).await {
+        Action::Proxy => match open_tunneled(&backend, target, request.port).await {
             Ok(channel) => channel,
             Err(error) => {
                 let _ = sock

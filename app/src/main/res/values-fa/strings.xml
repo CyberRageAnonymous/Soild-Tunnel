@@ -186,6 +186,7 @@
     <string name="state_analyzing">تحلیل شبکه‌ات (حالت هوشمند)…</string>
     <string name="err_auto_failed">حالت هوشمند همه استراتژی‌ها را امتحان کرد ولی هیچ‌کدام روی این شبکه وصل نشد. یک پروتکل را دستی انتخاب کن.</string>
     <string name="err_protocol_failed">این پروتکل حتی با مخفی‌سازی هم روی این شبکه وصل نشد. حالت هوشمند یا پروتکل دیگری را امتحان کن.</string>
+    <string name="err_tuic_incomplete">برای اتصال TUIC به آدرس سرور، UUID حساب و رمز عبور نیاز است.</string>
     <string name="err_selftest">تونل بالا آمد ولی تست سر‌تا‌سرش شکست خورد. دوباره تلاش کن.</string>
     <string name="section_reset">بازنشانی</string>
     <string name="reset_settings">بازگردانی همه تنظیمات به حالت پیش‌فرض</string>
@@ -372,6 +373,28 @@
     <string name="err_tor_socks">تور نتوانست به‌موقع آماده شود.</string>
     <string name="err_tor_died">تور ناگهان متوقف شد.</string>
     <string name="proxy_mode_tor_note">در حالت تور در دسترس نیست — تور همیشه کل گوشی را می‌گیرد.</string>
+
+    <!-- TUIC mode (سرور QUIC شخصی) -->
+    <string name="protocol_tuic">TUIC</string>
+    <string name="tuic_section">سرور TUIC</string>
+    <string name="tuic_server_label">سرور</string>
+    <string name="tuic_server_hint">example.com:443</string>
+    <string name="tuic_server_help">آدرس سرور TUIC v5 خودت. هیچ اسکنی انجام نمی‌شود — موتور مستقیم وصل می‌شود.</string>
+    <string name="tuic_uuid_label">UUID حساب</string>
+    <string name="tuic_uuid_hint">123e4567-e89b-12d3-a456-426614174000</string>
+    <string name="tuic_uuid_help">روی همین دستگاه رمزنگاری می‌شود و از طریق محیط به موتور داده می‌شود، نه به‌صورت آرگومان خط فرمان.</string>
+    <string name="tuic_password_label">رمز عبور</string>
+    <string name="tuic_password_hint">••••••••</string>
+    <string name="tuic_password_help">مثل UUID: در فروشگاه رمزنگاری‌شده می‌ماند و از محیط به موتور داده می‌شود.</string>
+    <string name="tuic_sni_label">نام سرور</string>
+    <string name="tuic_sni_hint">example.com</string>
+    <string name="tuic_sni_help">نامی که با گواهی سرور بررسی می‌شود. خالی بگذار تا از آدرس سرور برداشته شود.</string>
+    <string name="tuic_cc_label">کنترل ازدحام</string>
+    <string name="tuic_cc_hint">cubic / bbr</string>
+    <string name="tuic_cc_help">خالی بگذار تا خود موتور انتخاب کند. bbr معمولاً روی مسیرهای پرنویز بهتر است؛ cubic انتخاب مطمئن‌تری است.</string>
+    <string name="tuic_insecure_title">نادیده‌گرفتن بررسی گواهی</string>
+    <string name="tuic_insecure_desc">گواهی سرور را بدون تأیید قبول کن. فقط برای سرورهای self-signed — اتصال را شکننده‌تر می‌کند.</string>
+    <string name="tuic_note">TUIC روی QUIC کار می‌کند و به سروری نیاز دارد که خودت داشته باشی. هم TCP و هم UDP را حمل می‌کند، و مقصد UDP می‌تواند دامنه بماند تا خروجی خودش resolve کند و DNS تو لو نرود.</string>
 
     <!-- Theme -->
     <string name="theme_title">تم</string>

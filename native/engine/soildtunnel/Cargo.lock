@@ -13,45 +13,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "soildtunnel"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "base64 0.22.1",
- "blake2",
- "boring",
- "boringtun",
- "bytes",
- "chacha20poly1305",
- "chrono",
- "env_logger",
- "foreign-types-shared",
- "futures",
- "h2",
- "hex",
- "http",
- "ipnet",
- "libc",
- "log",
- "octets",
- "parking_lot",
- "quiche",
- "rand 0.8.6",
- "regex",
- "reqwest",
- "ring 0.17.14",
- "serde",
- "serde_json",
- "smoltcp",
- "socket2",
- "thiserror",
- "tokio",
- "tokio-boring",
- "toml",
- "x25519-dalek",
-]
-
-[[package]]
 name = "aho-corasick"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2022,6 +1983,45 @@ checksum = "52d1cfed4120b4d927bf7c0f86d2087a4a7d6027c906d9f9d525a80573b9be51"
 dependencies = [
  "libc",
  "windows-sys 0.60.2",
+]
+
+[[package]]
+name = "soildtunnel"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "blake2",
+ "boring",
+ "boringtun",
+ "bytes",
+ "chacha20poly1305",
+ "chrono",
+ "env_logger",
+ "foreign-types-shared",
+ "futures",
+ "h2",
+ "hex",
+ "http",
+ "ipnet",
+ "libc",
+ "log",
+ "octets",
+ "parking_lot",
+ "quiche",
+ "rand 0.8.6",
+ "regex",
+ "reqwest",
+ "ring 0.17.14",
+ "serde",
+ "serde_json",
+ "smoltcp",
+ "socket2",
+ "thiserror",
+ "tokio",
+ "tokio-boring",
+ "toml",
+ "x25519-dalek",
 ]
 
 [[package]]

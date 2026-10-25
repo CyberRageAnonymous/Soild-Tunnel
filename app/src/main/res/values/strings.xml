@@ -186,6 +186,7 @@
     <string name="state_analyzing">Analyzing your network (Smart mode)…</string>
     <string name="err_auto_failed">Smart mode tried every strategy, but none could connect on this network. Try picking a protocol manually.</string>
     <string name="err_protocol_failed">This protocol could not connect on this network, even with obfuscation. Try Smart mode or another protocol.</string>
+    <string name="err_tuic_incomplete">TUIC needs a server address, an account UUID and a password before it can connect.</string>
     <string name="err_selftest">Tunnel started, but the end-to-end self-test failed. Please try again.</string>
     <string name="section_reset">Reset</string>
     <string name="reset_settings">Reset all settings to defaults</string>
@@ -372,6 +373,28 @@
     <string name="err_tor_socks">Tor did not open its local port in time.</string>
     <string name="err_tor_died">Tor stopped unexpectedly.</string>
     <string name="proxy_mode_tor_note">Not available in Tor mode — Tor always drives the whole device.</string>
+
+    <!-- TUIC mode (bring-your-own QUIC server) -->
+    <string name="protocol_tuic">TUIC</string>
+    <string name="tuic_section">TUIC server</string>
+    <string name="tuic_server_label">Server</string>
+    <string name="tuic_server_hint">example.com:443</string>
+    <string name="tuic_server_help">Address of your own TUIC v5 server. Nothing is scanned — the engine connects straight to this host.</string>
+    <string name="tuic_uuid_label">Account UUID</string>
+    <string name="tuic_uuid_hint">123e4567-e89b-12d3-a456-426614174000</string>
+    <string name="tuic_uuid_help">Stored encrypted on this device and handed to the engine through its environment, never as a command-line argument.</string>
+    <string name="tuic_password_label">Password</string>
+    <string name="tuic_password_hint">••••••••</string>
+    <string name="tuic_password_help">Same as the UUID: kept in the encrypted store and passed to the engine via its environment.</string>
+    <string name="tuic_sni_label">Server name</string>
+    <string name="tuic_sni_hint">example.com</string>
+    <string name="tuic_sni_help">Name checked against the server certificate. Leave empty to use the host from the server address.</string>
+    <string name="tuic_cc_label">Congestion control</string>
+    <string name="tuic_cc_hint">cubic / bbr</string>
+    <string name="tuic_cc_help">Leave empty to let the engine choose. bbr usually wins on lossy long links; cubic is the safer default.</string>
+    <string name="tuic_insecure_title">Skip certificate check</string>
+    <string name="tuic_insecure_desc">Accept the server certificate without verifying it. Only for self-signed servers — it makes the connection easier to intercept.</string>
+    <string name="tuic_note">TUIC runs over QUIC, so it needs a server you control. It carries both TCP and UDP, and a UDP target can be left as a name so the exit resolves it and your own DNS stays out of it.</string>
 
     <!-- Theme -->
     <string name="theme_title">Theme</string>

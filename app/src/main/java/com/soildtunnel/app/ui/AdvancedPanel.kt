@@ -21,6 +21,7 @@ import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Send
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.HorizontalDivider
@@ -110,7 +111,18 @@ fun AdvancedPanel(
                 TorSection(profile = profile, onProfileChange = onProfileChange, enabled = enabled)
             }
         }
-        if (profile.protocol != Protocol.TOR) {
+        if (profile.protocol == Protocol.TUIC) {
+            PanelCard(
+                icon = Icons.Rounded.Speed,
+                title = stringResource(R.string.tuic_section),
+                subtitle = "",
+                expanded = entered == "tuic",
+                onToggle = { toggle("tuic") },
+            ) {
+                TuicSection(profile = profile, onProfileChange = onProfileChange, enabled = enabled)
+            }
+        }
+        if (profile.protocol != Protocol.TOR && profile.protocol != Protocol.TUIC) {
             PanelCard(
                 icon = Icons.Rounded.Bolt,
                 title = stringResource(R.string.section_transport),
@@ -120,6 +132,8 @@ fun AdvancedPanel(
             ) {
                 TransportSection(profile = profile, onProfileChange = onProfileChange, enabled = enabled)
             }
+        }
+        if (profile.protocol != Protocol.TOR) {
             PanelCard(
                 icon = Icons.Rounded.Wifi,
                 title = stringResource(R.string.section_network),
@@ -149,6 +163,8 @@ fun AdvancedPanel(
             ) {
                 UpstreamSection(profile = profile, onProfileChange = onProfileChange, enabled = enabled)
             }
+        }
+        if (profile.protocol != Protocol.TOR && profile.protocol != Protocol.TUIC) {
             PanelCard(
                 icon = Icons.Rounded.Check,
                 title = stringResource(R.string.section_zerotrust),
@@ -294,7 +310,7 @@ private fun CoreSection(
                 Spacer(Modifier.height(16.dp))
             }
 
-        if (profile.protocol != Protocol.TOR) {
+        if (profile.protocol != Protocol.TOR && profile.protocol != Protocol.TUIC) {
             SettingLabel(stringResource(R.string.scan_mode))
             DropdownSelector(
                 options = ScanMode.entries,
@@ -351,6 +367,86 @@ private fun TorSection(
 
         Spacer(Modifier.height(8.dp))
         HelperText(stringResource(R.string.tor_note))
+    }
+}
+
+@Composable
+private fun TuicSection(
+    profile: ConnectionProfile,
+    onProfileChange: (ConnectionProfile) -> Unit,
+    enabled: Boolean,
+) {
+    BoxColumn {
+        LtrOutlinedTextField(
+            value = profile.tuicServer,
+            onValueChange = { onProfileChange(profile.copy(tuicServer = it)) },
+            enabled = enabled,
+            singleLine = true,
+            label = { Text(stringResource(R.string.tuic_server_label)) },
+            placeholder = { Text(stringResource(R.string.tuic_server_hint)) },
+            supportingText = { Text(stringResource(R.string.tuic_server_help)) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(12.dp))
+
+        LtrOutlinedTextField(
+            value = profile.tuicUuid,
+            onValueChange = { onProfileChange(profile.copy(tuicUuid = it)) },
+            enabled = enabled,
+            singleLine = true,
+            label = { Text(stringResource(R.string.tuic_uuid_label)) },
+            placeholder = { Text(stringResource(R.string.tuic_uuid_hint)) },
+            supportingText = { Text(stringResource(R.string.tuic_uuid_help)) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(12.dp))
+
+        LtrOutlinedTextField(
+            value = profile.tuicPassword,
+            onValueChange = { onProfileChange(profile.copy(tuicPassword = it)) },
+            enabled = enabled,
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            label = { Text(stringResource(R.string.tuic_password_label)) },
+            placeholder = { Text(stringResource(R.string.tuic_password_hint)) },
+            supportingText = { Text(stringResource(R.string.tuic_password_help)) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(12.dp))
+
+        LtrOutlinedTextField(
+            value = profile.tuicSni,
+            onValueChange = { onProfileChange(profile.copy(tuicSni = it)) },
+            enabled = enabled,
+            singleLine = true,
+            label = { Text(stringResource(R.string.tuic_sni_label)) },
+            placeholder = { Text(stringResource(R.string.tuic_sni_hint)) },
+            supportingText = { Text(stringResource(R.string.tuic_sni_help)) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(12.dp))
+
+        LtrOutlinedTextField(
+            value = profile.tuicCc,
+            onValueChange = { onProfileChange(profile.copy(tuicCc = it)) },
+            enabled = enabled,
+            singleLine = true,
+            label = { Text(stringResource(R.string.tuic_cc_label)) },
+            placeholder = { Text(stringResource(R.string.tuic_cc_hint)) },
+            supportingText = { Text(stringResource(R.string.tuic_cc_help)) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(6.dp))
+
+        ToggleRow(
+            title = stringResource(R.string.tuic_insecure_title),
+            description = stringResource(R.string.tuic_insecure_desc),
+            checked = profile.tuicInsecure,
+            enabled = enabled,
+            onChange = { onProfileChange(profile.copy(tuicInsecure = it)) },
+        )
+        Spacer(Modifier.height(8.dp))
+        HelperText(stringResource(R.string.tuic_note))
     }
 }
 
@@ -1065,6 +1161,7 @@ private fun protocolLabel(protocol: Protocol): String = when (protocol) {
     Protocol.WIREGUARD -> stringResource(R.string.protocol_wireguard)
     Protocol.GOOL -> stringResource(R.string.protocol_gool)
     Protocol.TOR -> stringResource(R.string.protocol_tor)
+    Protocol.TUIC -> stringResource(R.string.protocol_tuic)
 }
 
 @Composable

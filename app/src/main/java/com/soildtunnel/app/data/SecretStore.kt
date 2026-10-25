@@ -98,6 +98,10 @@ class SecretStore(context: Context) {
     companion object {
         const val ACCESS_SECRET = "access_client_secret"
         const val ACCESS_TOKEN = "access_token"
+        /** TUIC account uuid — same reasoning as the Zero Trust token. */
+        const val TUIC_UUID = "tuic_uuid"
+        /** TUIC password. */
+        const val TUIC_PASSWORD = "tuic_password"
 
         private const val PROVIDER = "AndroidKeyStore"
         private const val KEY_ALIAS = "soildtunnel_secret_v1"

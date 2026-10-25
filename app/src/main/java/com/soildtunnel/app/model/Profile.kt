@@ -2,7 +2,7 @@ package com.soildtunnel.app.model
 
 
 /** Transport protocol, mapped 1:1 to the desktop app's CLI flags. */
-enum class Protocol { AUTO, MASQUE, SOILD, WIREGUARD, GOOL, TOR }
+enum class Protocol { AUTO, MASQUE, SOILD, WIREGUARD, GOOL, TOR, TUIC }
 
 /**
  * How gool runs (only used when [Protocol] is GOOL).
@@ -223,6 +223,25 @@ data class ConnectionProfile(
      */
     val torExitCountry: String = "",
 
+    // ---- TUIC (only consulted when [protocol] is TUIC) ----
+
+    /**
+     * `host:port` of the user's own TUIC v5 server. Unlike every other
+     * protocol this one has no scanner and no gateway hunt: the user brings
+     * the server, so the address travels as the non-secret `--tuic` argument.
+     */
+    val tuicServer: String = "",
+    /** TUIC account UUID. Env-only (see [toEnv]); argv is world-readable. */
+    val tuicUuid: String = "",
+    /** TUIC password. Env-only, and kept in the Keystore-sealed secret store. */
+    val tuicPassword: String = "",
+    /** Certificate name to present to the server. Blank = the host in [tuicServer]. */
+    val tuicSni: String = "",
+    /** Congestion control: cubic, reno, bbr, bbr2. Blank = the engine picks. */
+    val tuicCc: String = "",
+    /** Accept the server certificate without checking it (self-signed setups). */
+    val tuicInsecure: Boolean = false,
+
 
     /**
      * Chain the engine through a proxy that is ALREADY running on this phone
@@ -293,6 +312,32 @@ data class ConnectionProfile(
                 args += "--gool"
                 if (goolMode == GoolMode.CLASSIC) args += "--gool-classic"
             }
+            Protocol.TUIC -> {
+                args += "--tuic"
+                args += sanitizedTuicServer() ?: ""
+                sanitizedTuicSni()?.let { args += "--tuic-sni"; args += it }
+                sanitizedTuicCc()?.let { args += "--tuic-cc"; args += it }
+                if (tuicInsecure) args += "--tuic-insecure"
+            }
+        }
+
+        // TUIC dials a server the user names; there is nothing to scan, pin
+        // or obfuscate, so every endpoint-selection knob below stays silent
+        // instead of handing the engine flags it would only ignore.
+        if (protocol == Protocol.TUIC) {
+            sanitizedDns().takeIf { it.isNotEmpty() }?.let {
+                args += "--dns"
+                args += it.joinToString(",")
+            }
+            sanitizedRules(routeBlock).takeIf { it.isNotEmpty() }?.let {
+                args += "--route-block"
+                args += it.joinToString(",")
+            }
+            sanitizedRules(routeDirect).takeIf { it.isNotEmpty() }?.let {
+                args += "--route-direct"
+                args += it.joinToString(",")
+            }
+            return args
         }
 
         // A pinned peer makes scan mode irrelevant, so only emit it otherwise.
@@ -378,6 +423,19 @@ data class ConnectionProfile(
 
     /** Environment variables for the engine process. */
     fun toEnv(): Map<String, String> = buildMap {
+        // ---- TUIC credentials ----
+        //
+        // Same reason as the Zero Trust token below: argv is readable by any
+        // local app through /proc/<pid>/cmdline, the environment block is not.
+        // Everything non-secret about TUIC already travels as `--tuic*` flags;
+        // only the uuid and the password stay here.
+        if (protocol == Protocol.TUIC) {
+            tuicUuid.trim().takeIf { it.isNotEmpty() }
+                ?.let { put("SOILDTUNNEL_TUIC_UUID", it) }
+            tuicPassword.trim().takeIf { it.isNotEmpty() }
+                ?.let { put("SOILDTUNNEL_TUIC_PASSWORD", it) }
+        }
+
         // An HTTP CONNECT upstream cannot carry UDP, so MASQUE has to ride
         // HTTP/2 over TCP whenever the user chained the engine behind an
         // http:// proxy. Forcing it here turns "connects but nothing loads"
@@ -563,6 +621,9 @@ data class ConnectionProfile(
         // Tor has to build circuits first, which takes a while on a first
         // connect, not seconds like WARP.
         if (protocol == Protocol.TOR) return 300_000L
+        // TUIC dials one named server directly — no scan, no hunt — so the
+        // budget is just the handshake plus a couple of retries.
+        if (protocol == Protocol.TUIC) return 30_000L
         if (hasManualPeer) return 45_000L
         return when (scanMode) {
             ScanMode.TURBO -> 60_000L
@@ -579,6 +640,32 @@ data class ConnectionProfile(
 
     private fun sanitizedTlsGroups(): String? =
         tlsGroups.trim().takeIf { it.matches(Regex("^[A-Za-z0-9:_-]{1,64}$")) }
+
+    /**
+     * Validated `host:port` for `--tuic`. Rejects anything carrying a scheme,
+     * whitespace or a slash so a pasted URL can never split into a second
+     * engine token; the host itself is checked loosely because it may be a
+     * name, an IPv4 address or a bracketed IPv6 literal.
+     */
+    fun sanitizedTuicServer(): String? {
+        val v = tuicServer.trim()
+        if (v.length !in 3..260 || !TUIC_SERVER.matches(v)) return null
+        val port = v.substringAfterLast(':').toIntOrNull() ?: return null
+        return if (port in 1..65535) v else null
+    }
+
+    /** host[:port]-ish SNI; no scheme, no path, no whitespace. */
+    fun sanitizedTuicSni(): String? = tuicSni.trim()
+        .takeIf { it.isNotEmpty() && it.length <= 253 && !it.contains(' ') && !it.contains('/') }
+
+    /** One of the congestion-control names the engine knows about. */
+    fun sanitizedTuicCc(): String? = tuicCc.trim().lowercase()
+        .takeIf { it in TUIC_CC_NAMES }
+
+    /** True when TUIC is chosen but its server address is missing or malformed. */
+    fun tuicConfigMissing(): Boolean =
+        protocol == Protocol.TUIC && (sanitizedTuicServer() == null ||
+            tuicUuid.isBlank() || tuicPassword.isBlank())
 
     companion object {
         /**
@@ -611,5 +698,15 @@ data class ConnectionProfile(
 
         /** One routing-rule token: no comma, no whitespace, no shell metacharacters. */
         private val RULE_ENTRY = Regex("^[A-Za-z0-9_.:/*\\-\\[\\]^\$+?()|{}\\\\]{1,200}$")
+
+        /**
+         * A `host:port` TUIC endpoint. The host may be a name, a bare IPv4
+         * address or a bracketed IPv6 literal; anything else (a scheme, a
+         * path, whitespace) is rejected by the surrounding checks.
+         */
+        private val TUIC_SERVER = Regex("^(?:\\[[0-9A-Fa-f:.]{2,45}]|[^\\s:/\\[\\]]{1,253}):\\d{1,5}$")
+
+        /** Congestion-control names the quiche backend accepts. */
+        private val TUIC_CC_NAMES = setOf("cubic", "reno", "bbr", "bbr2")
     }
 }

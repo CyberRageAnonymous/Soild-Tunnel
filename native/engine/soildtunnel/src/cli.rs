@@ -27,6 +27,14 @@ Protocol:
   --soild-quic             soild carried over plain MASQUE/QUIC instead
   --soild-fast             soild single tunnel, plain MASQUE/H2, fastest
                            connect without exit hunting
+  --tuic <host:port>       use TUIC v5 over QUIC (bring your own server).
+                           The uuid and password are read from the environment,
+                           never from the command line:
+                             SOILDTUNNEL_TUIC_UUID
+                             SOILDTUNNEL_TUIC_PASSWORD
+   --tuic-sni <name>       override the SNI (default: the host in --tuic)
+   --tuic-cc <name>        congestion control (cubic, reno, bbr, bbr2)
+   --tuic-insecure         accept the server certificate without checking it
 
 Scan mode:
   --scan <mode>            turbo | balanced | thorough | stealth
@@ -169,6 +177,13 @@ pub fn parse_args(args: Vec<String>) -> crate::error::Result<()> {
                 set("SOILDTUNNEL_PROTOCOL", "gool");
                 set("SOILDTUNNEL_GOOL_INNER", next_value!());
             }
+            "--tuic" => {
+                set("SOILDTUNNEL_PROTOCOL", "tuic");
+                set("SOILDTUNNEL_TUIC_SERVER", next_value!());
+            }
+            "--tuic-sni" => set("SOILDTUNNEL_TUIC_SNI", next_value!()),
+            "--tuic-cc" => set("SOILDTUNNEL_TUIC_CC", next_value!()),
+            "--tuic-insecure" => set("SOILDTUNNEL_TUIC_INSECURE", "1"),
             "--protocol" => set("SOILDTUNNEL_PROTOCOL", next_value!()),
 
             "--scan" => set("SOILDTUNNEL_SCAN", next_value!()),

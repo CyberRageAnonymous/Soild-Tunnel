@@ -191,11 +191,35 @@ class SoildTunnelVpnService : VpnService() {
             return
         }
 
+        // TUIC connects to one server the user named; there is nothing to
+        // scan and no other protocol to fall back to, so a missing credential
+        // is reported here instead of surfacing later as a generic engine
+        // failure with no hint about which field was empty.
+        if (profile.tuicConfigMissing()) {
+            throw IllegalStateException(getString(R.string.err_tuic_incomplete))
+        }
+
         val resolved: ConnectionProfile =
             when {
                 profile.protocol == Protocol.AUTO -> connectSmartAuto(profile)
                 // An explicitly chosen protocol keeps that protocol; the
                 // engine still selects its own endpoint (see [directPlan]).
+                profile.protocol == Protocol.TUIC -> {
+                    SoildTunnelController.setState(ConnectionState.Launching)
+                    // One pass only: the hardened re-run below exists to fight
+                    // DPI on the WARP scan path, and TUIC's own QUIC handshake
+                    // carries none of the knobs that pass would flip.
+                    runLadder(
+                        listOf(
+                            AutoCandidate(
+                                profile,
+                                profile.connectTimeoutMs(),
+                                "${profile.protocol.name} · as configured",
+                            ),
+                        ),
+                        getString(R.string.err_protocol_failed),
+                    )
+                }
                 else -> {
                     SoildTunnelController.setState(ConnectionState.Launching)
                     runLadder(directPlan(profile), getString(R.string.err_protocol_failed))

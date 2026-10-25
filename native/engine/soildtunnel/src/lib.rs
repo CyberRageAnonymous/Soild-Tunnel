@@ -15,6 +15,7 @@ pub mod masque;
 pub mod masque_h2;
 pub mod netstack;
 pub mod noize;
+pub mod outbound;
 pub mod prober;
 pub mod routing;
 pub mod sniff;
@@ -124,6 +125,7 @@ pub async fn run_with(args: Vec<String>) -> Result<()> {
             let lastconn_path = lastconn_path(&config_path);
             run_masque(identity, ech, listen, lastconn_path, None).await
         }
+        Protocol::Tuic => run_tuic(listen).await,
         Protocol::WireGuard => {
             let config_path = warp_config_path(&base_config);
             let identity = load_or_provision_warp(&config_path).await?;
@@ -168,6 +170,104 @@ pub async fn run_with(args: Vec<String>) -> Result<()> {
             run_gool(primary, secondary, listen, lastconn_path).await
         }
     }
+}
+
+async fn run_tuic(listen: SocketAddr) -> Result<()> {
+    let server = std::env::var("SOILDTUNNEL_TUIC_SERVER")
+        .map_err(|_| SoildTunnelError::Other("TUIC needs a server address (--tuic host:port)".into()))?;
+
+    let uuid = std::env::var("SOILDTUNNEL_TUIC_UUID")
+        .map_err(|_| SoildTunnelError::Other("TUIC needs SOILDTUNNEL_TUIC_UUID".into()))?;
+
+    let password = std::env::var("SOILDTUNNEL_TUIC_PASSWORD")
+        .map_err(|_| SoildTunnelError::Other("TUIC needs SOILDTUNNEL_TUIC_PASSWORD".into()))?;
+
+    if uuid.trim().is_empty() || password.trim().is_empty() {
+        return Err(SoildTunnelError::Other(
+            "TUIC uuid and password must not be empty".into(),
+        ));
+    }
+
+    let settings = outbound::TuicSettings {
+        server: server.trim().to_string(),
+        uuid,
+        password,
+        sni: std::env::var("SOILDTUNNEL_TUIC_SNI").unwrap_or_default(),
+        insecure: matches!(
+            std::env::var("SOILDTUNNEL_TUIC_INSECURE").as_deref(),
+            Ok("1") | Ok("true") | Ok("yes") | Ok("on")
+        ),
+        cc: std::env::var("SOILDTUNNEL_TUIC_CC").unwrap_or_default(),
+    };
+
+    let delay = tuic_reconnect_delay();
+
+    loop {
+        log::info!("[+] opening a TUIC session to {}", settings.server);
+
+        let outbound = match outbound::Outbound::tuic(settings.clone()).await {
+            Ok(outbound) => std::sync::Arc::new(outbound),
+            Err(error) => {
+                log::warn!("[-] tuic session could not start: {error}; retrying shortly");
+                tokio::time::sleep(delay).await;
+                continue;
+            }
+        };
+
+        let mut tasks = tokio::task::JoinSet::new();
+
+        let socks_backend = socks::Backend::Out(outbound.clone());
+        tasks.spawn(async move {
+            log::info!("[+] socks5 server listening on {listen}");
+            socks::serve_backend(listen, socks_backend).await
+        });
+
+        if let Some(listen) = http_proxy_listen() {
+            let http_backend = socks::Backend::Out(outbound.clone());
+            tasks.spawn(async move {
+                log::info!("[+] http proxy listening on {listen}");
+                socks::serve_http_backend(listen, http_backend).await
+            });
+        }
+
+        log::info!("[+] tuic tunnel is up");
+
+        let outcome: Option<Result<()>> = loop {
+            tokio::select! {
+                joined = tasks.join_next() => {
+                    break Some(match joined {
+                        Some(Ok(Ok(()))) => Ok(()),
+                        Some(Ok(Err(error))) => Err(error),
+                        Some(Err(error)) => Err(SoildTunnelError::Other(format!("tuic task failed: {error}"))),
+                        None => Ok(()),
+                    });
+                }
+                _ = tokio::time::sleep(std::time::Duration::from_secs(2)) => {
+                    if consume_migrate_hint() {
+                        break Some(Err(SoildTunnelError::Migrate));
+                    }
+                }
+            }
+        };
+
+        tasks.abort_all();
+
+        match outcome {
+            Some(Ok(())) => log::warn!("[-] tuic tunnel closed; reconnecting"),
+            Some(Err(error)) => log::warn!("[-] tuic tunnel ended: {error}; reconnecting"),
+            None => log::warn!("[-] tuic tunnel stopped; reconnecting"),
+        }
+
+        tokio::time::sleep(delay).await;
+    }
+}
+
+fn tuic_reconnect_delay() -> std::time::Duration {
+    let secs = std::env::var("SOILDTUNNEL_TUIC_RECONNECT_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(2);
+    std::time::Duration::from_secs(secs)
 }
 
 async fn run_gool(
@@ -684,6 +784,8 @@ async fn select_peer(identity: &account::Identity, protocol: Protocol) -> Result
         Protocol::WireGuard | Protocol::WarpInWarp => std::env::var("SOILDTUNNEL_WG_PEER")
             .ok()
             .or_else(|| std::env::var("SOILDTUNNEL_PEER").ok()),
+        // TUIC dials a server the user names; there is nothing to hunt for.
+        Protocol::Tuic => std::env::var("SOILDTUNNEL_PEER").ok(),
     };
     
     if let Some(p) = force_peer {
@@ -724,6 +826,9 @@ async fn select_peer(identity: &account::Identity, protocol: Protocol) -> Result
             let peers = select_wg_peers(identity, &mode_str, ip, 1).await?;
             Ok(peers[0])
         }
+        Protocol::Tuic => Err(SoildTunnelError::Other(
+            "TUIC takes a server address, so there is no gateway to hunt".into(),
+        )),
     }
 }
 
@@ -2386,6 +2491,7 @@ enum Protocol {
     Masque,
     WireGuard,
     WarpInWarp,
+    Tuic,
 }
 
 impl Protocol {
@@ -2393,6 +2499,7 @@ impl Protocol {
         match s.trim().to_lowercase().as_str() {
             "wg" | "wireguard" => Protocol::WireGuard,
             "gool" | "wiw" | "warp-in-warp" | "warpinwarp" => Protocol::WarpInWarp,
+            "tuic" => Protocol::Tuic,
             _ => Protocol::Masque,
         }
     }
@@ -2402,6 +2509,7 @@ impl Protocol {
             Protocol::Masque => "MASQUE",
             Protocol::WireGuard => "WireGuard",
             Protocol::WarpInWarp => "WARP-in-WARP (gool)",
+            Protocol::Tuic => "TUIC",
         }
     }
 }

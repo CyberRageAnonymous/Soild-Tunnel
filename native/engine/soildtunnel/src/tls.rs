@@ -23,6 +23,17 @@ extern "C" {
         out_retry_configs: *mut *const u8,
         out_retry_configs_len: *mut usize,
     );
+
+    fn SSL_export_keying_material(
+        ssl: *mut c_void,
+        out: *mut u8,
+        out_len: usize,
+        label: *const std::os::raw::c_char,
+        label_len: usize,
+        context: *const u8,
+        context_len: usize,
+        use_context: c_int,
+    ) -> c_int;
 }
 
 const CHROME_GROUPS: &str = "P-256:X25519:P-384";
@@ -283,4 +294,38 @@ pub fn decode_ech_config_list(b64: &str) -> Result<Vec<u8>> {
     base64::engine::general_purpose::STANDARD
         .decode(b64.trim())
         .map_err(|e| SoildTunnelError::Ech(e.to_string()))
+}
+
+/// RFC 5705 exporter over the established TLS session. The label is carried as
+/// raw octets, so it is passed straight to the C entry point instead of going
+/// through `str`, which would reject the non-UTF8 bytes a binary label can hold.
+pub fn export_keying_material(
+    conn: &mut quiche::Connection,
+    label: &[u8],
+    context: &[u8],
+) -> Result<[u8; 32]> {
+    let mut out = [0u8; 32];
+    let ssl: &mut boring::ssl::SslRef = conn.as_mut();
+    let ssl_ptr = ssl.as_ptr() as *mut c_void;
+
+    let rc = unsafe {
+        SSL_export_keying_material(
+            ssl_ptr,
+            out.as_mut_ptr(),
+            out.len(),
+            label.as_ptr() as *const std::os::raw::c_char,
+            label.len(),
+            context.as_ptr(),
+            context.len(),
+            if context.is_empty() { 0 } else { 1 },
+        )
+    };
+
+    if rc != 1 {
+        return Err(SoildTunnelError::Tls(format!(
+            "SSL_export_keying_material failed (rc={rc})"
+        )));
+    }
+
+    Ok(out)
 }
