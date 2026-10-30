@@ -678,18 +678,19 @@ class SoildTunnelVpnService : VpnService() {
                     } else {
                         if (PingMonitor.failStreak.value >= 5) {
                             PingMonitor.resetFailStreak()
-                            requestEngineMigrate()
                         }
-                        if (++probeFailures == 2) {
-                            requestEngineMigrate()
-                        }
-                        if (probeFailures >= WATCHDOG_FAIL_CYCLES) {
+                        if (++probeFailures >= WATCHDOG_FAIL_CYCLES) {
                             DiagnosticsLog.w(
                                 TAG,
                                 "Watchdog: tunnel dead across $WATCHDOG_FAIL_CYCLES consecutive checks -- restarting the engine.",
                             )
                             probeFailures = 0
                             engine?.stop()
+                        } else {
+                            // A failed check is already 27 s of dead tunnel across
+                            // three resolvers; hop gateways now, restart stays the
+                            // three-cycle backstop.
+                            requestEngineMigrate()
                         }
                     }
                 }
@@ -990,11 +991,10 @@ class SoildTunnelVpnService : VpnService() {
      *
      * A check now only counts as failed when THREE attempts in a row --
      * spread over three different anycast resolvers, 8 s timeout each, 1.5 s
-     * apart -- all fail, and the engine is restarted only after THREE
-     * consecutive failed checks (90 s+ of continuously proven dead tunnel).
-     * Brief self-healing stalls no longer trigger restarts, a genuinely dead
-     * session still recovers automatically, and MASQUE's in-engine reconnect
-     * loop gets room to finish before the app steps in.
+     * apart -- all fail. The FIRST failed check requests a gateway migrate
+     * (every engine protocol reads the hint, gool included), and only THREE
+     * consecutive failed checks restart the engine, so a brief self-healing
+     * stall costs neither a restart nor a full rescan.
      */
     private fun requestEngineMigrate() {
         val wrote = runCatching {
@@ -1195,13 +1195,13 @@ class SoildTunnelVpnService : VpnService() {
          */
         private const val SUPERVISOR_WAIT_MS = 60_000L
 
-        /** Watchdog probe cadence while the tunnel is up (). */
-        private const val WATCHDOG_INTERVAL_MS = 30_000L
+        /** Watchdog probe cadence while the tunnel is up (halved from 30 s so a dead tunnel is caught in ~45 s). */
+        private const val WATCHDOG_INTERVAL_MS = 15_000L
 
         /**
-         * Consecutive failed checks before the engine is restarted (
-         * hardening): three failed checks = 90 s+ of proven dead tunnel, so
-         * only a genuinely dead session is restarted.
+         * Consecutive failed checks before the engine is restarted (hardening):
+         * three failed checks = 80 s+ of proven dead tunnel, so only a
+         * genuinely dead session is restarted.
          */
         private const val WATCHDOG_FAIL_CYCLES = 3
 

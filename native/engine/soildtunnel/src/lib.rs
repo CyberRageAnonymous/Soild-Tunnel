@@ -368,10 +368,25 @@ async fn run_gool(
         lastconn::save(&lastconn_path, &format!("{peer},{inner_peer}"), &noize_profile);
 
         match run_warp_in_warp(primary.clone(), secondary.clone(), peer, inner_peer, listen).await {
-            Ok(()) => log::warn!("[-] gool tunnel closed; reconnecting"),
-            Err(e) => log::warn!("[-] gool tunnel ended: {e}; reconnecting"),
+            Ok(()) => {
+                log::warn!("[-] gool tunnel closed; reconnecting");
+                consecutive_fails += 1;
+            }
+            Err(SoildTunnelError::Migrate) => {
+                // The same edges may well stall again; forget the pair and rescan.
+                log::warn!("[-] migrate requested; discarding {peer} / {inner_peer} and rescanning");
+                last_peer = None;
+                last_inner = None;
+                cached = None;
+                consecutive_fails = 0;
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                continue;
+            }
+            Err(e) => {
+                log::warn!("[-] gool tunnel ended: {e}; reconnecting");
+                consecutive_fails += 1;
+            }
         }
-        consecutive_fails += 1;
 
         tokio::time::sleep(wg_reconnect_delay()).await;
     }
@@ -1443,6 +1458,17 @@ fn consume_migrate_hint() -> bool {
     std::fs::remove_file("soildtunnel-migrate.hint").is_ok()
 }
 
+/// Completes when the app drops a migrate hint; select branches use it to
+/// tear down a live tunnel as soon as the watchdog reports it dead.
+async fn watch_migrate_hint() {
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        if consume_migrate_hint() {
+            return;
+        }
+    }
+}
+
 const GOOL_INNER_ATTEMPTS: u32 = 2;
 const GOOL_INNER_PORT: u16 = 2408;
 const GOOL_INNER_MTU: usize = 1200;
@@ -1737,10 +1763,16 @@ async fn run_carried_hop(
                     let mut socks_task =
                         tokio::spawn(async move { socks::serve(listen, socks_stack).await });
 
+                    consume_migrate_hint();
+
                     let outcome = tokio::select! {
                         result = &mut *outer_exit => join_outcome("masque tunnel", result),
                         result = &mut inner_exit => join_outcome("carried wireguard tunnel", result),
                         result = &mut socks_task => join_outcome("socks5 server", result),
+                        _ = watch_migrate_hint() => {
+                            log::warn!("[-] migrate requested; dropping the carried hop");
+                            Err(SoildTunnelError::Migrate)
+                        }
                     };
 
                     if let Some(task) = &http_task {
@@ -2086,6 +2118,15 @@ async fn run_wireguard(identity: account::Identity, listen: SocketAddr, lastconn
                 log::warn!("[-] WireGuard tunnel closed; reconnecting");
                 consecutive_fails_on_peer += 1;
             }
+            Err(SoildTunnelError::Migrate) => {
+                // Park the endpoint so the scan cannot hand it straight back.
+                log::warn!("[*] migrate requested; parking {peer} and rescanning");
+                endpoint_cooldowns.insert(peer, Instant::now() + wg_endpoint_cooldown());
+                last_good = None;
+                consecutive_fails_on_peer = 0;
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                continue;
+            }
             Err(e) => {
                 log::warn!("[-] WireGuard tunnel ended: {e}; reconnecting");
                 consecutive_fails_on_peer += 1;
@@ -2152,7 +2193,17 @@ async fn run_wireguard_tunnel(
         tasks.push(task.abort_handle());
     }
 
-    let tunnel_result = tunnel.run(outbound_rx).await;
+    consume_migrate_hint();
+    let mut run = std::pin::pin!(tunnel.run(outbound_rx));
+    let tunnel_result = loop {
+        tokio::select! {
+            result = &mut run => break result,
+            _ = watch_migrate_hint() => {
+                log::warn!("[-] migrate requested; dropping the current tunnel");
+                break Err(SoildTunnelError::Migrate);
+            }
+        }
+    };
 
     if let Some(task) = &http_task {
         task.abort();
@@ -2165,6 +2216,7 @@ async fn run_wireguard_tunnel(
 
     match tunnel_result {
         Ok(()) => Ok(()),
+        Err(SoildTunnelError::Migrate) => Err(SoildTunnelError::Migrate),
         Err(e) => Err(SoildTunnelError::Other(format!("wireguard tunnel exited: {e}"))),
     }
 }
@@ -2352,15 +2404,23 @@ async fn run_warp_in_warp(
     let http_task = spawn_http_proxy(&inner_stack);
     let mut socks_task = tokio::spawn(async move { socks::serve(listen, inner_stack).await });
 
+    // A hint from during establishment is already served by this reconnect.
+    consume_migrate_hint();
+
     enum Exited {
         Outer,
         Inner,
         Socks,
+        Migrate,
     }
     let (outcome, exited) = tokio::select! {
         result = &mut outer_exit => (join_outcome("outer wireguard tunnel", result), Exited::Outer),
         result = &mut inner_exit => (join_outcome("inner wireguard tunnel", result), Exited::Inner),
         result = &mut socks_task => (join_outcome("socks5 server", result), Exited::Socks),
+        _ = watch_migrate_hint() => {
+            log::warn!("[-] migrate requested; dropping the current warp-in-warp pair");
+            (Err(SoildTunnelError::Migrate), Exited::Migrate)
+        }
     };
 
     if let Some(task) = &http_task {
@@ -2382,6 +2442,11 @@ async fn run_warp_in_warp(
         Exited::Socks => {
             let _ = outer_exit.await;
             let _ = inner_exit.await;
+        }
+        Exited::Migrate => {
+            let _ = outer_exit.await;
+            let _ = inner_exit.await;
+            let _ = socks_task.await;
         }
     }
 

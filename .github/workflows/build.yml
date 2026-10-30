@@ -83,6 +83,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # The maintainer never compiles locally, so CI is where the engine's
+      # unit tests run — same vendored sources the APK is built from.
+      - name: Test engine (SoildTunnel)
+        run: cargo test --manifest-path native/engine/soildtunnel/Cargo.toml
+
       # Signing: ALWAYS sign with a STABLE key so users can update in place
       # (Android only installs an update when old and new APKs share the same
       # signature). Priority:
