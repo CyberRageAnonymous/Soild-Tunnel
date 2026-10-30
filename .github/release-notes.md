@@ -1,31 +1,33 @@
-# SoildTunnel v1.1.1
+# SoildTunnel v1.1.2
 
-The app you know is now wearing a new face, and the way it finds a working
-connection got a lot sharper.
+A new protocol for people who run their own server, a much faster rescue when
+a connection silently dies, and a faster engine underneath.
 
-**A whole new look:**
-- Every screen was redrawn around a dark aurora look: the connect button is a
-  living orb with a light that sweeps around it, the background breathes behind
-  your cards, and the panels are soft glass instead of flat boxes.
-- The first launch now has a proper animated welcome: a spinning core, a
-  strategy ladder that comes alive, and a privacy eye that closes itself.
-- There is a second skin called **Soild Neon** if you like it loud — electric
-  blue and red on near-black, with a grid backdrop and flat panels that light
-  up at the edges.
+**New: TUIC**
+- TUIC v5 is built in now: point the app at your own QUIC server (address,
+  UUID and password) and your traffic rides modern QUIC instead of WARP.
+  The credentials are sealed in the Android Keystore and passed to the core
+  out of sight of the command line.
+- Optional SNI override, congestion-control choice, and an "insecure" switch
+  for self-signed certificates.
 
-**Smart Auto that learns your network:**
-- When a strategy works, the app remembers it for that network and tries it
-  first next time, so reconnects are quick instead of a fresh search every
-  time.
-- If your provider throttles IPv4, the tunnel now also reaches for IPv6 and
-  keeps whichever path answers.
-- The ladder itself is deeper for rough networks, and the heavy obfuscation
-  profiles no longer sit on the TLS handshake that carries the tunnel.
+**Dead tunnels no longer stay dead**
+- The classic failure was a connection that still said Connected while no site
+  would open. The watchdog now asks the engine to hop to a fresh gateway after
+  the FIRST failed check instead of the second — and every protocol listens
+  for that request, including WARP×2 (gool), which used to ignore it until a
+  full engine restart.
+- The watchdog also checks twice as often, so the first rescue attempt lands
+  in about 45 seconds instead of minutes. Three failed checks in a row still
+  restart the engine as the last resort.
 
-**Also in this release:**
-- The engine exposes its core contract, so an alternative core can be dropped
-  in later without touching the app.
-- Reading the logs is easier now, and the speed test and server list got the
-  same treatment as the rest of the app.
+**Speed**
+- The WireGuard dataplane does less work per packet: shorter lock sections and
+  no per-packet buffer copies, for higher throughput and less battery drain on
+  WARP and WARP×2.
 
-Version: SoildTunnel 1.1.1 (version code 12).
+**Under the hood**
+- The engine's unit tests now run on every CI build, so a release can never
+  ship with a broken core.
+
+Version: SoildTunnel 1.1.2 (version code 13).

@@ -14,7 +14,7 @@ liquid-glass interface.
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Android-3DDC84.svg)]()
 [![Min SDK](https://img.shields.io/badge/API-26%2B-green.svg)]()
-[![Version](https://img.shields.io/badge/Version-1.0.7-orange.svg)]()
+[![Version](https://img.shields.io/badge/Version-1.1.2-orange.svg)]()
 
 </div>
 
@@ -41,6 +41,7 @@ No accounts. No logs. No trackers. One tap and you're free.
 | **MASQUE** | Disguises tunnel traffic as normal HTTPS/HTTP2 browsing. Hardest to detect. |
 | **WireGuard** | Blazing-fast modern VPN protocol. Best speed when not blocked. |
 | **GOOL** | Double-tunnel mode (WARP inside WARP) for maximum anti-DPI. |
+| **TUIC** | Modern QUIC (v5) over a server you bring yourself — your own endpoint, no WARP involved. |
 | **Tor** | Routes the whole device through the Tor network with official built-in bridges (or your own) and a pinnable exit country. |
 | **Smart Auto** | Fingerprints your network's DPI and picks the best protocol automatically, with IPv6-plane racing and a 24h per-network strategy memory. |
 
@@ -83,9 +84,11 @@ Choose which apps go through the VPN and which don't:
 
 ### Smart Reconnection
 
-The engine monitors the tunnel with a watchdog. If it dies, it automatically
-restarts with exponential backoff. Network changes (WiFi ↔ mobile) trigger
-instant reconnection. Up to 50 retry cycles before giving up.
+The engine monitors the tunnel with a watchdog that probes end-to-end through
+the local proxy. A tunnel that silently goes dead is first asked to hop to a
+fresh gateway; only a sustained outage restarts the engine, with exponential
+backoff. Network changes (WiFi ↔ mobile) trigger instant reconnection. Up to
+50 retry cycles before giving up.
 
 ### Live Telemetry
 
@@ -137,14 +140,14 @@ backdrop, flat panels with neon casing) in the Theme card in settings.
 │  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │
 │  │ Compose  │  │ TUN      │  │ Engine       │  │
 │  │ UI       │  │ Service  │  │ Process      │  │
-│  │ (Glass)  │  │ (VpnSvc) │  │ (Rust+Go)   │  │
+│  │ (Glass)  │  │ (VpnSvc) │  │ (Rust)       │  │
 │  └────┬─────┘  └────┬─────┘  └──────┬───────┘  │
 │       │              │               │           │
 │       │         ┌────┴────┐    ┌─────┴──────┐   │
 │       │         │ hev-    │    │ soildtunnel│   │
 │       │         │ socks5  │    │ engine     │   │
-│       │         │ tunnel  │    │ (MASQUE/WG/│   │
-│       │         └─────────┘    │  GOOL)     │   │
+│       │         │ tunnel  │    │(MASQUE/WG/ │   │
+│       │         └─────────┘    │ GOOL/TUIC) │   │
 │       │                        └────────────┘   │
 │       │                                         │
 │  ┌────┴─────────────────────────────────────┐   │
@@ -157,8 +160,8 @@ backdrop, flat panels with neon casing) in the Theme card in settings.
 **Components:**
 
 - **Engine** (`native/engine/soildtunnel`) — Rust async runtime handling
-  MASQUE/WireGuard/GOOL transports, endpoint scanning, identity provisioning,
-  and DNS resolution. Compiled with `cargo-ndk` for ARM.
+  MASQUE/WireGuard/GOOL/TUIC transports, endpoint scanning, identity
+  provisioning, and DNS resolution. Compiled with `cargo-ndk` for ARM.
 - **hev-socks5-tunnel** — High-performance userspace SOCKS5-to-TUN forwarder
   with per-app UID filtering for split tunneling and app blocking.
 - **VPN Service** — Android `VpnService` that builds the TUN interface,
@@ -178,9 +181,9 @@ Grab the latest signed APK from the
 
 | File | Device | Notes |
 |------|--------|-------|
-| `SoildTunnel-1.0.7-arm64-v8a.apk` | Modern 64-bit phones | **Recommended** |
-| `SoildTunnel-1.0.7-armeabi-v7a.apk` | Older 32-bit phones | |
-| `SoildTunnel-1.0.7-universal.apk` | Any Android device | Largest file |
+| `SoildTunnel-1.1.2-arm64-v8a.apk` | Modern 64-bit phones | **Recommended** |
+| `SoildTunnel-1.1.2-armeabi-v7a.apk` | Older 32-bit phones | |
+| `SoildTunnel-1.1.2-universal.apk` | Any Android device | Largest file |
 
 **Installation:**
 1. Download the APK for your device architecture
@@ -196,7 +199,6 @@ Grab the latest signed APK from the
 - JDK 17
 - Android SDK 35
 - NDK 26.3.11579264
-- Go 1.22+
 - Rust stable + `cargo-ndk`
 - Gradle 8.9
 
@@ -214,13 +216,16 @@ bash scripts/fetch-natives.sh
 bash scripts/build-natives.sh hev
 bash scripts/build-natives.sh soildtunnel
 
+# Engine unit tests
+cargo test --manifest-path native/engine/soildtunnel/Cargo.toml
+
 # Build release APK
-./gradlew :app:assembleRelease
+gradle :app:assembleRelease
 ```
 
 The release build is fully automated via
 [`.github/workflows/build.yml`](.github/workflows/build.yml) — push a tag
-(`v1.0.7`) and GitHub Actions builds, signs, and publishes the APKs.
+(`v1.1.2`) and GitHub Actions builds, signs, and publishes the APKs.
 
 ---
 
@@ -229,9 +234,10 @@ The release build is fully automated via
 ### Transport
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Protocol | Smart Auto | MASQUE, WireGuard, WARP×2, Tor, or Auto |
+| Protocol | Smart Auto | MASQUE, WireGuard, WARP×2, TUIC, Tor, or Auto |
 | Tor entry | obfs4 built-in | Direct, built-in obfs4/Snowflake/Meek, or custom bridges |
 | Tor exit | Auto | Pinned exit country, or Auto |
+| TUIC server | (none) | Your own TUIC v5 server (address, UUID, password, SNI in the Advanced panel) |
 | Scan Mode | Balanced | TURBO/BALANCED/THOROUGH/STEALTH/IRONCLAD |
 | IP Version | IPv4 | IPv4, IPv6, or Both |
 | MASQUE HTTP/2 | Off | Force HTTP/2 for MASQUE (bypasses QUIC blocks) |
