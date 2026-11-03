@@ -29,7 +29,6 @@ import com.soildtunnel.app.core.DiagnosticsLog
 import com.soildtunnel.app.core.IpEndpoint
 import com.soildtunnel.app.core.NetProbe
 import com.soildtunnel.app.core.TorBridges
-import com.soildtunnel.app.core.TorDefaults
 import com.soildtunnel.app.core.TorManager
 import com.soildtunnel.app.core.TunnelConfig
 import com.soildtunnel.app.data.OnboardingStore
@@ -193,7 +192,7 @@ class MainActivity : ComponentActivity() {
                             if (SoildTunnelController.ipInfo.value?.viaTunnel != true) {
                                 // Tor mode listens on its own loopback port, not the engine's.
                                 val socksPort =
-                                    if (profile?.protocol == Protocol.TOR) TorDefaults.SOCKS_PORT
+                                    if (profile?.protocol == Protocol.TOR) TorManager.socksPort
                                     else TunnelConfig.SOCKS_PORT
                                 val info = withContext(Dispatchers.IO) {
                                     NetProbe.fetchIpInfoViaSocksWithRetry(
@@ -291,7 +290,7 @@ class MainActivity : ComponentActivity() {
     /** Re-reads the exit IP after a live switch (new circuits need a moment). */
     private suspend fun refreshTunnelIp(profile: ConnectionProfile) {
         val port =
-            if (profile.protocol == Protocol.TOR) TorDefaults.SOCKS_PORT
+            if (profile.protocol == Protocol.TOR) TorManager.socksPort
             else TunnelConfig.SOCKS_PORT
         val pinned =
             if (profile.protocol == Protocol.TOR) profile.torExitCountry.trim().uppercase() else ""

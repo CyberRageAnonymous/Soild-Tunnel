@@ -1,10 +1,11 @@
 package com.soildtunnel.app.core
 
 /**
- * Fixed addresses and bundled values for Tor mode. The ports only exist
- * inside this phone (tor listens on loopback), so they never clash with
- * anything on the network — they just have to differ from the WARP
- * engine's own 127.0.0.1:1819.
+ * Preferred loopback addresses for Tor mode. They are a STARTING POINT,
+ * not a contract: tor usually binds them, but when something else on the
+ * phone already holds one (Orbot uses the very same trio) [TorManager]
+ * moves that listener to a free port instead of failing the whole connect.
+ * They also stay clear of the WARP engine's own 127.0.0.1:1819.
  */
 object TorDefaults {
     /** Tor's SOCKS listener: everything (TCP) goes through here. */

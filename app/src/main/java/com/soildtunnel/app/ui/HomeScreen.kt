@@ -78,7 +78,7 @@ import com.soildtunnel.app.core.NetProbe
 import com.soildtunnel.app.core.OnboardingFlags
 import com.soildtunnel.app.core.ServerCatalog
 import com.soildtunnel.app.core.ServerPinger
-import com.soildtunnel.app.core.TorDefaults
+import com.soildtunnel.app.core.TorManager
 import com.soildtunnel.app.core.TunnelConfig
 import com.soildtunnel.app.core.UpdateChecker
 import com.soildtunnel.app.model.ConnectionProfile
@@ -391,7 +391,7 @@ fun HomeScreen(
                     ipInfo = ipInfo,
                     ipLoading = ipLoading,
                     error = state is ConnectionState.Error,
-                    socksPort = if (profile.protocol == Protocol.TOR) TorDefaults.SOCKS_PORT
+                    socksPort = if (profile.protocol == Protocol.TOR) TorManager.socksPort
                     else TunnelConfig.SOCKS_PORT,
                 )
 

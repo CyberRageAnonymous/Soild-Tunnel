@@ -37,7 +37,6 @@ import com.soildtunnel.app.core.ShareBridge
 import com.soildtunnel.app.core.SmartAuto
 import com.soildtunnel.app.core.StrategyMemo
 import com.soildtunnel.app.core.SocksTunBridge
-import com.soildtunnel.app.core.TorDefaults
 import com.soildtunnel.app.core.TorManager
 import com.soildtunnel.app.core.TunnelConfig
 import com.soildtunnel.app.model.ConnectionProfile
@@ -76,6 +75,9 @@ class SoildTunnelVpnService : VpnService() {
 
     /** Active userspace filter bridge (only when per-app blocking is on). */
     private var tunBridge: SocksTunBridge? = null
+
+    /** Local SOCKS port the bridge above was built with; tor can move. */
+    private var tunBridgePort: Int = SOCKS_PORT
 
     /** Last profile the service ran with (kill-switch decisions). */
     private var lastProfile: ConnectionProfile? = null
@@ -254,9 +256,6 @@ class SoildTunnelVpnService : VpnService() {
         updateNotification(getString(R.string.tor_starting))
         lockdownTunActive = false
         cleanupNativeOnly()
-        if (!PortProbe.awaitClosed(SOCKS_HOST, TorDefaults.SOCKS_PORT, PORT_RELEASE_WAIT_MS)) {
-            DiagnosticsLog.w(TAG, "Tor port still busy — starting anyway.")
-        }
         TorManager.start(this, profile, onProgress = { percent, summary ->
             updateNotification(getString(R.string.tor_bootstrap, percent))
             DiagnosticsLog.i(TAG, "Tor bootstrap $percent% — $summary")
@@ -272,7 +271,7 @@ class SoildTunnelVpnService : VpnService() {
         SoildTunnelController.setState(ConnectionState.Verifying)
         updateNotification(getString(R.string.state_verifying))
         DiagnosticsLog.i(TAG, "TUN + tor bridge started. Verifying end-to-end connectivity…")
-        val healthy = runCatching { Diagnostics.run(port = TorDefaults.SOCKS_PORT) }.getOrDefault(false)
+        val healthy = runCatching { Diagnostics.run(port = TorManager.socksPort) }.getOrDefault(false)
         if (!healthy) {
             DiagnosticsLog.e(TAG, "Self-test failed — refusing to report Connected.")
             throw IllegalStateException(getString(R.string.err_selftest))
@@ -284,7 +283,7 @@ class SoildTunnelVpnService : VpnService() {
             DiagnosticsLog.i(TAG, "Tor exit verified: ${exit.ip} (${exit.countryCode ?: "??"})")
         }
 
-        SoildTunnelController.setState(ConnectionState.Connected("$SOCKS_HOST:${TorDefaults.SOCKS_PORT}"))
+        SoildTunnelController.setState(ConnectionState.Connected("$SOCKS_HOST:${TorManager.socksPort}"))
         updateNotification(getString(R.string.state_connected))
         DiagnosticsLog.i(TAG, "All checks passed — tunnel is ready.")
         UsageStore.startSession()
@@ -308,7 +307,7 @@ class SoildTunnelVpnService : VpnService() {
                 attempt = 0
                 TorManager.awaitExit(WATCHDOG_INTERVAL_MS)
                 if (TorManager.isAlive()) {
-                    if (probeTunnelCycle(TorDefaults.SOCKS_PORT)) {
+                    if (probeTunnelCycle(TorManager.socksPort)) {
                         probeFailures = 0
                     } else if (++probeFailures >= WATCHDOG_FAIL_CYCLES) {
                         DiagnosticsLog.w(
@@ -340,14 +339,15 @@ class SoildTunnelVpnService : VpnService() {
                     DiagnosticsLog.i(TAG, "Tor bootstrap $percent% — $summary")
                 }, keepExit = true)
             }.isSuccess
+            if (restarted) repointTunBridge(profile)
             if (restarted &&
-                PortProbe.awaitOpen(SOCKS_HOST, TorDefaults.SOCKS_PORT, 30_000L) { TorManager.isAlive() }
+                PortProbe.awaitOpen(SOCKS_HOST, TorManager.socksPort, 30_000L) { TorManager.isAlive() }
             ) {
                 SoildTunnelController.setState(ConnectionState.Verifying)
                 updateNotification(getString(R.string.state_verifying))
-                if (runCatching { Diagnostics.run(port = TorDefaults.SOCKS_PORT) }.getOrDefault(false)) {
+                if (runCatching { Diagnostics.run(port = TorManager.socksPort) }.getOrDefault(false)) {
                     attempt = 0
-                    SoildTunnelController.setState(ConnectionState.Connected("$SOCKS_HOST:${TorDefaults.SOCKS_PORT}"))
+                    SoildTunnelController.setState(ConnectionState.Connected("$SOCKS_HOST:${TorManager.socksPort}"))
                     updateNotification(getString(R.string.state_connected))
                 } else {
                     DiagnosticsLog.w(TAG, "Self-test failed after tor restart — retrying.")
@@ -355,6 +355,21 @@ class SoildTunnelVpnService : VpnService() {
                 }
             }
         }
+    }
+
+    /**
+     * Tor may come back on a different loopback port than the one the TUN
+     * bridge was built with (the preferred port can get contested while tor
+     * is down). The bridge pins its port at construction, so swap it for a
+     * live one — otherwise the session reports Connected while every flow
+     * dials a dead port.
+     */
+    private fun repointTunBridge(profile: ConnectionProfile) {
+        if (tunBridge == null || tunBridgePort == TorManager.socksPort) return
+        DiagnosticsLog.i(TAG, "Tor moved to port ${TorManager.socksPort} — re-pointing the TUN bridge.")
+        runCatching { tunBridge?.stop() }
+        tunBridge = null
+        startTun2Socks(profile)
     }
 
     /**
@@ -640,6 +655,14 @@ class SoildTunnelVpnService : VpnService() {
         // never opened, the engine is still recovering and the connect
         // timeout (not the watchdog) owns the deadline.
         var socksOpened = false
+        // Non-zero while the engine is rescanning after a migrate request:
+        // if the tunnel has not come back by the deadline, the engine is
+        // restarted instead of asking for yet another rescan.
+        var recoveryDeadline = 0L
+        // Gateway hops spent in the current dead episode; two hops that did
+        // not buy a full healthy minute escalate to a cold engine restart.
+        var migrateStreak = 0
+        var healthyChecks = 0
         while (currentScopeActive()) {
             if (engine?.isAlive() == true) {
                 attempt = 0
@@ -664,6 +687,9 @@ class SoildTunnelVpnService : VpnService() {
                     if (probeTunnelCycle()) {
                         probeFailures = 0
                         socksOpened = true
+                        recoveryDeadline = 0L
+                        healthyChecks++
+                        if (healthyChecks >= WATCHDOG_HEALTHY_CHECKS) migrateStreak = 0
                     } else if (switched) {
                         // Wi-Fi <-> mobile handover kills most QUIC/WG
                         // sessions outright, so a single failed probe after a
@@ -671,26 +697,52 @@ class SoildTunnelVpnService : VpnService() {
                         // three-cycle wait and restart immediately.
                         DiagnosticsLog.w(TAG, "Network changed and the tunnel did not survive it -- fast restart.")
                         probeFailures = 0
+                        recoveryDeadline = 0L
                         engine?.stop()
                     } else if (!socksOpened) {
-                        // Still recovering: SOCKS never opened since the
-                        // engine started, so there is nothing to declare dead.
+                        // Still recovering: SOCKS never opened since the engine
+                        // started or since the last migrate asked for a rescan,
+                        // so there is nothing to declare dead -- until the
+                        // recovery window runs out.
+                        if (recoveryDeadline != 0L && System.currentTimeMillis() > recoveryDeadline) {
+                            DiagnosticsLog.w(
+                                TAG,
+                                "Watchdog: no tunnel within the recovery window -- restarting the engine.",
+                            )
+                            recoveryDeadline = 0L
+                            probeFailures = 0
+                            migrateStreak = 0
+                            engine?.stop()
+                        }
                     } else {
                         if (PingMonitor.failStreak.value >= 5) {
                             PingMonitor.resetFailStreak()
                         }
-                        if (++probeFailures >= WATCHDOG_FAIL_CYCLES) {
+                        healthyChecks = 0
+                        probeFailures++
+                        if (probeFailures >= WATCHDOG_FAIL_CYCLES ||
+                            migrateStreak >= MAX_MIGRATES_PER_EPISODE
+                        ) {
                             DiagnosticsLog.w(
                                 TAG,
-                                "Watchdog: tunnel dead across $WATCHDOG_FAIL_CYCLES consecutive checks -- restarting the engine.",
+                                "Watchdog: no recovery after $migrateStreak gateway hop(s) and " +
+                                    "$probeFailures failed check(s) -- restarting the engine.",
                             )
                             probeFailures = 0
+                            migrateStreak = 0
                             engine?.stop()
                         } else {
                             // A failed check is already 27 s of dead tunnel across
-                            // three resolvers; hop gateways now, restart stays the
-                            // three-cycle backstop.
+                            // three resolvers: hop gateways ONCE, then wait out the
+                            // recovery window for the rescan to bring the tunnel
+                            // back. Asking again on every failed check used to
+                            // stack teardown on teardown while the engine was
+                            // already rescanning; a hop that buys no healthy
+                            // minute escalates to the cold restart above.
                             requestEngineMigrate()
+                            migrateStreak++
+                            socksOpened = false
+                            recoveryDeadline = System.currentTimeMillis() + profile.connectTimeoutMs()
                         }
                     }
                 }
@@ -714,6 +766,9 @@ class SoildTunnelVpnService : VpnService() {
 
             engine = SoildTunnelProcess(applicationInfo.nativeLibraryDir, filesDir).also { it.start(profile) }
             socksOpened = false
+            recoveryDeadline = 0L
+            migrateStreak = 0
+            healthyChecks = 0
             if (PortProbe.awaitOpen(SOCKS_HOST, SOCKS_PORT, profile.connectTimeoutMs()) { engine?.isAlive() == true }) {
                 // Same gate as the initial connect: never claim Connected after
                 // a silent engine restart until traffic really flows again.
@@ -875,20 +930,22 @@ class SoildTunnelVpnService : VpnService() {
             // ONLY when blocking is configured; the battle-tested hev path
             // below stays the default for everyone else.
             val pfd = tun ?: throw IllegalStateException("TUN descriptor is null")
+            val bridgePort = if (torMode) TorManager.socksPort else socksPort
             val bridge = SocksTunBridge(
                 vpnService = this,
                 tunDescriptor = pfd,
                 socksHost = SOCKS_HOST,
-                socksPort = if (torMode) TorDefaults.SOCKS_PORT else socksPort,
+                socksPort = bridgePort,
                 mtu = profile.mtu.coerceIn(576, 9000),
                 blockedPackagesProvider = { profile.blockedApps.toSet() },
                 routingEngine = RoutingEngine(emptyList()),
                 torMode = torMode,
-                torDnsPort = TorDefaults.DNS_PORT,
+                torDnsPort = TorManager.dnsPort,
             )
             DiagnosticsLog.i(TAG, "Starting userspace filter bridge (blocked apps=${profile.blockedApps.size})")
             bridge.start()
             tunBridge = bridge
+            tunBridgePort = bridgePort
             return
         }
         val config = writeHevConfig(profile.mtu.coerceIn(576, 9000), socksPort)
@@ -991,10 +1048,13 @@ class SoildTunnelVpnService : VpnService() {
      *
      * A check now only counts as failed when THREE attempts in a row --
      * spread over three different anycast resolvers, 8 s timeout each, 1.5 s
-     * apart -- all fail. The FIRST failed check requests a gateway migrate
-     * (every engine protocol reads the hint, gool included), and only THREE
-     * consecutive failed checks restart the engine, so a brief self-healing
-     * stall costs neither a restart nor a full rescan.
+     * apart -- all fail. The first failed check requests a gateway migrate
+     * (every engine protocol reads the hint, gool included) and opens a
+     * recovery window sized by the connect timeout; only if the rescan does
+     * not bring the tunnel back inside that window is the engine restarted.
+     * One migrate per dead episode: asking on every failed check stacked
+     * teardown on teardown while the engine was still rescanning, which is
+     * exactly the flapping the user saw.
      */
     private fun requestEngineMigrate() {
         val wrote = runCatching {
@@ -1204,6 +1264,17 @@ class SoildTunnelVpnService : VpnService() {
          * genuinely dead session is restarted.
          */
         private const val WATCHDOG_FAIL_CYCLES = 3
+
+        /** Passing checks (~1 min) that must hold before the migrate ladder resets. */
+        private const val WATCHDOG_HEALTHY_CHECKS = 3
+
+        /**
+         * Gateway hops allowed per dead episode before the engine is instead
+         * cold-restarted: if two hops in a row did not keep the tunnel alive
+         * for a full healthy minute, the session/identity is the suspect, not
+         * the edges.
+         */
+        private const val MAX_MIGRATES_PER_EPISODE = 2
 
         /**
          * Attempts per watchdog check, rotating over anycast resolvers so one

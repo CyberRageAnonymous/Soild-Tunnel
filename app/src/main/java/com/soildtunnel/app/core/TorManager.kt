@@ -8,6 +8,9 @@ import com.soildtunnel.app.R
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.TorTransport
 import java.io.File
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.ServerSocket
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -29,6 +32,27 @@ object TorManager {
 
     private var process: Process? = null
     private var torDir: File? = null
+
+    /**
+     * The loopback ports tor actually bound for the current session. Every
+     * consumer (TUN bridge, watchdog probes, control client, UI) reads these
+     * instead of the fixed [TorDefaults] values: on Android every app shares
+     * the SAME loopback, so 127.0.0.1:9050 is contested territory — Orbot or
+     * any other tor app holding it used to make OUR tor die at startup with
+     * "Failed to bind one of the listener ports". When a preferred port is
+     * taken, tor simply gets a free one instead.
+     */
+    @Volatile
+    var socksPort: Int = TorDefaults.SOCKS_PORT
+        private set
+
+    @Volatile
+    var dnsPort: Int = TorDefaults.DNS_PORT
+        private set
+
+    @Volatile
+    var controlPort: Int = TorDefaults.CONTROL_PORT
+        private set
 
     /**
      * The exit country the user most recently asked for, remembered across
@@ -91,6 +115,14 @@ object TorManager {
         keepExit: Boolean = false,
     ): Unit = withContext(Dispatchers.IO) {
         stop()
+        killOrphanedTor()
+        // Sticky across restarts: the tor we just stopped owned these ports,
+        // so they are free again and the TUN bridge keeps dialing the same
+        // listeners. Only a genuinely contested port moves.
+        socksPort = claimPort(socksPort, emptySet())
+        dnsPort = claimPort(dnsPort, setOf(socksPort))
+        controlPort = claimPort(controlPort, setOf(socksPort, dnsPort))
+        DiagnosticsLog.i(TAG, "Local ports: socks=$socksPort dns=$dnsPort control=$controlPort")
         if (!keepExit) desiredExit = profile.torExitCountry.trim().uppercase()
         val filesDir = context.filesDir
         val dir = File(filesDir, "tor-data").apply { mkdirs() }
@@ -195,10 +227,10 @@ object TorManager {
         try {
             waitForControl()
             waitForBootstrap(onProgress)
-            if (!PortProbe.awaitOpen("127.0.0.1", TorDefaults.SOCKS_PORT, 15_000)) {
+            if (!PortProbe.awaitOpen("127.0.0.1", socksPort, 15_000)) {
                 throw IllegalStateException(context.getString(R.string.err_tor_socks))
             }
-            DiagnosticsLog.i(TAG, "Tor is up — SOCKS on 127.0.0.1:${TorDefaults.SOCKS_PORT}.")
+            DiagnosticsLog.i(TAG, "Tor is up — SOCKS on 127.0.0.1:$socksPort.")
         } catch (e: CancellationException) {
             stop()
             throw e
@@ -233,6 +265,59 @@ object TorManager {
         }
     }
 
+    /**
+     * Picks the loopback port tor will bind: the preferred one when it is
+     * actually free, an OS-assigned one when something else already holds it.
+     */
+    private fun claimPort(preferred: Int, taken: Set<Int>): Int {
+        val loop = InetAddress.getByName("127.0.0.1")
+        fun bind(port: Int): Int? = try {
+            ServerSocket().use { s ->
+                s.bind(InetSocketAddress(loop, port))
+                s.localPort
+            }
+        } catch (_: Exception) {
+            null
+        }
+        if (preferred !in taken) bind(preferred)?.let { return it }
+        DiagnosticsLog.w(TAG, "Port $preferred is taken elsewhere — moving tor to a free one.")
+        while (true) {
+            val port = bind(0) ?: throw IllegalStateException("No free loopback port for tor.")
+            if (port !in taken) return port
+        }
+    }
+
+    /**
+     * A tor child can outlive the app process that spawned it and keep its
+     * listeners and bridges for hours. Only this app's own leftovers are ever
+     * touched — matched by binary name AND uid, never by pattern alone.
+     */
+    private fun killOrphanedTor() {
+        val myUid = android.os.Process.myUid()
+        val myPid = android.os.Process.myPid()
+        val procs = File("/proc").listFiles { f -> f.name.toIntOrNull() != null } ?: return
+        for (dir in procs) {
+            val pid = dir.name.toIntOrNull() ?: continue
+            if (pid == myPid) continue
+            val cmdline = runCatching {
+                File(dir, "cmdline").readBytes().toString(Charsets.UTF_8)
+            }.getOrNull() ?: continue
+            if (!cmdline.contains("libtor.so")) continue
+            val uid = runCatching {
+                File(dir, "status").readLines()
+                    .firstOrNull { it.startsWith("Uid:") }
+                    ?.substringAfter("Uid:")
+                    ?.trim()
+                    ?.split(Regex("\\s+"))
+                    ?.firstOrNull()
+                    ?.toInt()
+            }.getOrNull()
+            if (uid != myUid) continue
+            DiagnosticsLog.w(TAG, "Killing orphaned tor (pid=$pid) left over from a previous run.")
+            runCatching { android.os.Process.killProcess(pid) }
+        }
+    }
+
     /** Parks the caller until tor exits or the timeout elapses. */
     suspend fun awaitExit(timeoutMs: Long): Boolean = runCatching {
         runInterruptible(Dispatchers.IO) {
@@ -255,7 +340,7 @@ object TorManager {
 
     private fun control(): TorControl {
         val dir = torDir ?: throw IllegalStateException("Tor is not running.")
-        val c = TorControl()
+        val c = TorControl(port = controlPort)
         c.connect()
         if (!c.authenticate(File(dir, "control_auth_cookie"))) {
             c.close()
@@ -375,11 +460,11 @@ object TorManager {
         // Tor is dual-stack by default; these make that explicit so the
         // config reads the way it behaves. IPv6 destinations only succeed
         // when the exit supports them -- exactly like the official apps.
-        appendLine("SocksPort 127.0.0.1:${TorDefaults.SOCKS_PORT} IPv6Traffic")
+        appendLine("SocksPort 127.0.0.1:$socksPort IPv6Traffic")
         appendLine("ClientUseIPv6 1")
         appendLine("ClientPreferIPv6ORPort 1")
-        appendLine("DNSPort 127.0.0.1:${TorDefaults.DNS_PORT}")
-        appendLine("ControlPort 127.0.0.1:${TorDefaults.CONTROL_PORT}")
+        appendLine("DNSPort 127.0.0.1:$dnsPort")
+        appendLine("ControlPort 127.0.0.1:$controlPort")
         appendLine("CookieAuthentication 1")
         appendLine("DataDirectory ${dir.absolutePath}")
         appendLine("GeoIPFile ${File(dir, "geoip").absolutePath}")
