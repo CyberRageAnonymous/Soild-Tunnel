@@ -694,8 +694,14 @@ class SoildTunnelVpnService : VpnService() {
             runCatching { engine?.stop() }
             engine = null
             DiagnosticsLog.i(TAG, "Launching engine (libsoildtunnel-core.so)…")
-            return SoildTunnelProcess(applicationInfo.nativeLibraryDir, filesDir)
-                .also { it.start(profile) }
+            val fresh = SoildTunnelProcess(applicationInfo.nativeLibraryDir, filesDir)
+            fresh.start(profile)
+            // Register the process before returning it: every reader (the
+            // port probe's alive-check, the watchdog, cleanup) consults this
+            // field, and a process nobody tracks is an orphan the next
+            // connect has to reap.
+            engine = fresh
+            return fresh
         }
     }
 
