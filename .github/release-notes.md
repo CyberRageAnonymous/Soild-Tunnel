@@ -40,7 +40,7 @@ a faster engine underneath.
 - The second was the bundled tor itself: the old 0.4.7.x daemon is no longer
   accepted by the live Tor network (its consensus now requires descriptor
   protocols it does not speak), so it refused to bootstrap on any transport,
-  bridge or not, with "You should upgrade". tor-android is now 0.4.9.14,
+  bridge or not, with "You should upgrade". The bundled tor is now 0.4.9.14,
   which the network accepts.
 
 **Speed**

@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 #
-# Fetches the native SOURCE needed by the build. Nothing here is prebuilt:
+# Fetches what the native build needs:
 #   1. hev-socks5-tunnel  -> built with its own Android.mk into libhev-socks5-tunnel.so
 #                            (the in-app "tun2socks" core)
 #   2. SoildTunnel engine src  -> cross-compiled into libsoildtunnel-core.so
+#   3. the tor daemon      -> libtor.so unpacked from the official tor-android
+#                            AAR on Maven Central (the one prebuilt core here;
+#                            cross-compiling tor for Android is not our job)
 #
-# Both are compiled later by scripts/build-natives.sh.
+# Items 1 and 2 are compiled later by scripts/build-natives.sh.
 #
 # Safe to re-run. All network access happens here / in CI, never on device.
 # By default we clone hev's DEFAULT branch. To pin, export HEV_REF; a missing
@@ -69,5 +72,53 @@ mkdir -p "${SOILDTUNNEL_SRC}"
 
 echo "   found SoildTunnel Cargo manifest(s):"
 find "${SOILDTUNNEL_SRC}" -maxdepth 2 -name Cargo.toml -not -path '*/target/*' | sed 's/^/     /'
+
+# --- tor daemon ------------------------------------------------------------------
+# Guardian Project publishes the daemon as tor-android, but the app never uses
+# a class from it: TorManager exec()s libtor.so straight out of
+# nativeLibraryDir. It also cannot stay a Gradle dependency -- since 0.4.9.6
+# the AAR metadata requires compileSdk 37 and this app builds against 35, and
+# 0.4.9.14 (consensus protocol fixes + five security releases) is no
+# exception -- so the binaries are taken from the published AAR instead.
+TOR_VERSION="${TOR_VERSION:-0.4.9.14}"
+TOR_AAR_URL="https://repo1.maven.org/maven2/info/guardianproject/tor-android/${TOR_VERSION}/tor-android-${TOR_VERSION}.aar"
+TOR_AAR="${NATIVE_DIR}/tor-android-${TOR_VERSION}.aar"
+JNI_LIBS="${PROJECT_DIR}/app/src/main/jniLibs"
+
+echo "==> Fetching tor ${TOR_VERSION} daemon (libtor.so)"
+for attempt in 1 2 3; do
+  if curl -fsSL --max-time 300 -o "${TOR_AAR}.part" "${TOR_AAR_URL}"; then
+    mv "${TOR_AAR}.part" "${TOR_AAR}"
+    break
+  fi
+  rm -f "${TOR_AAR}.part"
+  if [ "${attempt}" -eq 3 ]; then
+    echo "ERROR: could not download ${TOR_AAR_URL}" >&2
+    exit 1
+  fi
+  echo "   download failed (attempt ${attempt}/3), retrying in 5s" >&2
+  sleep 5
+done
+if [ ! -s "${TOR_AAR}" ]; then
+  echo "ERROR: downloaded tor AAR is empty at ${TOR_AAR}" >&2
+  exit 1
+fi
+
+rm -rf "${NATIVE_DIR}/tor-aar"
+mkdir -p "${NATIVE_DIR}/tor-aar"
+unzip -q -o "${TOR_AAR}" "jni/*" -d "${NATIVE_DIR}/tor-aar"
+
+# Same ABI list as build-natives.sh -- x86/x86_64 builds inside the AAR are
+# never shipped, so they are deliberately not unpacked.
+for abi in arm64-v8a armeabi-v7a; do
+  src="${NATIVE_DIR}/tor-aar/jni/${abi}/libtor.so"
+  if [ ! -s "${src}" ]; then
+    echo "ERROR: tor ${TOR_VERSION} AAR has no libtor.so for ${abi}" >&2
+    exit 1
+  fi
+  mkdir -p "${JNI_LIBS}/${abi}"
+  cp "${src}" "${JNI_LIBS}/${abi}/libtor.so"
+  echo "   jniLibs/${abi}/libtor.so ($(wc -c < "${src}" | tr -d ' ') bytes)"
+done
 
 echo "==> Native sources ready under ${NATIVE_DIR}"

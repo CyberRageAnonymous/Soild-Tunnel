@@ -239,10 +239,15 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
-    // Tor network: the daemon binary (libtor.so per ABI) plus the pluggable
-    // transports (obfs4/snowflake/webtunnel/meek) for bridged entry. Both
-    // ship on Maven Central, so no extra repository is needed.
-    implementation("info.guardianproject:tor-android:0.4.9.14")
+    // Tor network: the pluggable transports (obfs4/snowflake/webtunnel/meek)
+    // for bridged entry ship on Maven Central, so no extra repository is
+    // needed. The daemon binary (libtor.so per ABI) is NOT a Gradle dependency:
+    // since 0.4.9.6 tor-android's AAR metadata demands compileSdk 37 while
+    // this app builds against 35, and 0.4.9.14 -- which carries the consensus
+    // protocol fixes the network now requires, plus five security releases --
+    // is no exception. scripts/fetch-natives.sh unpacks libtor.so from the
+    // published AAR into jniLibs next to the other native cores; no class of
+    // that artifact is referenced (TorManager exec()s the .so itself).
     implementation("com.netzarchitekten:IPtProxy:5.5.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
