@@ -23,14 +23,25 @@ a faster engine underneath.
   short outage turned into visible on/off flapping.
 - The watchdog also checks twice as often (every 15 s), so the first rescue
   attempt lands in about 45 seconds instead of minutes.
+- WARP×2 no longer replays a dead edge. When a warp-in-warp pair went silent,
+  the engine kept it — on screen and on disk — so the next reconnect (and the
+  next app start) went straight back to the same blackholed edges and burned
+  a full timeout there every time. Both edges are now parked for a cooldown
+  and the cached pair is dropped, so every reconnect scans for a fresh one.
 
-**Tor starts again when something else holds its ports**
-- On Android every app shares the same loopback, and 127.0.0.1:9050 is a
-  popular address. When another app — or a leftover tor from an earlier run —
-  already held it, tor died instantly with "Failed to bind one of the listener
-  ports" and Tor mode never came up on any bridge. The app now claims each Tor
-  port up front, moves to a free one when the preferred port is taken, and
-  cleans up its own leftovers before starting.
+**Tor starts again — on every bridge**
+- Two separate bugs kept Tor mode from ever coming up. The first was ports:
+  on Android every app shares the same loopback, and 127.0.0.1:9050 is a
+  popular address — when something else already held it, tor died instantly
+  with "Failed to bind one of the listener ports" while the app logged "port
+  still busy — starting anyway". The app now claims each Tor port up front,
+  moves to a free one when the preferred port is taken, and cleans up its own
+  leftovers before starting.
+- The second was the bundled tor itself: the old 0.4.7.x daemon is no longer
+  accepted by the live Tor network (its consensus now requires descriptor
+  protocols it does not speak), so it refused to bootstrap on any transport,
+  bridge or not, with "You should upgrade". tor-android is now 0.4.9.14,
+  which the network accepts.
 
 **Speed**
 - The WireGuard dataplane does less work per packet: shorter lock sections and

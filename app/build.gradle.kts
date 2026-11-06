@@ -242,7 +242,7 @@ dependencies {
     // Tor network: the daemon binary (libtor.so per ABI) plus the pluggable
     // transports (obfs4/snowflake/webtunnel/meek) for bridged entry. Both
     // ship on Maven Central, so no extra repository is needed.
-    implementation("info.guardianproject:tor-android:0.4.7.14")
+    implementation("info.guardianproject:tor-android:0.4.9.14")
     implementation("com.netzarchitekten:IPtProxy:5.5.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")

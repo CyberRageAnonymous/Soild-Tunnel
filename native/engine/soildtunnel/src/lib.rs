@@ -280,6 +280,10 @@ async fn run_gool(
     let mut last_inner: Option<SocketAddr> = None;
     let mut consecutive_fails: u32 = 0;
     const MAX_CONSECUTIVE_FAILS: u32 = 2;
+    // Edges parked after a dead tunnel: without this the scan happily hands
+    // back the very pair that just blackholed, and one bad edge could own
+    // the session for minutes (same mechanism the single-tunnel loop uses).
+    let mut endpoint_cooldowns: HashMap<SocketAddr, Instant> = HashMap::new();
 
     // One-shot reuse of the last working pair across restarts: the normal
     // establish validation still confirms it, so a stale entry only costs
@@ -298,6 +302,8 @@ async fn run_gool(
     };
 
     loop {
+        let now = Instant::now();
+        endpoint_cooldowns.retain(|_, until| *until > now);
         let peer = if consecutive_fails < MAX_CONSECUTIVE_FAILS {
             if let Some(p) = last_peer {
                 Some(p)
@@ -325,7 +331,19 @@ async fn run_gool(
                 } else {
                     let mode_str = select_scan_mode_str().await;
                     let ip = select_ip_version().await;
-                    match select_wg_peers(&primary, &mode_str, ip, 2).await {
+                    let excluded: HashSet<SocketAddr> =
+                        endpoint_cooldowns.keys().copied().collect();
+                    let mut scanned =
+                        select_wg_peers(&primary, &mode_str, ip, 2, &excluded).await;
+                    if scanned.is_err() && !excluded.is_empty() {
+                        // Everything reachable may be parked (small pinned
+                        // ranges): a known-shaky edge beats no tunnel at all.
+                        log::warn!(
+                            "[-] parked endpoints left nothing to scan; ignoring the cooldowns once"
+                        );
+                        scanned = select_wg_peers(&primary, &mode_str, ip, 2, &HashSet::new()).await;
+                    }
+                    match scanned {
                         Ok(found) => {
                             consecutive_fails = 0;
                             let outer = found[0];
@@ -373,8 +391,12 @@ async fn run_gool(
                 consecutive_fails += 1;
             }
             Err(SoildTunnelError::Migrate) => {
-                // The same edges may well stall again; forget the pair and rescan.
+                // The same edges may well stall again; park them, forget the
+                // on-disk cache too and rescan.
                 log::warn!("[-] migrate requested; discarding {peer} / {inner_peer} and rescanning");
+                endpoint_cooldowns.insert(peer, Instant::now() + wg_endpoint_cooldown());
+                endpoint_cooldowns.insert(inner_peer, Instant::now() + wg_endpoint_cooldown());
+                lastconn::forget(&lastconn_path, &format!("{peer},{inner_peer}"));
                 last_peer = None;
                 last_inner = None;
                 cached = None;
@@ -383,8 +405,18 @@ async fn run_gool(
                 continue;
             }
             Err(e) => {
-                log::warn!("[-] gool tunnel ended: {e}; reconnecting");
-                consecutive_fails += 1;
+                // A pair that went dead (stale/blackholed) must not be tried
+                // again: park both edges so the rescan cannot return them,
+                // and drop the cached pair so the NEXT engine start does not
+                // replay the same poison "before rescanning".
+                log::warn!("[-] gool tunnel ended: {e}; parking {peer} / {inner_peer} and rescanning");
+                endpoint_cooldowns.insert(peer, Instant::now() + wg_endpoint_cooldown());
+                endpoint_cooldowns.insert(inner_peer, Instant::now() + wg_endpoint_cooldown());
+                lastconn::forget(&lastconn_path, &format!("{peer},{inner_peer}"));
+                last_peer = None;
+                last_inner = None;
+                cached = None;
+                consecutive_fails = 0;
             }
         }
 
@@ -838,7 +870,7 @@ async fn select_peer(identity: &account::Identity, protocol: Protocol) -> Result
             Ok(SocketAddr::new(best.ip, best.port))
         }
         Protocol::WireGuard | Protocol::WarpInWarp => {
-            let peers = select_wg_peers(identity, &mode_str, ip, 1).await?;
+            let peers = select_wg_peers(identity, &mode_str, ip, 1, &HashSet::new()).await?;
             Ok(peers[0])
         }
         Protocol::Tuic => Err(SoildTunnelError::Other(
@@ -852,6 +884,7 @@ async fn select_wg_peers(
     mode_str: &str,
     ip: prober::IpScan,
     want: usize,
+    excluded: &HashSet<SocketAddr>,
 ) -> Result<Vec<SocketAddr>> {
     log::info!(
         "[*] hunting for {want} working WireGuard endpoint(s) (handshake + data-plane verification)"
@@ -872,7 +905,7 @@ async fn select_wg_peers(
         soildnoize: soildnoize_config(),
         ports: wireguard::WG_PORTS.to_vec(),
         ip,
-        excluded: HashSet::new(),
+        excluded: excluded.clone(),
     };
 
     let found = wg_prober::hunt_wg_endpoints(&probe, mode, want).await?;
