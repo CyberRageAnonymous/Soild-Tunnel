@@ -671,9 +671,9 @@ class SoildTunnelVpnService : VpnService() {
      * either kills the process or waits for it to be registered), and a
      * session that is already cancelled checks for cancellation before the
      * process exists, so a dying session can never leak one. On top of that
-     * every engine we do NOT track — a crash leftover, or a spawn from a
-     * build older than this fix — is reaped before we start, so the local
-     * port is genuinely ours.
+     * every leftover engine process — a crash orphan, or a spawn from a build
+     * older than this fix — is reaped before we start, so the local port is
+     * genuinely ours.
      */
     private suspend fun spawnEngine(profile: ConnectionProfile): SoildTunnelProcess {
         reapOrphanEngines()
@@ -684,10 +684,13 @@ class SoildTunnelVpnService : VpnService() {
             )
             throw IllegalStateException(getString(R.string.err_port_busy))
         }
+        val session = currentCoroutineContext()
         synchronized(engineLock) {
             // The session may have been cancelled while we waited for the
-            // slot; a cancelled session must not create a process.
-            currentCoroutineContext().ensureActive()
+            // slot; a cancelled session must not create a process. Read the
+            // context outside the block: a suspension point may not sit
+            // inside a critical section.
+            session.ensureActive()
             runCatching { engine?.stop() }
             engine = null
             DiagnosticsLog.i(TAG, "Launching engine (libsoildtunnel-core.so)…")
@@ -697,18 +700,18 @@ class SoildTunnelVpnService : VpnService() {
     }
 
     /**
-     * Kills every engine process this app left behind that we are not
-     * currently tracking. Only same-uid processes running our own binary are
-     * touched (tor and hev-socks5 are different binaries), the tracked engine
-     * is always spared, and SIGTERM gets a short grace before SIGKILL so a
-     * mid-scan orphan cannot outlive the port wait below.
+     * Kills every engine process this app left behind — a crash leftover, or a
+     * spawn from a build older than this fix. Identification is the command
+     * line: only our own binary is matched (tor and hev-socks5 are different
+     * binaries), our own pid is skipped, and other apps' processes are not
+     * even readable on a hidepid device. SIGTERM gets a short grace before
+     * SIGKILL so a mid-scan orphan cannot outlive the port wait below.
      */
     private suspend fun reapOrphanEngines() {
-        val tracked = synchronized(engineLock) { engine?.pid() ?: -1 }
         val me = android.os.Process.myPid()
         val orphans = File("/proc").listFiles().orEmpty().mapNotNull { dir ->
             val pid = dir.name.toIntOrNull() ?: return@mapNotNull null
-            if (pid == me || pid == tracked) return@mapNotNull null
+            if (pid == me) return@mapNotNull null
             val cmdline = runCatching { File(dir, "cmdline").readText() }.getOrNull()
                 ?: return@mapNotNull null
             if (!cmdline.contains("libsoildtunnel-core.so")) return@mapNotNull null
