@@ -12,6 +12,19 @@ a faster engine underneath.
 - Optional SNI override, congestion-control choice, and an "insecure" switch
   for self-signed certificates.
 
+**WARP×2 (gool) connects now — every time**
+- The classic symptom was a gool profile that took forever to connect, or never
+  connected, and reported neither uplink nor downlink. A leftover engine
+  process could still be holding the local proxy port when the next connect
+  started; because starting anyway was allowed, the app put a SECOND engine on
+  top of it. The two fought over the same port forever — each one's traffic
+  died with the other's, which is why the self-test never saw a tunnel.
+- One engine owns the port now: leftovers from earlier sessions are killed
+  before every start, starting beside a live port is refused with a clear
+  error instead of racing it, engine spawn and teardown are serialized so a
+  connect can no longer slip through a disconnect, and the engine itself
+  exits when the port is already taken instead of rescanning forever.
+
 **Dead tunnels no longer stay dead — and no longer flap**
 - The classic failure was a connection that still said Connected while no site
   would open. The watchdog now asks the engine to hop to a fresh gateway after

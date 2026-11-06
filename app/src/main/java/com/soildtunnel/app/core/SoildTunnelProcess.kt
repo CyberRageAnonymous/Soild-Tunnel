@@ -63,6 +63,9 @@ class SoildTunnelProcess(
 
     fun isAlive(): Boolean = process?.isAlive == true
 
+    /** OS pid of the engine process, or -1 when nothing is tracked. */
+    fun pid(): Int = runCatching { process?.pid() ?: -1 }.getOrDefault(-1)
+
     /**
      * Blocks until the engine exits or [timeoutMs] elapses; returns true if it
      * exited.

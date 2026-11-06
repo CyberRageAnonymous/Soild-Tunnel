@@ -9,13 +9,17 @@ import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.system.Os
+import android.system.OsConstants
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import com.soildtunnel.app.SoildTunnelApp
 import com.soildtunnel.app.MainActivity
@@ -63,6 +67,15 @@ class SoildTunnelVpnService : VpnService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var tun: ParcelFileDescriptor? = null
     private var engine: SoildTunnelProcess? = null
+
+    /**
+     * Serialises every write to [engine]: the two places a process can be
+     * created and the two places one can be killed. Without it a teardown on
+     * another thread can slip in between ProcessBuilder.start() and the field
+     * write and lose the fresh process for good — see [spawnEngine].
+     */
+    private val engineLock = Any()
+
     private var tunnelStarted: Boolean = false
     private var runJob: Job? = null
 
@@ -545,14 +558,7 @@ class SoildTunnelVpnService : VpnService() {
         // Leaving lockdown (if any): the blackhole TUN is torn down here.
         lockdownTunActive = false
         cleanupNativeOnly()
-        if (!PortProbe.awaitClosed(SOCKS_HOST, SOCKS_PORT, PORT_RELEASE_WAIT_MS)) {
-            DiagnosticsLog.w(
-                TAG,
-                "Local port $SOCKS_PORT is still busy after ${PORT_RELEASE_WAIT_MS / 1000}s — starting anyway.",
-            )
-        }
-        DiagnosticsLog.i(TAG, "Launching engine (libsoildtunnel-core.so)…")
-        engine = SoildTunnelProcess(applicationInfo.nativeLibraryDir, filesDir).also { it.start(profile) }
+        spawnEngine(profile)
 
         SoildTunnelController.setState(ConnectionState.Connecting)
         updateNotification(getString(R.string.state_connecting))
@@ -642,6 +648,82 @@ class SoildTunnelVpnService : VpnService() {
                 TAG,
                 "Exit verified through the tunnel: ${exit.ip} (${exit.countryCode ?: "??"})",
             )
+        }
+    }
+
+    /**
+     * The ONLY place a new engine process is created.
+     *
+     * ORPHAN ROOT CAUSE (WARP×2 connected late, or with no uplink/downlink):
+     * the spawn used to be a bare `engine = Process(...).also { start() }`
+     * with no lock, while a disconnect, protocol switch or onDestroy could run
+     * cleanupNativeOnly() on another thread at the same instant. When the
+     * cleanup slipped in between ProcessBuilder.start() and the field write,
+     * the fresh engine was never stopped: it survived as an orphan, kept the
+     * local SOCKS5 port (1819) for itself, and every later connect either
+     * failed to bind ("Address already in use") or — because the old code
+     * started anyway after a 3 s wait — spawned a SECOND engine on top of it.
+     * The two then scanned, bound and killed each other's port in a loop
+     * forever, which is exactly the flapping the WARP×2 log showed.
+     *
+     * Two rules close the race: spawn and cleanup share [engineLock], so a
+     * teardown can never pass between the start and the field write (it
+     * either kills the process or waits for it to be registered), and a
+     * session that is already cancelled checks for cancellation before the
+     * process exists, so a dying session can never leak one. On top of that
+     * every engine we do NOT track — a crash leftover, or a spawn from a
+     * build older than this fix — is reaped before we start, so the local
+     * port is genuinely ours.
+     */
+    private suspend fun spawnEngine(profile: ConnectionProfile): SoildTunnelProcess {
+        reapOrphanEngines()
+        if (!PortProbe.awaitClosed(SOCKS_HOST, SOCKS_PORT, PORT_RELEASE_WAIT_MS)) {
+            DiagnosticsLog.e(
+                TAG,
+                "Local port $SOCKS_PORT stayed busy after reaping orphaned engines — refusing to start a second one.",
+            )
+            throw IllegalStateException(getString(R.string.err_port_busy))
+        }
+        synchronized(engineLock) {
+            // The session may have been cancelled while we waited for the
+            // slot; a cancelled session must not create a process.
+            currentCoroutineContext().ensureActive()
+            runCatching { engine?.stop() }
+            engine = null
+            DiagnosticsLog.i(TAG, "Launching engine (libsoildtunnel-core.so)…")
+            return SoildTunnelProcess(applicationInfo.nativeLibraryDir, filesDir)
+                .also { it.start(profile) }
+        }
+    }
+
+    /**
+     * Kills every engine process this app left behind that we are not
+     * currently tracking. Only same-uid processes running our own binary are
+     * touched (tor and hev-socks5 are different binaries), the tracked engine
+     * is always spared, and SIGTERM gets a short grace before SIGKILL so a
+     * mid-scan orphan cannot outlive the port wait below.
+     */
+    private suspend fun reapOrphanEngines() {
+        val tracked = synchronized(engineLock) { engine?.pid() ?: -1 }
+        val me = android.os.Process.myPid()
+        val orphans = File("/proc").listFiles().orEmpty().mapNotNull { dir ->
+            val pid = dir.name.toIntOrNull() ?: return@mapNotNull null
+            if (pid == me || pid == tracked) return@mapNotNull null
+            val cmdline = runCatching { File(dir, "cmdline").readText() }.getOrNull()
+                ?: return@mapNotNull null
+            if (!cmdline.contains("libsoildtunnel-core.so")) return@mapNotNull null
+            pid
+        }
+        if (orphans.isEmpty()) return
+        orphans.forEach { pid ->
+            DiagnosticsLog.w(TAG, "Reaping orphaned engine (pid=$pid)")
+            runCatching { Os.kill(pid, OsConstants.SIGTERM) }
+        }
+        delay(ORPHAN_STOP_GRACE_MS)
+        orphans.forEach { pid ->
+            if (runCatching { Os.kill(pid, 0) }.isSuccess) {
+                runCatching { Os.kill(pid, OsConstants.SIGKILL) }
+            }
         }
     }
 
@@ -764,7 +846,7 @@ class SoildTunnelVpnService : VpnService() {
             updateNotification(getString(R.string.state_reconnecting))
             delay(backoff)
 
-            engine = SoildTunnelProcess(applicationInfo.nativeLibraryDir, filesDir).also { it.start(profile) }
+            spawnEngine(profile)
             socksOpened = false
             recoveryDeadline = 0L
             migrateStreak = 0
@@ -1125,11 +1207,13 @@ class SoildTunnelVpnService : VpnService() {
             }
             tunnelStarted = false
         }
-        try {
-            engine?.stop()
-        } catch (_: Throwable) {
+        synchronized(engineLock) {
+            try {
+                engine?.stop()
+            } catch (_: Throwable) {
+            }
+            engine = null
         }
-        engine = null
     }
 
     /** (Re)builds the TUN as a full-tunnel blackhole: routes everything, reads nothing. */
@@ -1165,11 +1249,13 @@ class SoildTunnelVpnService : VpnService() {
             }
             tunnelStarted = false
         }
-        try {
-            engine?.stop()
-        } catch (_: Throwable) {
+        synchronized(engineLock) {
+            try {
+                engine?.stop()
+            } catch (_: Throwable) {
+            }
+            engine = null
         }
-        engine = null
         try {
             tun?.close()
         } catch (_: Throwable) {
@@ -1290,6 +1376,9 @@ class SoildTunnelVpnService : VpnService() {
          * port before starting a new one (protocol-switch fix).
          */
         private const val PORT_RELEASE_WAIT_MS = 3_000L
+
+        /** Grace an orphaned engine gets to honor SIGTERM before SIGKILL. */
+        private const val ORPHAN_STOP_GRACE_MS = 500L
 
         /**
          * Cap for the FIRST attempt of a hand-picked protocol, so a throttled

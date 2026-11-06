@@ -62,6 +62,7 @@
 
     <string name="err_engine_timeout">The engine did not open the local proxy in time.</string>
     <string name="err_engine_died">The engine stopped unexpectedly.</string>
+    <string name="err_port_busy">A leftover engine still holds the local proxy port. Please try again.</string>
     <string name="err_proxy_ports">Could not open the local proxy ports — they may already be in use by another app.</string>
 
     <!-- Connection meta: IP + flag + timer -->

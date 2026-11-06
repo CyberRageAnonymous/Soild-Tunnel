@@ -405,6 +405,20 @@ async fn run_gool(
                 continue;
             }
             Err(e) => {
+                // A busy LOCAL port can never be fixed by rescanning remote
+                // endpoints: another engine instance owns the SOCKS5 port.
+                // Exiting ends the fight (the app reaps leftovers before the
+                // next start), while parking and rescanning just spun forever
+                // on a port this process will never win.
+                if matches!(
+                    &e,
+                    SoildTunnelError::Io(io) if io.kind() == std::io::ErrorKind::AddrInUse
+                ) {
+                    log::error!(
+                        "[-] local port {listen} is already in use — another engine instance owns it; exiting"
+                    );
+                    std::process::exit(3);
+                }
                 // A pair that went dead (stale/blackholed) must not be tried
                 // again: park both edges so the rescan cannot return them,
                 // and drop the cached pair so the NEXT engine start does not
@@ -2433,7 +2447,9 @@ async fn run_warp_in_warp(
     let (inner_stack, mut inner_exit) =
         establish_wg(&secondary, forwarder, inner_mtu, false, 20, "inner").await?;
 
-    log::info!("[+] socks5 server listening on {listen}");
+    // The listener binds inside socks::serve below and is logged there only
+    // once the bind actually succeeded — announcing it here made a port that
+    // another instance already owned look "listening".
     let http_task = spawn_http_proxy(&inner_stack);
     let mut socks_task = tokio::spawn(async move { socks::serve(listen, inner_stack).await });
 

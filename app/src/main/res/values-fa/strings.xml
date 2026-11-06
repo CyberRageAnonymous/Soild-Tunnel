@@ -62,6 +62,7 @@
 
     <string name="err_engine_timeout">موتور به‌موقع پروکسی محلی را باز نکرد.</string>
     <string name="err_engine_died">موتور به‌طور غیرمنتظره متوقف شد.</string>
+    <string name="err_port_busy">یک موتور باقی‌مانده هنوز پورت پروکسی محلی را در اختیار دارد. دوباره تلاش کنید.</string>
     <string name="err_proxy_ports">باز کردن پورت‌های پروکسی محلی ممکن نشد — شاید برنامه دیگری آن‌ها را اشغال کرده است.</string>
 
     <!-- Connection meta: IP + flag + timer -->
