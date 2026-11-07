@@ -24,6 +24,16 @@ a faster engine underneath.
   error instead of racing it, engine spawn and teardown are serialized so a
   connect can no longer slip through a disconnect, and the engine itself
   exits when the port is already taken instead of rescanning forever.
+- Connecting no longer takes minutes because of one bad second. When the
+  saved pair from the last session was refused instantly (a transient blip —
+  the same edges answer fine a moment later), the engine used to park BOTH
+  edges for five minutes — longer than the whole connect budget — so every
+  scan in that run came up with only one edge and the first attempt burned
+  its full timeout before a second engine connected in seconds. A quick
+  refusal of the recycled pair is now treated as a stale hint instead of a
+  dead edge, and a scan left short by parked edges retries with the cooldowns
+  ignored. Worst case is unchanged; the common case drops from minutes to
+  seconds.
 
 **Dead tunnels no longer stay dead — and no longer flap**
 - The classic failure was a connection that still said Connected while no site

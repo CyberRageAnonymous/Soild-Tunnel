@@ -319,6 +319,10 @@ async fn run_gool(
             None
         };
 
+        // Whether this attempt was seeded from the on-disk pair rather than a
+        // fresh scan: a quick refusal of a recycled pair is a stale hint, not
+        // a dead edge (the next start proves it within seconds).
+        let mut used_cache = false;
         let pair = match peer {
             Some(p) => Some((p, last_inner)),
             None => {
@@ -326,6 +330,7 @@ async fn run_gool(
                     log::info!(
                         "[*] reusing last working warp-in-warp pair {outer} / {inner} before rescanning"
                     );
+                    used_cache = true;
                     consecutive_fails = 0;
                     Some((outer, Some(inner)))
                 } else {
@@ -335,11 +340,16 @@ async fn run_gool(
                         endpoint_cooldowns.keys().copied().collect();
                     let mut scanned =
                         select_wg_peers(&primary, &mode_str, ip, 2, &excluded).await;
-                    if scanned.is_err() && !excluded.is_empty() {
+                    if (scanned.is_err()
+                        || matches!(&scanned, Ok(found) if found.len() < 2))
+                        && !excluded.is_empty()
+                    {
                         // Everything reachable may be parked (small pinned
-                        // ranges): a known-shaky edge beats no tunnel at all.
+                        // ranges), or the parked pair is exactly the one the
+                        // scan needed: a known-shaky edge beats no tunnel at
+                        // all — and warp-in-warp refuses to run on one edge.
                         log::warn!(
-                            "[-] parked endpoints left nothing to scan; ignoring the cooldowns once"
+                            "[-] parked endpoints left the scan short; ignoring the cooldowns once"
                         );
                         scanned = select_wg_peers(&primary, &mode_str, ip, 2, &HashSet::new()).await;
                     }
@@ -385,6 +395,7 @@ async fn run_gool(
             std::env::var("SOILDTUNNEL_NOIZE").unwrap_or_else(|_| "balanced".to_string());
         lastconn::save(&lastconn_path, &format!("{peer},{inner_peer}"), &noize_profile);
 
+        let attempt_started = Instant::now();
         match run_warp_in_warp(primary.clone(), secondary.clone(), peer, inner_peer, listen).await {
             Ok(()) => {
                 log::warn!("[-] gool tunnel closed; reconnecting");
@@ -422,11 +433,33 @@ async fn run_gool(
                 // A pair that went dead (stale/blackholed) must not be tried
                 // again: park both edges so the rescan cannot return them,
                 // and drop the cached pair so the NEXT engine start does not
-                // replay the same poison "before rescanning".
-                log::warn!("[-] gool tunnel ended: {e}; parking {peer} / {inner_peer} and rescanning");
-                endpoint_cooldowns.insert(peer, Instant::now() + wg_endpoint_cooldown());
-                endpoint_cooldowns.insert(inner_peer, Instant::now() + wg_endpoint_cooldown());
-                lastconn::forget(&lastconn_path, &format!("{peer},{inner_peer}"));
+                // replay the same poison "before rescanning" — unless the
+                // pair came from that cache and died instantly (see below).
+                let quick =
+                    used_cache && attempt_started.elapsed() < std::time::Duration::from_secs(2);
+                if quick {
+                    // The recycled pair was refused within milliseconds: a
+                    // transient blip, not a dead edge. Parking it for the
+                    // cooldown would keep both edges out of every scan in
+                    // this run while they answer fine seconds later — which
+                    // is what used to burn the whole first attempt. Forget
+                    // the on-disk cache so the next start rescans fresh; the
+                    // edges stay eligible here, and a repeat failure (from a
+                    // scan, not the cache) parks them as usual.
+                    log::warn!(
+                        "[-] gool tunnel ended: {e}; the cached pair answered too quickly to be dead — keeping {peer} / {inner_peer} for the rescan"
+                    );
+                    lastconn::forget(&lastconn_path, &format!("{peer},{inner_peer}"));
+                } else {
+                    log::warn!(
+                        "[-] gool tunnel ended: {e}; parking {peer} / {inner_peer} and rescanning"
+                    );
+                    endpoint_cooldowns
+                        .insert(peer, Instant::now() + wg_endpoint_cooldown());
+                    endpoint_cooldowns
+                        .insert(inner_peer, Instant::now() + wg_endpoint_cooldown());
+                    lastconn::forget(&lastconn_path, &format!("{peer},{inner_peer}"));
+                }
                 last_peer = None;
                 last_inner = None;
                 cached = None;
