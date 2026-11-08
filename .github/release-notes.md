@@ -1,78 +1,23 @@
-# SoildTunnel v1.1.2
+# SoildTunnel v1.1.3
 
-A new protocol for people who run their own server, a much steadier rescue
-when a connection silently dies, Tor that finally starts on busy phones, and
-a faster engine underneath.
+A slow-connect fix for WARP×2: one bad second no longer costs minutes.
 
-**New: TUIC**
-- TUIC v5 is built in now: point the app at your own QUIC server (address,
-  UUID and password) and your traffic rides modern QUIC instead of WARP.
-  The credentials are sealed in the Android Keystore and passed to the core
-  out of sight of the command line.
-- Optional SNI override, congestion-control choice, and an "insecure" switch
-  for self-signed certificates.
+**WARP×2 (gool) connects fast again**
+- The saved pair from the last session is tried before any scan, and a
+  refused handshake used to park BOTH edges for five minutes — twice the
+  whole connect budget. Every scan in that run then came up with only one
+  edge, the first attempt burned its full timeout, and only a second engine
+  connected — to the same edges — seconds later. The usual result was two
+  minutes on "Connecting" for a tunnel that was actually fine.
+- A refusal that arrives in milliseconds from the recycled pair is now
+  treated as a stale hint rather than a dead edge: the edges stay eligible,
+  the on-disk cache is dropped and the rescan decides. A repeat failure —
+  from a scan rather than the cache — parks them exactly as before.
+- A scan left short of two edges by parked endpoints now retries once with
+  the cooldowns ignored (warp-in-warp cannot run on a single edge anyway),
+  instead of only doing that when the scan outright failed.
 
-**WARP×2 (gool) connects now — every time**
-- The classic symptom was a gool profile that took forever to connect, or never
-  connected, and reported neither uplink nor downlink. A leftover engine
-  process could still be holding the local proxy port when the next connect
-  started; because starting anyway was allowed, the app put a SECOND engine on
-  top of it. The two fought over the same port forever — each one's traffic
-  died with the other's, which is why the self-test never saw a tunnel.
-- One engine owns the port now: leftovers from earlier sessions are killed
-  before every start, starting beside a live port is refused with a clear
-  error instead of racing it, engine spawn and teardown are serialized so a
-  connect can no longer slip through a disconnect, and the engine itself
-  exits when the port is already taken instead of rescanning forever.
-- Connecting no longer takes minutes because of one bad second. When the
-  saved pair from the last session was refused instantly (a transient blip —
-  the same edges answer fine a moment later), the engine used to park BOTH
-  edges for five minutes — longer than the whole connect budget — so every
-  scan in that run came up with only one edge and the first attempt burned
-  its full timeout before a second engine connected in seconds. A quick
-  refusal of the recycled pair is now treated as a stale hint instead of a
-  dead edge, and a scan left short by parked edges retries with the cooldowns
-  ignored. Worst case is unchanged; the common case drops from minutes to
-  seconds.
+Everything from 1.1.2 — TUIC, the Tor upgrade, the single-engine guard and
+the watchdog rework — is included.
 
-**Dead tunnels no longer stay dead — and no longer flap**
-- The classic failure was a connection that still said Connected while no site
-  would open. The watchdog now asks the engine to hop to a fresh gateway after
-  the first failed check — and every protocol listens for that request,
-  including WARP×2 (gool), which used to ignore it until a full engine restart.
-- Hopping is bounded now: one hop per dead episode, a recovery window sized by
-  the scan mode, and a cold engine restart as the last resort. Previously each
-  failed check asked again, so rescans stacked on top of each other and a
-  short outage turned into visible on/off flapping.
-- The watchdog also checks twice as often (every 15 s), so the first rescue
-  attempt lands in about 45 seconds instead of minutes.
-- WARP×2 no longer replays a dead edge. When a warp-in-warp pair went silent,
-  the engine kept it — on screen and on disk — so the next reconnect (and the
-  next app start) went straight back to the same blackholed edges and burned
-  a full timeout there every time. Both edges are now parked for a cooldown
-  and the cached pair is dropped, so every reconnect scans for a fresh one.
-
-**Tor starts again — on every bridge**
-- Two separate bugs kept Tor mode from ever coming up. The first was ports:
-  on Android every app shares the same loopback, and 127.0.0.1:9050 is a
-  popular address — when something else already held it, tor died instantly
-  with "Failed to bind one of the listener ports" while the app logged "port
-  still busy — starting anyway". The app now claims each Tor port up front,
-  moves to a free one when the preferred port is taken, and cleans up its own
-  leftovers before starting.
-- The second was the bundled tor itself: the old 0.4.7.x daemon is no longer
-  accepted by the live Tor network (its consensus now requires descriptor
-  protocols it does not speak), so it refused to bootstrap on any transport,
-  bridge or not, with "You should upgrade". The bundled tor is now 0.4.9.14,
-  which the network accepts.
-
-**Speed**
-- The WireGuard dataplane does less work per packet: shorter lock sections and
-  no per-packet buffer copies, for higher throughput and less battery drain on
-  WARP and WARP×2.
-
-**Under the hood**
-- The engine's unit tests now run on every CI build, so a release can never
-  ship with a broken core.
-
-Version: SoildTunnel 1.1.2 (version code 13).
+Version: SoildTunnel 1.1.3 (version code 14).
