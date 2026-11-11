@@ -171,15 +171,10 @@ impl Backend {
         port: u16,
     ) -> Result<(TcpUp, mpsc::Receiver<Vec<u8>>)> {
         match self {
-            Backend::Stack(stack) => {
-                let ip = resolve(stack, target.clone()).await?;
-                let conn = stack.open_tcp(SocketAddr::new(ip, port)).await?;
-                let (sender, from_stack) = conn.into_split();
-                Ok((TcpUp::Stack(sender), from_stack))
-            }
+            Backend::Stack(stack) => open_tcp_on(stack, target, port).await,
             Backend::Swap(swap) => {
-                let current = Self::Stack(swap.current());
-                current.open_tcp(target, port).await
+                let current = swap.current();
+                open_tcp_on(&current, target, port).await
             }
             Backend::Out(outbound) => {
                 let host = match target {
@@ -198,14 +193,10 @@ impl Backend {
         dst: SocketAddr,
     ) -> Result<(TcpUp, mpsc::Receiver<Vec<u8>>)> {
         match self {
-            Backend::Stack(stack) => {
-                let conn = stack.open_tcp(dst).await?;
-                let (sender, from_stack) = conn.into_split();
-                Ok((TcpUp::Stack(sender), from_stack))
-            }
+            Backend::Stack(stack) => open_tcp_addr_on(stack, dst).await,
             Backend::Swap(swap) => {
-                let current = Self::Stack(swap.current());
-                current.open_tcp_addr(dst).await
+                let current = swap.current();
+                open_tcp_addr_on(&current, dst).await
             }
             Backend::Out(outbound) => {
                 let pipe = outbound.open_tcp(&dst.ip().to_string(), dst.port()).await?;
@@ -217,14 +208,10 @@ impl Backend {
 
     async fn open_udp(&self) -> Result<(UdpUp, mpsc::Receiver<(SocketAddr, Vec<u8>)>)> {
         match self {
-            Backend::Stack(stack) => {
-                let conn = stack.open_udp().await?;
-                let (sender, from_stack) = conn.into_split();
-                Ok((UdpUp::Stack(sender), from_stack))
-            }
+            Backend::Stack(stack) => open_udp_on(stack).await,
             Backend::Swap(swap) => {
-                let current = Self::Stack(swap.current());
-                current.open_udp().await
+                let current = swap.current();
+                open_udp_on(&current).await
             }
             Backend::Out(outbound) => {
                 let pipe = outbound.open_udp().await?;
@@ -246,6 +233,37 @@ impl Backend {
             Backend::Out(_) => dns_exchange_tcp(self, name).await,
         }
     }
+}
+
+// Shared by the plain stack and the repointed one: a swapped backend hands its
+// handle to these instead of calling back into the method that asked, which
+// would make the returned future infinitely large.
+async fn open_tcp_on(
+    stack: &StackHandle,
+    target: &Target,
+    port: u16,
+) -> Result<(TcpUp, mpsc::Receiver<Vec<u8>>)> {
+    let ip = resolve(stack, target.clone()).await?;
+    let conn = stack.open_tcp(SocketAddr::new(ip, port)).await?;
+    let (sender, from_stack) = conn.into_split();
+    Ok((TcpUp::Stack(sender), from_stack))
+}
+
+async fn open_tcp_addr_on(
+    stack: &StackHandle,
+    dst: SocketAddr,
+) -> Result<(TcpUp, mpsc::Receiver<Vec<u8>>)> {
+    let conn = stack.open_tcp(dst).await?;
+    let (sender, from_stack) = conn.into_split();
+    Ok((TcpUp::Stack(sender), from_stack))
+}
+
+async fn open_udp_on(
+    stack: &StackHandle,
+) -> Result<(UdpUp, mpsc::Receiver<(SocketAddr, Vec<u8>)>)> {
+    let conn = stack.open_udp().await?;
+    let (sender, from_stack) = conn.into_split();
+    Ok((UdpUp::Stack(sender), from_stack))
 }
 
 static GATEWAY_PROXY: std::sync::OnceLock<SocketAddr> = std::sync::OnceLock::new();

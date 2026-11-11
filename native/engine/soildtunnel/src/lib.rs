@@ -1973,7 +1973,10 @@ async fn serve_soild_carried(
         let failure = match served {
             ServedExit::Migrate => return Err(SoildTunnelError::Migrate),
             ServedExit::Front(error) | ServedExit::Listener(error) => return error,
-            ServedExit::Inner(error) => error,
+            ServedExit::Inner(Ok(())) => {
+                SoildTunnelError::Other("carried wireguard tunnel stopped".into())
+            }
+            ServedExit::Inner(Err(error)) => error,
         };
 
         let waited = stable_since.elapsed().as_secs();
@@ -1985,7 +1988,7 @@ async fn serve_soild_carried(
         }
 
         if repairs >= max_repairs {
-            return failure;
+            return Err(failure);
         }
 
         repairs += 1;
@@ -1995,7 +1998,7 @@ async fn serve_soild_carried(
 
         let fresh = match establish_carried_inner(outer, &identity, &inner_path).await {
             Ok(fresh) => fresh,
-            Err(error) => return error,
+            Err(error) => return Err(error),
         };
         spawn_inner_geo_check(&fresh);
         swap.swap(fresh.stack.clone());
