@@ -78,14 +78,14 @@ impl std::fmt::Display for Target {
 
 /// Where proxied traffic goes. `Stack` is the existing in-tunnel TCP/IP stack;
 /// `Out` hands the connection to an outbound protocol that speaks for itself
-/// and can keep a name as a name instead of resolving it here; `Swap` follows
-/// a stack the Soild carried hop can repoint at a rebuilt inner tunnel while
-/// these listeners stay bound to their ports.
+/// and can keep a name as a name instead of resolving it here; `Pool` follows
+/// the members of a Soild carried hop, which can rebuild or grow a tunnel
+/// while these listeners stay bound to their ports.
 #[derive(Clone)]
 pub(crate) enum Backend {
     Stack(StackHandle),
     Out(std::sync::Arc<crate::outbound::Outbound>),
-    Swap(std::sync::Arc<crate::netstack::SwapStack>),
+    Pool(std::sync::Arc<crate::netstack::MultiStack>),
 }
 
 pub(crate) enum TcpUp {
@@ -172,8 +172,8 @@ impl Backend {
     ) -> Result<(TcpUp, mpsc::Receiver<Vec<u8>>)> {
         match self {
             Backend::Stack(stack) => open_tcp_on(stack, target, port).await,
-            Backend::Swap(swap) => {
-                let current = swap.current();
+            Backend::Pool(pool) => {
+                let current = pool.pick();
                 open_tcp_on(&current, target, port).await
             }
             Backend::Out(outbound) => {
@@ -194,8 +194,8 @@ impl Backend {
     ) -> Result<(TcpUp, mpsc::Receiver<Vec<u8>>)> {
         match self {
             Backend::Stack(stack) => open_tcp_addr_on(stack, dst).await,
-            Backend::Swap(swap) => {
-                let current = swap.current();
+            Backend::Pool(pool) => {
+                let current = pool.pick();
                 open_tcp_addr_on(&current, dst).await
             }
             Backend::Out(outbound) => {
@@ -209,8 +209,8 @@ impl Backend {
     async fn open_udp(&self) -> Result<(UdpUp, mpsc::Receiver<(SocketAddr, Vec<u8>)>)> {
         match self {
             Backend::Stack(stack) => open_udp_on(stack).await,
-            Backend::Swap(swap) => {
-                let current = swap.current();
+            Backend::Pool(pool) => {
+                let current = pool.pick();
                 open_udp_on(&current).await
             }
             Backend::Out(outbound) => {
@@ -224,9 +224,9 @@ impl Backend {
     async fn dns(&self, name: &str) -> Result<IpAddr> {
         match self {
             Backend::Stack(stack) => dns_resolve(stack, name).await,
-            Backend::Swap(swap) => {
-                let current = swap.current();
-                dns_resolve(&current, name).await
+            Backend::Pool(pool) => {
+                let primary = pool.primary();
+                dns_resolve(&primary, name).await
             }
             // The outbound path carries one UDP session for the client, so a
             // second one for a lookup would push it aside. TCP keeps them apart.
@@ -235,7 +235,7 @@ impl Backend {
     }
 }
 
-// Shared by the plain stack and the repointed one: a swapped backend hands its
+// Shared by the plain stack and the pooled ones: a pooled backend hands its
 // handle to these instead of calling back into the method that asked, which
 // would make the returned future infinitely large.
 async fn open_tcp_on(
