@@ -1324,7 +1324,8 @@ async fn run_masque(
                 Ok(win) => {
                     active_peer = win.peer;
                     if win.peer != peer {
-                        log::info!("[+] the race settled on cloudflare edge {win.peer}");
+                        let settled = win.peer;
+                        log::info!("[+] the race settled on cloudflare edge {settled}");
                     }
                     if forced.is_none() {
                         let profile =
@@ -1652,7 +1653,7 @@ async fn race_attempt(
 /// lost, stay behind as standby for the next switch.
 async fn establish_soild_race(
     identity: &account::Identity,
-    peers: Vec<SocketAddr>,
+    mut peers: Vec<SocketAddr>,
     ech: Option<Vec<u8>>,
     prefer_h2: Option<bool>,
 ) -> Result<RaceWin> {
@@ -2352,7 +2353,10 @@ async fn serve_carried_hop(
                 stable_since = tokio::time::Instant::now();
             }
             HopEvent::Front(outcome) => {
-                let failure = outcome;
+                let failure = match outcome {
+                    Err(error) => error,
+                    Ok(()) => SoildTunnelError::Other("masque tunnel stopped".into()),
+                };
                 let (f_identity, f_ech, f_h2, f_peers) = match ctx.as_ref() {
                     Some(front_ctx) if !front_ctx.candidates.is_empty() => (
                         front_ctx.identity.clone(),
@@ -2362,10 +2366,10 @@ async fn serve_carried_hop(
                     ),
                     // Without standby there is nothing to switch to: hand the
                     // error back so the outer loop scans fresh gateways.
-                    _ => return failure,
+                    _ => return Err(failure),
                 };
                 if !refill_repairs(&mut repairs, &mut stable_since, max_repairs, stable_after) {
-                    return failure;
+                    return Err(failure);
                 }
                 repairs += 1;
                 log::warn!(
@@ -2377,14 +2381,15 @@ async fn serve_carried_hop(
                     Ok(win) => win,
                     Err(error) => {
                         log::warn!("[-] the standby race found no front: {error}");
-                        return error;
+                        return Err(error);
                     }
                 };
                 if let Some(front_ctx) = ctx.as_mut() {
                     front_ctx.candidates = win.standby;
                 }
+                let moved_to = win.peer;
                 log::info!(
-                    "[+] front moved to cloudflare edge {win.peer}; rebuilding the inner hop on it"
+                    "[+] front moved to cloudflare edge {moved_to}; rebuilding the inner hop on it"
                 );
 
                 // Out with the old front, in with the new one — the listeners
