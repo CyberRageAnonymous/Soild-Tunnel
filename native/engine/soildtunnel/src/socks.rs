@@ -78,11 +78,14 @@ impl std::fmt::Display for Target {
 
 /// Where proxied traffic goes. `Stack` is the existing in-tunnel TCP/IP stack;
 /// `Out` hands the connection to an outbound protocol that speaks for itself
-/// and can keep a name as a name instead of resolving it here.
+/// and can keep a name as a name instead of resolving it here; `Swap` follows
+/// a stack the Soild carried hop can repoint at a rebuilt inner tunnel while
+/// these listeners stay bound to their ports.
 #[derive(Clone)]
 pub(crate) enum Backend {
     Stack(StackHandle),
     Out(std::sync::Arc<crate::outbound::Outbound>),
+    Swap(std::sync::Arc<crate::netstack::SwapStack>),
 }
 
 pub(crate) enum TcpUp {
@@ -174,6 +177,10 @@ impl Backend {
                 let (sender, from_stack) = conn.into_split();
                 Ok((TcpUp::Stack(sender), from_stack))
             }
+            Backend::Swap(swap) => {
+                let current = Self::Stack(swap.current());
+                current.open_tcp(target, port).await
+            }
             Backend::Out(outbound) => {
                 let host = match target {
                     Target::Domain(name) => name.clone(),
@@ -196,6 +203,10 @@ impl Backend {
                 let (sender, from_stack) = conn.into_split();
                 Ok((TcpUp::Stack(sender), from_stack))
             }
+            Backend::Swap(swap) => {
+                let current = Self::Stack(swap.current());
+                current.open_tcp_addr(dst).await
+            }
             Backend::Out(outbound) => {
                 let pipe = outbound.open_tcp(&dst.ip().to_string(), dst.port()).await?;
                 let (sender, from_stack) = pipe.into_split();
@@ -211,6 +222,10 @@ impl Backend {
                 let (sender, from_stack) = conn.into_split();
                 Ok((UdpUp::Stack(sender), from_stack))
             }
+            Backend::Swap(swap) => {
+                let current = Self::Stack(swap.current());
+                current.open_udp().await
+            }
             Backend::Out(outbound) => {
                 let pipe = outbound.open_udp().await?;
                 let (sender, from_stack) = pipe.into_split();
@@ -222,6 +237,10 @@ impl Backend {
     async fn dns(&self, name: &str) -> Result<IpAddr> {
         match self {
             Backend::Stack(stack) => dns_resolve(stack, name).await,
+            Backend::Swap(swap) => {
+                let current = swap.current();
+                dns_resolve(&current, name).await
+            }
             // The outbound path carries one UDP session for the client, so a
             // second one for a lookup would push it aside. TCP keeps them apart.
             Backend::Out(_) => dns_exchange_tcp(self, name).await,

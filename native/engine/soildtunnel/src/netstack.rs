@@ -298,6 +298,37 @@ impl StackHandle {
     }
 }
 
+/// A stack handle whose active member can be repointed while listeners keep
+/// serving: the Soild carried hop rebuilds only its inner tunnel after a
+/// flap, so the SOCKS/HTTP servers must be able to follow a fresh netstack
+/// without rebinding their ports. New connections go to whatever is current;
+/// existing ones stay on the stack they opened and simply end with it.
+#[derive(Clone)]
+pub struct SwapStack {
+    current: std::sync::Arc<std::sync::RwLock<StackHandle>>,
+}
+
+impl SwapStack {
+    pub fn new(handle: StackHandle) -> Self {
+        Self {
+            current: std::sync::Arc::new(std::sync::RwLock::new(handle)),
+        }
+    }
+
+    /// A clone of the stack new connections should use right now.
+    pub fn current(&self) -> StackHandle {
+        self.current
+            .read()
+            .expect("swap stack lock poisoned")
+            .clone()
+    }
+
+    /// Point every future connection at `handle`.
+    pub fn swap(&self, handle: StackHandle) {
+        *self.current.write().expect("swap stack lock poisoned") = handle;
+    }
+}
+
 struct TcpState {
     handle: SocketHandle,
     to_app: mpsc::Sender<Vec<u8>>,
@@ -911,6 +942,46 @@ mod tests {
                 })
                 .expect("inbound channel should stay open");
         }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn swap_stack_repoints_new_connections_and_keeps_old_ones() {
+        // Held for the whole test: dropping it closes the inbound channel and
+        // takes the live stack down with it.
+        let (_inbound_tx, inbound_rx) = mpsc::channel::<Vec<u8>>(4);
+        let (outbound_tx, _outbound_rx) = mpsc::channel::<Vec<u8>>(1);
+        let live = spawn("198.18.0.1", "fc00::1", 1400, inbound_rx, outbound_tx)
+            .expect("netstack should start");
+
+        let swap = SwapStack::new(live.clone());
+        let follower = swap.clone();
+
+        follower
+            .current()
+            .open_udp()
+            .await
+            .expect("the initial member should accept connections");
+
+        // A handle cloned before a swap keeps serving its own stack; only
+        // future connections follow the repoint.
+        let kept = swap.current();
+        let (dead_tx, dead_rx) = mpsc::channel::<Cmd>(1);
+        drop(dead_rx);
+        swap.swap(StackHandle { cmd_tx: dead_tx });
+
+        kept
+            .open_udp()
+            .await
+            .expect("a handle taken before the swap should keep working");
+
+        let error = match follower.current().open_udp().await {
+            Ok(_) => panic!("a swapped-in dead stack should refuse connections"),
+            Err(error) => error,
+        };
+        assert!(
+            error.to_string().contains("netstack closed"),
+            "unexpected error: {error}"
+        );
     }
 
     fn checksum16(data: &[u8], initial: u32) -> u16 {

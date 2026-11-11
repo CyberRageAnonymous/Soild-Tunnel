@@ -1756,12 +1756,264 @@ async fn cloudflare_trace_country(stack: &netstack::StackHandle) -> Result<Strin
     }
 }
 
+/// A carried inner tunnel that is up and serving: the netstack, the WG
+/// session task, and the UDP forwarder that carries it inside the front.
+struct CarriedInner {
+    stack: netstack::StackHandle,
+    exit: TunnelExit,
+    peer: SocketAddr,
+    _forwarder: TaskGuard,
+}
+
+/// Tearing the hop down must stop its WireGuard session too: dropping a
+/// `JoinHandle` only detaches the task, so without this the session would
+/// outlive the hop that carried it.
+impl Drop for CarriedInner {
+    fn drop(&mut self) {
+        self.exit.abort();
+    }
+}
+
+fn soild_inner_repairs() -> u32 {
+    std::env::var("SOILDTUNNEL_SOILD_REPAIRS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(3)
+}
+
+fn soild_inner_stable_secs() -> u64 {
+    std::env::var("SOILD_INNER_STABLE_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(30)
+}
+
+/// The outer-geo gate of the carried hop, same verdicts and log lines as the
+/// legacy path. Kept separate so the new path can run it as its own step
+/// without touching what `--gool` without a front does.
+async fn outer_geo_verdict(outer: &netstack::StackHandle, had_saved: bool) -> Result<()> {
+    match tokio::time::timeout(std::time::Duration::from_secs(15), exit_country(outer)).await {
+        Ok(Egress::Foreign { cc, via }) => {
+            OUTER_IR_STREAK.store(0, Ordering::SeqCst);
+            log::info!("[+] gool: outer gateway exits in {cc} ({via})");
+        }
+        Ok(Egress::Iranian) if !had_saved => {
+            let streak = OUTER_IR_STREAK.fetch_add(1, Ordering::SeqCst) + 1;
+            if streak < PIPE_AFTER_IR {
+                log::warn!("[-] gool: outer gateway exits in IR; dropping it and rescanning");
+                return Err(SoildTunnelError::IranianEgress);
+            }
+            OUTER_IR_STREAK.store(0, Ordering::SeqCst);
+            log::warn!("[-] gool: all recent gateways exit in IR; using this one as a pipe and checking the inner exit");
+        }
+        Ok(Egress::Iranian) => {
+            log::info!("[+] gool: outer gateway exits in IR; saved identity exists, using it as a pipe");
+        }
+        _ => log::debug!("[*] gool: outer exit country unknown; continuing"),
+    }
+    Ok(())
+}
+
+/// Bring up one carried WireGuard session, walking the candidate endpoints
+/// until one validates. The geo check is left to the caller so it can run
+/// while the listeners are already coming up.
+async fn establish_carried_inner(
+    outer: &netstack::StackHandle,
+    identity: &account::Identity,
+    inner_path: &str,
+) -> Result<CarriedInner> {
+    let candidates = gool_inner_peers(identity);
+    if candidates.is_empty() {
+        return Err(SoildTunnelError::Other(
+            "no wireguard endpoint for the carried identity".into(),
+        ));
+    }
+
+    let mut last_error =
+        SoildTunnelError::Other("no wireguard endpoint for the carried identity".into());
+
+    for inner_peer in candidates {
+        let (forwarder, forwarder_guard) = spawn_udp_forwarder(outer, inner_peer).await?;
+        log::info!(
+            "[+] gool: wireguard endpoint {inner_peer} tunneled through masque via {forwarder}"
+        );
+        for attempt in 1..=GOOL_INNER_ATTEMPTS {
+            match establish_wg(identity, forwarder, GOOL_INNER_MTU, false, 10, "gool").await {
+                Ok((inner_stack, inner_exit)) => {
+                    let endpoint = inner_peer.ip().to_string();
+                    if identity.assigned_endpoint != endpoint
+                        && std::env::var("SOILDTUNNEL_GOOL_INNER").is_err()
+                    {
+                        let remembered = account::Identity {
+                            assigned_endpoint: endpoint.clone(),
+                            ..identity.clone()
+                        };
+                        if config::save(inner_path, &remembered).is_ok() {
+                            log::info!("[+] gool remembers {endpoint} as its wireguard endpoint");
+                        }
+                    }
+
+                    log::info!("[+] gool ready: wireguard {inner_peer} rides inside masque");
+                    return Ok(CarriedInner {
+                        stack: inner_stack,
+                        exit: inner_exit,
+                        peer: inner_peer,
+                        _forwarder: forwarder_guard,
+                    });
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[-] gool wireguard {inner_peer} attempt {attempt}/{GOOL_INNER_ATTEMPTS} failed: {e}"
+                    );
+                    last_error = e;
+                }
+            }
+        }
+    }
+
+    Err(last_error)
+}
+
+/// Log-only inner geo check: the legacy path blocked on it before opening
+/// SOCKS, here it runs detached so connect time stays short.
+fn spawn_inner_geo_check(inner: &CarriedInner) {
+    let stack = inner.stack.clone();
+    let peer = inner.peer;
+    tokio::spawn(async move {
+        match tokio::time::timeout(std::time::Duration::from_secs(15), exit_country(&stack)).await
+        {
+            Ok(Egress::Iranian) => log::warn!(
+                "[*] gool inner {peer} geo-check reports IR (unreliable through tunnel); continuing anyway"
+            ),
+            Ok(Egress::Foreign { cc, via }) => log::info!("[+] gool inner exits in {cc} ({via})"),
+            _ => log::debug!("[*] gool inner exit country unknown; continuing"),
+        }
+    });
+}
+
+/// Which task ended the served session, so a dead inner tunnel can be
+/// rebuilt while a dead front or listener still ends everything.
+enum ServedExit {
+    Front(Result<()>),
+    Inner(Result<()>),
+    Listener(Result<()>),
+    Migrate,
+}
+
+/// The Soild carried path: validate the front, bring up the inner tunnel,
+/// then serve through a repointed stack so only the inner hop is rebuilt
+/// when it drops. The front task is borrowed, never owned, so the caller's
+/// select over it keeps working unchanged.
+async fn serve_soild_carried(
+    outer: &netstack::StackHandle,
+    outer_exit: &mut TunnelExit,
+    listen: SocketAddr,
+    inner_path: String,
+) -> Result<()> {
+    let had_saved = std::path::Path::new(&inner_path).exists();
+
+    // The outer-geo verdict can eat its whole 15s budget, so it runs alongside
+    // identity loading and the inner handshake instead of ahead of them. It is
+    // joined before serving, and before returning an error, so an Iranian
+    // egress still stops the hop the way the legacy path does.
+    let geo_outer = outer.clone();
+    let geo_task = tokio::spawn(async move { outer_geo_verdict(&geo_outer, had_saved).await });
+
+    let setup = async {
+        let identity = carried_wg_identity(outer, &inner_path).await?;
+        let inner = establish_carried_inner(outer, &identity, &inner_path).await?;
+        Ok::<_, SoildTunnelError>((identity, inner))
+    }
+    .await;
+
+    let geo = match geo_task.await {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            log::warn!("[*] gool outer geo check task ended early: {error}");
+            Ok(())
+        }
+    };
+    geo?;
+
+    let (identity, mut inner) = setup?;
+    spawn_inner_geo_check(&inner);
+
+    let swap = std::sync::Arc::new(netstack::SwapStack::new(inner.stack.clone()));
+    let socks_backend = socks::Backend::Swap(swap.clone());
+
+    let mut tasks = TaskGuard::new();
+    let mut socks_task =
+        tokio::spawn(async move { socks::serve_backend(listen, socks_backend).await });
+    tasks.push(socks_task.abort_handle());
+
+    let http_task = spawn_http_proxy_backend(socks::Backend::Swap(swap.clone()));
+    if let Some(task) = &http_task {
+        tasks.push(task.abort_handle());
+    }
+
+    consume_migrate_hint();
+
+    let max_repairs = soild_inner_repairs();
+    let stable_after = soild_inner_stable_secs();
+    let mut repairs = 0u32;
+    let mut stable_since = tokio::time::Instant::now();
+
+    loop {
+        let served = tokio::select! {
+            result = &mut *outer_exit => ServedExit::Front(join_outcome("masque tunnel", result)),
+            result = &mut inner.exit => ServedExit::Inner(join_outcome("carried wireguard tunnel", result)),
+            result = &mut socks_task => ServedExit::Listener(join_outcome("socks5 server", result)),
+            _ = watch_migrate_hint() => {
+                log::warn!("[-] migrate requested; dropping the carried hop");
+                ServedExit::Migrate
+            }
+        };
+
+        let failure = match served {
+            ServedExit::Migrate => return Err(SoildTunnelError::Migrate),
+            ServedExit::Front(error) | ServedExit::Listener(error) => return error,
+            ServedExit::Inner(error) => error,
+        };
+
+        let waited = stable_since.elapsed().as_secs();
+        if repairs > 0 && waited >= stable_after {
+            log::info!(
+                "[+] gool inner held for {waited}s; refilling its repair budget ({max_repairs})"
+            );
+            repairs = 0;
+        }
+
+        if repairs >= max_repairs {
+            return failure;
+        }
+
+        repairs += 1;
+        log::warn!(
+            "[-] gool inner tunnel died ({failure}); rebuilding it in place ({repairs}/{max_repairs})"
+        );
+
+        let fresh = match establish_carried_inner(outer, &identity, &inner_path).await {
+            Ok(fresh) => fresh,
+            Err(error) => return error,
+        };
+        spawn_inner_geo_check(&fresh);
+        swap.swap(fresh.stack.clone());
+        inner = fresh;
+        stable_since = tokio::time::Instant::now();
+    }
+}
+
 async fn run_carried_hop(
     outer: &netstack::StackHandle,
     outer_exit: &mut TunnelExit,
     listen: SocketAddr,
     inner_path: String,
 ) -> Result<()> {
+    if front_mode() {
+        return serve_soild_carried(outer, outer_exit, listen, inner_path).await;
+    }
+
     let had_saved = std::path::Path::new(&inner_path).exists();
     match tokio::time::timeout(std::time::Duration::from_secs(15), exit_country(outer)).await
     {
@@ -2319,11 +2571,14 @@ fn http_proxy_listen() -> Option<SocketAddr> {
 }
 
 fn spawn_http_proxy(stack: &netstack::StackHandle) -> Option<TunnelExit> {
+    spawn_http_proxy_backend(socks::Backend::Stack(stack.clone()))
+}
+
+fn spawn_http_proxy_backend(backend: socks::Backend) -> Option<TunnelExit> {
     let listen = http_proxy_listen()?;
-    let stack = stack.clone();
     Some(tokio::spawn(async move {
         log::info!("[+] http proxy listening on {listen}");
-        socks::serve_http(listen, stack).await
+        socks::serve_http_backend(listen, backend).await
     }))
 }
 
