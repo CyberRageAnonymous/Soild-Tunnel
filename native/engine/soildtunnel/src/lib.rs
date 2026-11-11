@@ -2189,7 +2189,7 @@ async fn serve_carried_hop(
     mut front: FrontParts,
     listen: SocketAddr,
     inner_path: String,
-    ctx: Option<FrontCtx>,
+    mut ctx: Option<FrontCtx>,
 ) -> Result<()> {
     let had_saved = std::path::Path::new(&inner_path).exists();
 
