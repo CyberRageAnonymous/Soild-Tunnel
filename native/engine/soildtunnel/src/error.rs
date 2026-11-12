@@ -26,6 +26,9 @@ pub enum SoildTunnelError {
     #[error("iranian egress, rescanning")]
     IranianEgress,
 
+    #[error("exit country {got}, wanted {wanted}")]
+    EgressMismatch { wanted: String, got: String },
+
     #[error("migrate requested")]
     Migrate,
 

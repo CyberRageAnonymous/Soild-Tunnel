@@ -96,6 +96,7 @@ import com.soildtunnel.app.ui.components.DiagnosticsPanel
 import com.soildtunnel.app.ui.components.LanguagePanel
 import com.soildtunnel.app.ui.components.ThemePanel
 import com.soildtunnel.app.ui.components.TorExitSheet
+import com.soildtunnel.app.ui.components.ExitCountrySheet
 import com.soildtunnel.app.ui.components.UsagePanel
 import com.soildtunnel.app.ui.components.ServerPickerSheet
 import com.soildtunnel.app.ui.components.SpeedTestPanel
@@ -152,6 +153,8 @@ fun HomeScreen(
     var showServerSheet by remember { mutableStateOf(false) }
     // Tor exit picker (replaces the server console in Tor mode).
     var showTorSheet by remember { mutableStateOf(false) }
+    // Exit-country picker for the soild/gool modes.
+    var showExitCountrySheet by remember { mutableStateOf(false) }
     var updateResult by remember { mutableStateOf(UpdateChecker.getCachedResult()) }
     // One-shot Telegram channel banner (once per install, then never again).
     var telegramBannerSeen by remember {
@@ -358,7 +361,8 @@ fun HomeScreen(
 
                 // Server pill — only WARP×2 has a real node console. Smart picks its
                 // own gateway, MASQUE and WireGuard dial the same Cloudflare anycast
-                // edge, and Tor shows its exit pill above.
+                // edge, Tor shows its exit pill above, and soild/gool pick the
+                // country their carried hop really leaves from.
                 if (profile.protocol == Protocol.TOR) {
                     TorExitPill(
                         exitCountry = profile.torExitCountry,
@@ -372,6 +376,14 @@ fun HomeScreen(
                         profile = profile,
                         enabled = settingsEnabled,
                         onClick = { if (settingsEnabled) showServerSheet = true },
+                    )
+                } else if (profile.protocol == Protocol.SOILD ||
+                    (profile.protocol == Protocol.GOOL && profile.goolMode == GoolMode.ON_MASQUE)
+                ) {
+                    ExitCountryPill(
+                        exitCountry = profile.exitCountry,
+                        enabled = settingsEnabled,
+                        onClick = { if (settingsEnabled) showExitCountrySheet = true },
                     )
                 }
 
@@ -461,6 +473,14 @@ fun HomeScreen(
             connected = state.isConnected,
             onSelect = { onTorExitSelected(it) },
             onDismiss = { showTorSheet = false },
+        )
+    }
+
+    if (showExitCountrySheet) {
+        ExitCountrySheet(
+            selected = profile.exitCountry,
+            onSelect = { onProfileChange(profile.copy(exitCountry = it)) },
+            onDismiss = { showExitCountrySheet = false },
         )
     }
 
@@ -625,6 +645,62 @@ private fun TorExitPill(
     ) {
         Text(
             text = stringResource(R.string.protocol_tor),
+            style = MaterialTheme.typography.labelSmall,
+            color = CardTextDim,
+        )
+        Spacer(Modifier.width(2.dp))
+        if (flag.isNotEmpty()) {
+            Text(text = flag, fontSize = 13.sp)
+        }
+        Text(
+            text = name,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = NeonMint,
+        )
+        Spacer(Modifier.weight(1f))
+        Icon(
+            imageVector = Icons.Rounded.KeyboardArrowDown,
+            contentDescription = null,
+            tint = CardTextMuted,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+/**
+ * Home-screen pill showing the exit country pinned for soild/gool. Opens the
+ * exit-country picker; on the next connect the engine confirms the real
+ * egress and keeps hunting until it matches this pick.
+ */
+@Composable
+private fun ExitCountryPill(
+    exitCountry: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(16.dp)
+    val name = if (exitCountry.isBlank()) {
+        stringResource(R.string.exit_country_auto)
+    } else {
+        NetProbe.countryName(exitCountry).ifBlank { exitCountry }
+    }
+    val flag = if (exitCountry.isBlank()) "" else NetProbe.flagEmoji(exitCountry)
+    val alpha = if (enabled) 1f else 0.55f
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .alpha(alpha)
+            .background(color = CardSubSurface, shape = shape)
+            .border(1.dp, EdgeNeon, shape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.exit_country_label),
             style = MaterialTheme.typography.labelSmall,
             color = CardTextDim,
         )

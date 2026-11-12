@@ -222,6 +222,13 @@ data class ConnectionProfile(
      * picks the fastest exit itself.
      */
     val torExitCountry: String = "",
+    /**
+     * Pinned exit country for the soild/gool modes (two letters, e.g. "DE").
+     * Blank lets the engine pick any exit. The engine confirms the real
+     * egress after connect and keeps hunting until it matches, so a session
+     * never silently leaves from somewhere other than what was picked here.
+     */
+    val exitCountry: String = "",
 
     // ---- TUIC (only consulted when [protocol] is TUIC) ----
 
@@ -370,6 +377,18 @@ data class ConnectionProfile(
         if (hasManualPeer) {
             args += "--peer"
             args += manualPeer.trim()
+        }
+
+        // Exit country for soild and gool-on-masque — the two modes whose
+        // picker the home screen shows (gool-classic picks its node from the
+        // server console instead). The engine confirms the real egress after
+        // connect and keeps hunting until it matches this pick, so a wrong
+        // exit is dropped instead of being served.
+        val exitCountryApplies = protocol == Protocol.SOILD ||
+            (protocol == Protocol.GOOL && goolMode == GoolMode.ON_MASQUE)
+        if (exitCountryApplies && exitCountry.trim().length == 2) {
+            args += "--exit-country"
+            args += exitCountry.trim().uppercase()
         }
 
         if (fragment) args += "--fragment"

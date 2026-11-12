@@ -27,6 +27,10 @@ Protocol:
   --soild-quic             soild carried over plain MASQUE/QUIC instead
   --soild-fast             soild single tunnel, plain MASQUE/H2, fastest
                            connect without exit hunting
+  --exit-country <cc>      require the tunnel to really exit in this ISO
+                           3166-1 alpha-2 country (soild/gool). Confirmed
+                           after connect; a gateway that leaves elsewhere is
+                           avoided and the hunt continues until it matches
   --tuic <host:port>       use TUIC v5 over QUIC (bring your own server).
                            The uuid and password are read from the environment,
                            never from the command line:
@@ -153,6 +157,7 @@ pub fn parse_args(args: Vec<String>) -> crate::error::Result<()> {
 
             "--peer" => set("SOILDTUNNEL_PEER", next_value!()),
             "--wg-peer" => set("SOILDTUNNEL_WG_PEER", next_value!()),
+            "--exit-country" => set("SOILDTUNNEL_EXIT_COUNTRY", next_value!()),
 
             "--masque" => set("SOILDTUNNEL_PROTOCOL", "masque"),
             "--wg" | "--wireguard" | "--warp" => set("SOILDTUNNEL_PROTOCOL", "wg"),
