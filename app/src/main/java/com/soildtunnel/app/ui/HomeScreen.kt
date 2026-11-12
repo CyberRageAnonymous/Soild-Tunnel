@@ -39,7 +39,6 @@ import androidx.compose.material.icons.rounded.Send
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Update
-import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -99,7 +98,6 @@ import com.soildtunnel.app.ui.components.DiagnosticsPanel
 import com.soildtunnel.app.ui.components.LanguagePanel
 import com.soildtunnel.app.ui.components.ThemePanel
 import com.soildtunnel.app.ui.components.TorExitSheet
-import com.soildtunnel.app.ui.components.ExitCountrySheet
 import com.soildtunnel.app.ui.components.UsagePanel
 import com.soildtunnel.app.ui.components.ServerPickerSheet
 import com.soildtunnel.app.ui.components.SpeedTestPanel
@@ -156,8 +154,6 @@ fun HomeScreen(
     var showServerSheet by remember { mutableStateOf(false) }
     // Tor exit picker (replaces the server console in Tor mode).
     var showTorSheet by remember { mutableStateOf(false) }
-    // Exit-country picker for the soild/gool modes.
-    var showExitCountrySheet by remember { mutableStateOf(false) }
     var updateResult by remember { mutableStateOf(UpdateChecker.getCachedResult()) }
     // In-app install progress for that banner: idle until the user taps it.
     var updatePhase by remember { mutableStateOf(UpdatePhase.IDLE) }
@@ -422,8 +418,7 @@ fun HomeScreen(
 
                 // Server pill — only WARP×2 has a real node console. Smart picks its
                 // own gateway, MASQUE and WireGuard dial the same Cloudflare anycast
-                // edge, Tor shows its exit pill above, and soild/gool pick the
-                // country their carried hop really leaves from.
+                // edge, and Tor shows its exit pill above.
                 if (profile.protocol == Protocol.TOR) {
                     TorExitPill(
                         exitCountry = profile.torExitCountry,
@@ -437,19 +432,6 @@ fun HomeScreen(
                         profile = profile,
                         enabled = settingsEnabled,
                         onClick = { if (settingsEnabled) showServerSheet = true },
-                    )
-                } else if (profile.protocol == Protocol.SOILD ||
-                    (profile.protocol == Protocol.GOOL && profile.goolMode == GoolMode.ON_MASQUE)
-                ) {
-                    ExitCountryPill(
-                        exitCountry = profile.exitCountry,
-                        actual = if (state.isConnected) {
-                            ipInfo?.takeIf { it.viaTunnel }?.countryCode
-                        } else {
-                            null
-                        },
-                        enabled = settingsEnabled,
-                        onClick = { if (settingsEnabled) showExitCountrySheet = true },
                     )
                 }
 
@@ -539,14 +521,6 @@ fun HomeScreen(
             connected = state.isConnected,
             onSelect = { onTorExitSelected(it) },
             onDismiss = { showTorSheet = false },
-        )
-    }
-
-    if (showExitCountrySheet) {
-        ExitCountrySheet(
-            selected = profile.exitCountry,
-            onSelect = { onProfileChange(profile.copy(exitCountry = it)) },
-            onDismiss = { showExitCountrySheet = false },
         )
     }
 
@@ -724,84 +698,6 @@ private fun TorExitPill(
             fontWeight = FontWeight.Bold,
             color = NeonMint,
         )
-        Spacer(Modifier.weight(1f))
-        Icon(
-            imageVector = Icons.Rounded.KeyboardArrowDown,
-            contentDescription = null,
-            tint = CardTextMuted,
-            modifier = Modifier.size(20.dp),
-        )
-    }
-}
-
-/**
- * Home-screen pill showing the exit country pinned for soild/gool. Opens the
- * exit-country picker; on the next connect the engine prefers the endpoint of
- * that country and confirms it. Whatever the tunnel really left from is shown
- * beside the pick, so a wrong exit is visible without opening a panel.
- */
-@Composable
-private fun ExitCountryPill(
-    exitCountry: String,
-    actual: String?,
-    enabled: Boolean,
-    onClick: () -> Unit,
-) {
-    val shape = RoundedCornerShape(16.dp)
-    val name = if (exitCountry.isBlank()) {
-        stringResource(R.string.exit_country_auto)
-    } else {
-        NetProbe.countryName(exitCountry).ifBlank { exitCountry }
-    }
-    val flag = if (exitCountry.isBlank()) "" else NetProbe.flagEmoji(exitCountry)
-    // Only worth showing when a pick exists and the tunnel reported somewhere
-    // else; the blank/identical case just leaves the pill clean.
-    val wrongExit = actual?.takeIf {
-        exitCountry.isNotBlank() && !it.equals(exitCountry, ignoreCase = true)
-    }
-    val alpha = if (enabled) 1f else 0.55f
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .alpha(alpha)
-            .background(color = CardSubSurface, shape = shape)
-            .border(1.dp, EdgeNeon, shape)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 11.dp),
-    ) {
-        Text(
-            text = stringResource(R.string.exit_country_label),
-            style = MaterialTheme.typography.labelSmall,
-            color = CardTextDim,
-        )
-        Spacer(Modifier.width(2.dp))
-        if (flag.isNotEmpty()) {
-            Text(text = flag, fontSize = 13.sp)
-        }
-        Text(
-            text = name,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = NeonMint,
-        )
-        if (wrongExit != null) {
-            Spacer(Modifier.width(8.dp))
-            Icon(
-                imageVector = Icons.Rounded.WarningAmber,
-                contentDescription = null,
-                tint = NeonRed,
-                modifier = Modifier.size(15.dp),
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(
-                text = NetProbe.countryName(wrongExit).ifBlank { wrongExit },
-                style = MaterialTheme.typography.labelMedium,
-                color = NeonRed,
-            )
-        }
         Spacer(Modifier.weight(1f))
         Icon(
             imageVector = Icons.Rounded.KeyboardArrowDown,

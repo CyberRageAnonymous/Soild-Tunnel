@@ -1396,24 +1396,6 @@ async fn run_masque(
                     return Err(SoildTunnelError::IranianEgress);
                 }
             }
-            Err(SoildTunnelError::EgressMismatch {
-                ref wanted,
-                ref got,
-            }) => {
-                log::warn!(
-                    "[-] tunnel exits in {got}, wanted {wanted}; dropping {active_peer} and hunting again"
-                );
-                avoid.insert(active_peer);
-                lastconn::save_avoided(&avoid_path, &avoid);
-                lastconn::forget(&lastconn_path, &active_peer.to_string());
-                last_good_peer = None;
-                if forced.is_some() {
-                    return Err(SoildTunnelError::EgressMismatch {
-                        wanted: wanted.clone(),
-                        got: got.clone(),
-                    });
-                }
-            }
             Err(e) => {
                 log::warn!("[-] MASQUE tunnel ended: {e}; reconnecting");
                 if inner_path.is_some() {
@@ -1569,17 +1551,6 @@ async fn serve_masque(
         bridge,
         ctrl: _ctrl,
     } = est;
-
-    // soild-fast (and any session the user pinned a country for) exits
-    // straight through this MASQUE stack, so the choice is confirmed here
-    // before the listeners open; the carried path checks its inner hop
-    // instead. Nothing is looked up unless a country was actually picked.
-    if let Err(error) = enforce_exit_country(&stack, "masque exit").await {
-        tunnel_task.abort();
-        bridge.abort();
-        return Err(error);
-    }
-
     let mut tasks = TaskGuard::new();
     tasks.push(bridge.abort_handle());
     tasks.push(tunnel_task.abort_handle());
@@ -1797,23 +1768,9 @@ fn gool_inner_peers(identity: &account::Identity) -> Vec<SocketAddr> {
         log::warn!("[-] ignored the invalid gool peer {trimmed}");
     }
 
-    let mut hosts: Vec<String> = std::iter::once(identity.assigned_endpoint.trim().to_string())
-        .chain(wireguard::wg_seeds_v4().into_iter().map(str::to_string))
-        .collect();
-
-    // A pinned country has to be decided while choosing the endpoint, not only
-    // checked once the tunnel is up: the account's assigned endpoint is
-    // whichever POP answered first, which from home is usually the Iranian one.
-    // Offering the endpoint of the picked country first keeps the walk on it;
-    // the rest stay behind it as a fallback.
-    if let Some(wanted) = desired_exit_country() {
-        hosts.sort_by_key(|host| match wireguard::wg_seed_country(host) {
-            Some(cc) if cc == wanted => 0,
-            _ => 1,
-        });
-    }
-
     let mut peers: Vec<SocketAddr> = Vec::new();
+    let hosts = std::iter::once(identity.assigned_endpoint.trim().to_string())
+        .chain(wireguard::wg_seeds_v4().into_iter().map(str::to_string));
     for host in hosts {
         if let Ok(ip) = host.parse::<IpAddr>() {
             let peer = SocketAddr::new(ip, GOOL_INNER_PORT);
@@ -2037,99 +1994,6 @@ async fn outer_geo_verdict(outer: &netstack::StackHandle, had_saved: bool) -> Re
     Ok(())
 }
 
-/// The exit country pinned with `--exit-country`, normalised to an uppercase
-/// ISO 3166-1 alpha-2 code. `None` (the default) means any exit is fine, so
-/// nothing downstream changes behaviour until the user actually picks one.
-fn desired_exit_country() -> Option<String> {
-    static LOGGED: AtomicUsize = AtomicUsize::new(0);
-    let raw = std::env::var("SOILDTUNNEL_EXIT_COUNTRY").ok();
-    if LOGGED.swap(1, Ordering::SeqCst) == 0 {
-        match raw.as_deref() {
-            Some(value) if !value.trim().is_empty() => {
-                log::info!("[+] exit country pinned to {}", value.trim().to_uppercase());
-            }
-            _ => log::info!("[*] no exit country pinned; any exit is accepted"),
-        }
-    }
-    let raw = raw?;
-    let cc = raw.trim().to_uppercase();
-    if cc.len() == 2 && cc.bytes().all(|b| b.is_ascii_alphabetic()) {
-        Some(cc)
-    } else {
-        if !cc.is_empty() {
-            log::warn!("[-] ignoring --exit-country '{raw}'; it must be a 2-letter code");
-        }
-        None
-    }
-}
-
-/// The exit country is looked up twice: through a tunnel that just came up the
-/// in-tunnel resolver is still cold, so the first answer is often "no idea"
-/// rather than a real one. A wrong country is reported straight away, only an
-/// empty answer is worth asking again.
-const EXIT_CONFIRM_ATTEMPTS: u32 = 2;
-const EXIT_CONFIRM_FIRST_SECS: u64 = 15;
-const EXIT_CONFIRM_RETRY_SECS: u64 = 6;
-const EXIT_CONFIRM_GAP_MS: u64 = 800;
-
-/// Confirm a tunnel really leaves from the country the user picked. The geo
-/// sources are flaky through a tunnel, so an empty answer never blocks the
-/// connection — but a definite one that disagrees does: the caller drops this
-/// gateway and keeps hunting, the way the legacy path treats an Iranian exit.
-async fn enforce_exit_country(stack: &netstack::StackHandle, who: &str) -> Result<()> {
-    let wanted = match desired_exit_country() {
-        Some(cc) => cc,
-        None => return Ok(()),
-    };
-
-    let mut got: Option<String> = None;
-    let attempts = EXIT_CONFIRM_ATTEMPTS;
-    for attempt in 1..=attempts {
-        let budget = if attempt == 1 {
-            EXIT_CONFIRM_FIRST_SECS
-        } else {
-            EXIT_CONFIRM_RETRY_SECS
-        };
-        let looked = tokio::time::timeout(std::time::Duration::from_secs(budget), exit_country(stack)).await;
-        match looked {
-            Ok(Egress::Foreign { cc, via }) if cc == wanted => {
-                log::info!("[+] {who} exits in {cc} ({via}) as selected");
-                return Ok(());
-            }
-            Ok(Egress::Foreign { cc, via }) => {
-                log::warn!(
-                    "[-] {who} attempt {attempt}/{attempts} exits in {cc} ({via}), wanted {wanted}"
-                );
-                got = Some(cc);
-                break;
-            }
-            Ok(Egress::Iranian) => {
-                log::warn!(
-                    "[-] {who} attempt {attempt}/{attempts} exits in IR, wanted {wanted}"
-                );
-                got = Some("IR".to_string());
-                break;
-            }
-            Ok(Egress::Unknown) | Err(_) => {
-                log::warn!(
-                    "[*] {who} attempt {attempt}/{attempts} could not read the exit country, wanted {wanted}"
-                );
-            }
-        }
-        if attempt < attempts {
-            tokio::time::sleep(std::time::Duration::from_millis(EXIT_CONFIRM_GAP_MS)).await;
-        }
-    }
-
-    match got {
-        Some(got) => Err(SoildTunnelError::EgressMismatch { wanted, got }),
-        None => {
-            log::warn!("[*] {who} never answered the geo lookup; accepting {wanted} unconfirmed");
-            Ok(())
-        }
-    }
-}
-
 /// Bring up one carried WireGuard session, walking the candidate endpoints
 /// until one validates. The geo check is left to the caller so it can run
 /// while the listeners are already coming up.
@@ -2167,18 +2031,6 @@ async fn establish_carried_on(
         for attempt in 1..=GOOL_INNER_ATTEMPTS {
             match establish_wg(identity, forwarder, GOOL_INNER_MTU, false, 10, "gool").await {
                 Ok((inner_stack, inner_exit)) => {
-                    // A pinned exit country is confirmed on the real exit
-                    // before this candidate is accepted: one that leaves
-                    // somewhere else is dropped so the walk keeps hunting
-                    // for a gateway that actually matches. Nothing is
-                    // remembered about a rejected endpoint either.
-                    if let Err(mismatch) = enforce_exit_country(&inner_stack, "gool inner").await {
-                        log::warn!("[-] gool inner {inner_peer} rejected: {mismatch}");
-                        inner_exit.abort();
-                        last_error = mismatch;
-                        break;
-                    }
-
                     let endpoint = inner_peer.ip().to_string();
                     if identity.assigned_endpoint != endpoint
                         && std::env::var("SOILDTUNNEL_GOOL_INNER").is_err()
@@ -2214,29 +2066,17 @@ async fn establish_carried_on(
 }
 
 /// Log-only inner geo check: the legacy path blocked on it before opening
-/// SOCKS, here it runs detached so connect time stays short. It runs even when
-/// a country was pinned, because the tunnel is warm by then and this is the
-/// answer the user actually sees on the badge.
+/// SOCKS, here it runs detached so connect time stays short.
 fn spawn_inner_geo_check(inner: &CarriedInner) {
-    let wanted = desired_exit_country();
     let stack = inner.stack.clone();
     let peer = inner.peer;
     tokio::spawn(async move {
         match tokio::time::timeout(std::time::Duration::from_secs(15), exit_country(&stack)).await
         {
-            Ok(Egress::Iranian) => match wanted {
-                Some(wanted) => log::warn!("[-] gool inner {peer} exits in IR, wanted {wanted}"),
-                None => log::warn!(
-                    "[*] gool inner {peer} geo-check reports IR (unreliable through tunnel); continuing anyway"
-                ),
-            },
-            Ok(Egress::Foreign { cc, via }) => match wanted {
-                Some(wanted) if cc == wanted => {
-                    log::info!("[+] gool inner exits in {cc} ({via}) as selected")
-                }
-                Some(wanted) => log::warn!("[-] gool inner exits in {cc} ({via}), wanted {wanted}"),
-                None => log::info!("[+] gool inner exits in {cc} ({via})"),
-            },
+            Ok(Egress::Iranian) => log::warn!(
+                "[*] gool inner {peer} geo-check reports IR (unreliable through tunnel); continuing anyway"
+            ),
+            Ok(Egress::Foreign { cc, via }) => log::info!("[+] gool inner exits in {cc} ({via})"),
             _ => log::debug!("[*] gool inner exit country unknown; continuing"),
         }
     });
@@ -2280,12 +2120,6 @@ struct CarriedMember {
 /// How many inner tunnels the carried hop serves: two for a Soild front by
 /// default, one for gool, overridable for tuning.
 fn soild_edges() -> usize {
-    // Every member of the pool carries its own exit and connections are
-    // balanced across them, so a country pinned by the user gets exactly one
-    // path: a second member would happily leave from somewhere else.
-    if desired_exit_country().is_some() {
-        return 1;
-    }
     let wanted = std::env::var("SOILDTUNNEL_SOILD_EDGES")
         .ok()
         .and_then(|value| value.parse::<usize>().ok())
@@ -3222,14 +3056,6 @@ async fn run_warp_in_warp(
     log::info!("[*] establishing inner WARP tunnel (warp-in-warp)...");
     let (inner_stack, mut inner_exit) =
         establish_wg(&secondary, forwarder, inner_mtu, false, 20, "inner").await?;
-
-    // The inner hop is the exit the user actually sees, so a pinned country
-    // is confirmed before the listeners open; a mismatch tears the pair down
-    // and the loop hunts a fresh one.
-    if let Err(error) = enforce_exit_country(&inner_stack, "gool inner").await {
-        inner_exit.abort();
-        return Err(error);
-    }
 
     // The listener binds inside socks::serve below and is logged there only
     // once the bind actually succeeded — announcing it here made a port that

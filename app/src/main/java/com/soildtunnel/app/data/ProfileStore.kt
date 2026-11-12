@@ -84,7 +84,6 @@ class ProfileStore(private val context: Context) {
         val torTransport = stringPreferencesKey("torTransport")
         val torBridges = stringPreferencesKey("torBridges")
         val torExitCountry = stringPreferencesKey("torExitCountry")
-        val exitCountry = stringPreferencesKey("exitCountry")
         // TUIC (server credentials go to SecretStore)
         val tuicServer = stringPreferencesKey("tuicServer")
         val tuicSni = stringPreferencesKey("tuicSni")
@@ -174,7 +173,6 @@ class ProfileStore(private val context: Context) {
                 ?.let { runCatching { TorTransport.valueOf(it) }.getOrNull() } ?: TorTransport.OBFS4,
             torBridges = prefs[Keys.torBridges] ?: "",
             torExitCountry = prefs[Keys.torExitCountry] ?: "",
-            exitCountry = prefs[Keys.exitCountry] ?: "",
             tuicServer = prefs[Keys.tuicServer] ?: "",
             tuicUuid = secrets.read(SecretStore.TUIC_UUID),
             tuicPassword = secrets.read(SecretStore.TUIC_PASSWORD),
@@ -240,7 +238,6 @@ class ProfileStore(private val context: Context) {
             prefs[Keys.torTransport] = profile.torTransport.name
             prefs[Keys.torBridges] = profile.torBridges
             prefs[Keys.torExitCountry] = profile.torExitCountry
-            prefs[Keys.exitCountry] = profile.exitCountry
             prefs[Keys.tuicServer] = profile.tuicServer
             prefs[Keys.tuicSni] = profile.tuicSni
             prefs[Keys.tuicCc] = profile.tuicCc

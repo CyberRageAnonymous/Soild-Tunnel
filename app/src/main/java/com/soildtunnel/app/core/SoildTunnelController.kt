@@ -139,7 +139,6 @@ object ProfileCodec {
         add("torTransport=${p.torTransport.name}")
         add("torBridges=${p.torBridges.replace("\n", "\\n")}")
         add("torExit=${p.torExitCountry}")
-        add("exitCountry=${p.exitCountry}")
     }.joinToString("\n")
 
     fun decode(raw: String?): ConnectionProfile {
@@ -196,7 +195,6 @@ object ProfileCodec {
                 torTransport = map["torTransport"]?.let { enumOr<TorTransport>(it) } ?: d.torTransport,
                 torBridges = map["torBridges"]?.replace("\\n", "\n") ?: d.torBridges,
                 torExitCountry = map["torExit"]?.trim()?.take(2)?.uppercase() ?: d.torExitCountry,
-                exitCountry = map["exitCountry"]?.trim()?.take(2)?.uppercase() ?: d.exitCountry,
             )
         }.getOrDefault(d)
     }
