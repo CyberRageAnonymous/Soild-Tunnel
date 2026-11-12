@@ -776,6 +776,20 @@ pub fn wg_seeds_v4() -> Vec<&'static str> {
     crate::prober::prioritize(WG_SEEDS_V4, &["162.159.193.1"])
 }
 
+/// The country each built-in endpoint leaves from. The exit picker offers
+/// exactly these five, so `--exit-country` can be matched against them while
+/// choosing an endpoint instead of only after the tunnel is already up.
+pub fn wg_seed_country(host: &str) -> Option<&'static str> {
+    match host.trim() {
+        "162.159.192.1" => Some("DE"),
+        "162.159.193.1" => Some("NL"),
+        "162.159.195.1" => Some("FR"),
+        "188.114.96.1" => Some("CH"),
+        "188.114.97.1" => Some("IT"),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

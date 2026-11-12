@@ -39,6 +39,7 @@ import androidx.compose.material.icons.rounded.Send
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Update
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -442,6 +443,11 @@ fun HomeScreen(
                 ) {
                     ExitCountryPill(
                         exitCountry = profile.exitCountry,
+                        actual = if (state.isConnected) {
+                            ipInfo?.takeIf { it.viaTunnel }?.countryCode
+                        } else {
+                            null
+                        },
                         enabled = settingsEnabled,
                         onClick = { if (settingsEnabled) showExitCountrySheet = true },
                     )
@@ -730,12 +736,14 @@ private fun TorExitPill(
 
 /**
  * Home-screen pill showing the exit country pinned for soild/gool. Opens the
- * exit-country picker; on the next connect the engine confirms the real
- * egress and keeps hunting until it matches this pick.
+ * exit-country picker; on the next connect the engine prefers the endpoint of
+ * that country and confirms it. Whatever the tunnel really left from is shown
+ * beside the pick, so a wrong exit is visible without opening a panel.
  */
 @Composable
 private fun ExitCountryPill(
     exitCountry: String,
+    actual: String?,
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
@@ -746,6 +754,11 @@ private fun ExitCountryPill(
         NetProbe.countryName(exitCountry).ifBlank { exitCountry }
     }
     val flag = if (exitCountry.isBlank()) "" else NetProbe.flagEmoji(exitCountry)
+    // Only worth showing when a pick exists and the tunnel reported somewhere
+    // else; the blank/identical case just leaves the pill clean.
+    val wrongExit = actual?.takeIf {
+        exitCountry.isNotBlank() && !it.equals(exitCountry, ignoreCase = true)
+    }
     val alpha = if (enabled) 1f else 0.55f
 
     Row(
@@ -774,6 +787,21 @@ private fun ExitCountryPill(
             fontWeight = FontWeight.Bold,
             color = NeonMint,
         )
+        if (wrongExit != null) {
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                imageVector = Icons.Rounded.WarningAmber,
+                contentDescription = null,
+                tint = NeonRed,
+                modifier = Modifier.size(15.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                text = NetProbe.countryName(wrongExit).ifBlank { wrongExit },
+                style = MaterialTheme.typography.labelMedium,
+                color = NeonRed,
+            )
+        }
         Spacer(Modifier.weight(1f))
         Icon(
             imageVector = Icons.Rounded.KeyboardArrowDown,
