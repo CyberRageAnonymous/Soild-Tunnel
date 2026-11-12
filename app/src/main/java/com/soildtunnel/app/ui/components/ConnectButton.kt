@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Autorenew
 import androidx.compose.material.icons.rounded.Check
@@ -41,7 +42,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -59,6 +62,8 @@ import com.soildtunnel.app.ui.theme.CardTextDim
 import com.soildtunnel.app.ui.theme.NeonCyan
 import com.soildtunnel.app.ui.theme.NeonMint
 import com.soildtunnel.app.ui.theme.NeonRed
+import com.soildtunnel.app.ui.theme.Palette
+import com.soildtunnel.app.ui.theme.Skin
 
 enum class ButtonMode { IDLE, BUSY, CONNECTED, ERROR }
 
@@ -68,6 +73,10 @@ fun ConnectButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    if (Palette.skin == Skin.VOLT) {
+        VoltConnectButton(mode, onClick, modifier)
+        return
+    }
     val accent = when (mode) {
         ButtonMode.IDLE -> NeonCyan
         ButtonMode.BUSY -> AuraIndigo
@@ -112,7 +121,7 @@ fun ConnectButton(
         ButtonMode.CONNECTED -> Icons.Rounded.Check
         else -> Icons.Rounded.PowerSettingsNew
     }
-    val hairline = if (com.soildtunnel.app.ui.theme.Palette.light) {
+    val hairline = if (Palette.light) {
         Color.Black.copy(alpha = 0.10f)
     } else {
         Color.White.copy(alpha = 0.16f)
@@ -216,6 +225,152 @@ fun ConnectButton(
             style = MaterialTheme.typography.bodySmall,
             color = CardTextDim,
         )
+    }
+}
+
+/**
+ * The Neon theme's control: a lit bar instead of the orb — full width, hard
+ * corners, black type on a solid accent fill, glow drawn outside the shape.
+ */
+@Composable
+private fun VoltConnectButton(
+    mode: ButtonMode,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val accent = when (mode) {
+        ButtonMode.IDLE -> NeonCyan
+        ButtonMode.BUSY -> AuraIndigo
+        ButtonMode.CONNECTED -> NeonMint
+        ButtonMode.ERROR -> NeonRed
+    }
+    val animatedAccent by animateColorAsState(accent, tween(600), label = "voltAccent")
+
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.975f else 1f,
+        animationSpec = tween(150),
+        label = "voltPressScale",
+    )
+
+    val label = when (mode) {
+        ButtonMode.IDLE -> stringResource(R.string.tap_to_connect)
+        ButtonMode.BUSY -> stringResource(R.string.state_connecting)
+        ButtonMode.CONNECTED -> stringResource(R.string.tap_to_disconnect)
+        ButtonMode.ERROR -> stringResource(R.string.state_error)
+    }
+    val hint = when (mode) {
+        ButtonMode.IDLE -> stringResource(R.string.btn_hint_idle)
+        ButtonMode.BUSY -> stringResource(R.string.btn_hint_busy)
+        ButtonMode.CONNECTED -> stringResource(R.string.btn_hint_connected)
+        ButtonMode.ERROR -> stringResource(R.string.btn_hint_error)
+    }
+    val glyph: ImageVector = when (mode) {
+        ButtonMode.CONNECTED -> Icons.Rounded.Check
+        else -> Icons.Rounded.PowerSettingsNew
+    }
+    val ink = Color(0xFF051004)
+
+    Box(modifier = modifier.fillMaxWidth()) {
+        Canvas(Modifier.matchParentSize()) {
+            val inset = 8.dp.toPx()
+            val w = size.width - inset * 2f
+            val h = size.height - inset * 2f
+            val rad = VOLT_BAR_RADIUS.toPx()
+            var grow = 6.dp.toPx()
+            var halo = 0
+            while (halo < 3) {
+                drawRoundRect(
+                    color = animatedAccent.copy(alpha = 0.13f - halo * 0.04f),
+                    topLeft = Offset(inset - grow, inset - grow),
+                    size = Size(w + grow * 2f, h + grow * 2f),
+                    cornerRadius = CornerRadius(rad + grow),
+                )
+                grow += 5.dp.toPx()
+                halo++
+            }
+            drawRoundRect(
+                color = animatedAccent.copy(alpha = 0.55f),
+                topLeft = Offset(inset, inset),
+                size = Size(w, h),
+                cornerRadius = CornerRadius(rad),
+                style = Stroke(1.5.dp.toPx()),
+            )
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp)
+                .height(58.dp)
+                .scale(pressScale)
+                .clip(RoundedCornerShape(VOLT_BAR_RADIUS))
+                .background(
+                    brush = Brush.horizontalGradient(
+                        listOf(animatedAccent, animatedAccent.copy(alpha = 0.74f)),
+                    ),
+                )
+                .clickable(
+                    interactionSource = interaction,
+                    indication = null,
+                    onClick = onClick,
+                )
+                .padding(horizontal = 14.dp),
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(38.dp)
+                    .background(ink.copy(alpha = 0.88f), RoundedCornerShape(VOLT_CHIP_RADIUS))
+                    .border(1.dp, ink.copy(alpha = 0.6f), RoundedCornerShape(VOLT_CHIP_RADIUS)),
+            ) {
+                if (mode == ButtonMode.BUSY) {
+                    SpinningGlyph(Icons.Rounded.Autorenew, animatedAccent)
+                } else {
+                    Icon(
+                        imageVector = glyph,
+                        contentDescription = null,
+                        tint = animatedAccent,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 15.sp,
+                        color = ink,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (mode == ButtonMode.CONNECTED) {
+                        Spacer(Modifier.width(8.dp))
+                        EqualizerBars(ink)
+                    }
+                }
+                Text(
+                    text = hint,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ink.copy(alpha = 0.62f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .background(ink.copy(alpha = 0.85f), RoundedCornerShape(2.dp))
+                    .border(1.dp, ink.copy(alpha = 0.5f), RoundedCornerShape(2.dp)),
+            )
+        }
     }
 }
 
@@ -384,3 +539,6 @@ private val ORB_EXT = 196.dp
 private val ORB_RING = 176.dp
 private val ORB_IN = 160.dp
 private val RING_STROKE = 4.dp
+
+private val VOLT_BAR_RADIUS = 6.dp
+private val VOLT_CHIP_RADIUS = 4.dp

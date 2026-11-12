@@ -15,6 +15,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import com.soildtunnel.app.ui.theme.AuraIndigo
 import com.soildtunnel.app.ui.theme.GlowPoolCyan
 import com.soildtunnel.app.ui.theme.GlowPoolViolet
@@ -24,6 +25,8 @@ import com.soildtunnel.app.ui.theme.NeonPrimary
 import com.soildtunnel.app.ui.theme.Palette
 import com.soildtunnel.app.ui.theme.Skin
 import com.soildtunnel.app.ui.theme.Void
+import com.soildtunnel.app.ui.theme.VoltBusy
+import com.soildtunnel.app.ui.theme.VoltPrimary
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
@@ -34,6 +37,11 @@ fun AmbientBackground(
     active: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    if (Palette.skin == Skin.VOLT) {
+        VoltBackdrop(accent, active, modifier)
+        return
+    }
+
     if (Palette.skin == Skin.NEON) {
         NeonBackdrop(accent, active, modifier)
         return
@@ -233,6 +241,130 @@ private fun NeonBackdrop(
                     brush = Brush.radialGradient(
                         colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
                         radius = size.maxDimension * 1.05f,
+                    ),
+                )
+            },
+    )
+}
+
+@Composable
+private fun VoltBackdrop(
+    accent: Color,
+    active: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val scroll = rememberInfiniteTransition(label = "voltScroll").animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(9_000, easing = LinearEasing)),
+        label = "scroll",
+    )
+    val sweep = rememberInfiniteTransition(label = "voltSweep").animateFloat(
+        initialValue = 0f,
+        targetValue = (Math.PI * 2).toFloat(),
+        animationSpec = infiniteRepeatable(tween(7_500, easing = LinearEasing)),
+        label = "sweep",
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .drawBehind {
+                drawRect(Void)
+                val live = if (active) 1.4f else 1f
+                val s = sweep.value
+
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            VoltPrimary.copy(alpha = (if (active) 0.30f else 0.18f) * live),
+                            Color.Transparent,
+                        ),
+                        center = Offset(size.width * 0.5f, size.height * 1.04f),
+                        radius = size.maxDimension * 0.95f,
+                    ),
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            VoltBusy.copy(alpha = (if (active) 0.22f else 0.14f) * live),
+                            Color.Transparent,
+                        ),
+                        center = Offset(
+                            size.width * (0.88f + 0.04f * sin(s).toFloat()),
+                            size.height * (0.10f + 0.03f * cos(s).toFloat()),
+                        ),
+                        radius = size.maxDimension * 0.62f,
+                    ),
+                )
+
+                val stepY = 34.dp.toPx()
+                var gy = (scroll.value * stepY) - stepY
+                while (gy < size.height) {
+                    drawRect(
+                        color = VoltPrimary.copy(alpha = 0.05f),
+                        topLeft = Offset(0f, gy),
+                        size = Size(size.width, 1f),
+                    )
+                    gy += stepY
+                }
+
+                val stepX = size.width / 9f
+                var gx = 0f
+                var rail = 0
+                while (gx <= size.width) {
+                    drawRect(
+                        color = VoltPrimary.copy(alpha = if (rail % 5 == 0) 0.10f else 0.045f),
+                        topLeft = Offset(gx, 0f),
+                        size = Size(1f, size.height),
+                    )
+                    gx += stepX
+                    rail++
+                }
+
+                val scanY = size.height * (s / (Math.PI * 2)).toFloat()
+                val scanHalf = 40.dp.toPx()
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            VoltBusy.copy(alpha = if (active) 0.55f else 0.30f),
+                            Color.Transparent,
+                        ),
+                        startY = scanY - scanHalf,
+                        endY = scanY + scanHalf,
+                    ),
+                    topLeft = Offset(0f, scanY - scanHalf),
+                    size = Size(size.width, scanHalf * 2f),
+                )
+
+                val horizon = size.height * 0.78f
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            accent.copy(alpha = if (active) 0.26f else 0.13f),
+                            Color.Transparent,
+                        ),
+                        startY = horizon - size.height * 0.05f,
+                        endY = horizon + size.height * 0.05f,
+                    ),
+                )
+                drawRect(
+                    color = VoltPrimary.copy(alpha = 0.50f * live),
+                    topLeft = Offset(0f, horizon),
+                    size = Size(size.width, 2f),
+                )
+                drawRect(
+                    color = VoltBusy.copy(alpha = 0.35f * live),
+                    topLeft = Offset(0f, horizon + 5f),
+                    size = Size(size.width, 1.5f),
+                )
+
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.62f)),
+                        radius = size.maxDimension,
                     ),
                 )
             },

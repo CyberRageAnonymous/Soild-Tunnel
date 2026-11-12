@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.soildtunnel.app.ui.theme.ChipIconRadius
+import com.soildtunnel.app.ui.theme.ChipRadius
 import com.soildtunnel.app.ui.theme.EdgeNeon
 import com.soildtunnel.app.ui.theme.GlassEdge
 import com.soildtunnel.app.ui.theme.GlassEdgeBright
@@ -51,7 +52,7 @@ import com.soildtunnel.app.ui.theme.PanelTop
 import com.soildtunnel.app.ui.theme.Skin
 
 fun Modifier.neonPanel(shape: Shape, edge: Color = EdgeNeon): Modifier =
-    if (Palette.skin == Skin.NEON) {
+    if (Palette.skin != Skin.AURORA) {
         this
             .background(PanelTop, shape)
             .border(2.dp, edge.copy(alpha = edge.alpha * 0.35f), shape)
@@ -83,7 +84,7 @@ fun Modifier.neonPanel(shape: Shape, edge: Color = EdgeNeon): Modifier =
     }
 
 fun Modifier.glassPane(shape: Shape, brightRim: Boolean = false): Modifier =
-    if (Palette.skin == Skin.NEON) {
+    if (Palette.skin != Skin.AURORA) {
         this
             .background(ChipFillTopSolid, shape)
             .border(1.dp, if (brightRim) GlassEdgeBright else GlassEdge, shape)
@@ -136,7 +137,10 @@ fun GlassPanel(
     NeonPanel(modifier = modifier, shape = shape, contentPadding = contentPadding, content = content)
 }
 
-fun Modifier.glassChip(): Modifier = this.glassPane(RoundedCornerShape(50), brightRim = true)
+fun Modifier.glassChip(): Modifier = this.glassPane(
+    if (Palette.skin == Skin.VOLT) RoundedCornerShape(ChipRadius) else RoundedCornerShape(50),
+    brightRim = true,
+)
 
 @Composable
 fun LedDot(color: Color, size: Dp = 8.dp, glowing: Boolean = true) {

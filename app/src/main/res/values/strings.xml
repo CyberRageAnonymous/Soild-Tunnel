@@ -408,4 +408,5 @@
     <string name="theme_dark">Dark</string>
     <string name="theme_light">Light</string>
     <string name="theme_neon">Soild Neon</string>
+    <string name="theme_volt">Neon</string>
 </resources>

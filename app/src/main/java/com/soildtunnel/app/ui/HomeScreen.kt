@@ -103,6 +103,7 @@ import com.soildtunnel.app.ui.components.ServerPickerSheet
 import com.soildtunnel.app.ui.components.SpeedTestPanel
 import com.soildtunnel.app.ui.components.glassChip
 import com.soildtunnel.app.ui.theme.CardSubSurface
+import com.soildtunnel.app.ui.theme.ChipRadius
 import com.soildtunnel.app.ui.theme.CardTextDim
 import com.soildtunnel.app.ui.theme.CardTextMuted
 import com.soildtunnel.app.ui.theme.CardTextPrimary
@@ -112,7 +113,10 @@ import com.soildtunnel.app.ui.theme.NeonCyan
 import com.soildtunnel.app.ui.theme.NeonMint
 import com.soildtunnel.app.ui.theme.NeonRed
 import com.soildtunnel.app.ui.theme.DrawerGlass
+import com.soildtunnel.app.ui.theme.Palette
 import com.soildtunnel.app.ui.theme.SheetGlass
+import com.soildtunnel.app.ui.theme.Skin
+import com.soildtunnel.app.ui.theme.Void
 import com.soildtunnel.app.ui.theme.latencyColor
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -165,6 +169,10 @@ fun HomeScreen(
         mutableStateOf(OnboardingFlags.telegramBannerSeen(context))
     }
     val settingsEnabled = state is ConnectionState.Idle || state is ConnectionState.Error
+
+    // The Neon skin docks the control at the bottom of the screen instead of
+    // letting it ride in the scrolling column with the cards.
+    val dockedButton = Palette.skin == Skin.VOLT
 
     // Kick off a background sweep when the screen first appears; TTL keeps
     // it from hammering the network if data is still fresh.
@@ -437,9 +445,11 @@ fun HomeScreen(
 
                 Spacer(modifier = Modifier.height(26.dp))
 
-                ConnectButton(mode = mode, onClick = onToggleConnection)
+                if (!dockedButton) {
+                    ConnectButton(mode = mode, onClick = onToggleConnection)
 
-                Spacer(Modifier.height(26.dp))
+                    Spacer(Modifier.height(26.dp))
+                }
 
                 // Status, timer, IP, speeds and the protocol row: one unified
                 // telemetry console - see ConnectionCard.
@@ -455,7 +465,26 @@ fun HomeScreen(
                     else TunnelConfig.SOCKS_PORT,
                 )
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(if (dockedButton) 104.dp else 16.dp))
+            }
+
+            // Docked control for the Neon skin: it sits above the gesture bar
+            // with its own scrim so the cards scroll out behind it.
+            if (dockedButton) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(
+                            brush = Brush.verticalGradient(
+                                listOf(Color.Transparent, Void.copy(alpha = 0.95f)),
+                            ),
+                        )
+                        .navigationBarsPadding()
+                        .padding(horizontal = 24.dp, vertical = 14.dp),
+                ) {
+                    ConnectButton(mode = mode, onClick = onToggleConnection)
+                }
             }
 
             IconButton(
@@ -611,7 +640,7 @@ private fun ServerSelectorPill(
     }
 
     val alpha = if (enabled) 1f else 0.55f
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(ChipRadius)
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -663,7 +692,7 @@ private fun TorExitPill(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(ChipRadius)
     val name = if (exitCountry.isBlank()) {
         stringResource(R.string.tor_exit_auto)
     } else {
