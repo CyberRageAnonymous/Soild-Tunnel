@@ -380,7 +380,7 @@
     <string name="err_tor_died">Tor stopped unexpectedly.</string>
     <string name="proxy_mode_tor_note">Not available in Tor mode — Tor always drives the whole device.</string>
 
-    <!-- Exit country picker for the soild/gool modes (engine --exit-country) -->
+    <!-- Exit country picker for the soild/gool modes (engine exit-country flag) -->
     <string name="exit_country_label">Exit country</string>
     <string name="exit_country_auto">Random</string>
     <string name="exit_country_sub">Confirmed after connecting: if the tunnel leaves anywhere else, that gateway is dropped and the hunt continues until it matches.</string>
