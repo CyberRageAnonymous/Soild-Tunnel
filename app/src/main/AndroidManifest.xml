@@ -7,13 +7,21 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!--
-      SECURITY: REQUEST_INSTALL_PACKAGES was REMOVED together with the
-      in-app updater. The app can no longer download or hand an APK to the
-      system package installer, so there is no runtime code-delivery path at
-      all. Updates come exclusively from the officially signed GitHub Release
-      page. This also drops the most over-privileged permission in the
-      previous manifest.
+      SECURITY: the in-app updater is back, so this permission is back too —
+      and it is the only runtime code-delivery path the app has. It is held
+      to three constraints, all enforced in UpdateInstaller:
+        1. the APK is fetched only from the official GitHub Release of this
+           repository,
+        2. before the installer is pointed at it, the file's signing
+           certificate must match the one that signed the app already
+           installed, so a tampered or foreign APK is discarded,
+        3. the file lives behind a FileProvider path that exposes nothing
+           but the update cache, and the URI grant lasts only for that one
+           install intent.
+      Without (2) this permission would turn a compromised download into
+      code execution, which is exactly why it was removed before.
     -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Split tunneling needs to list the device's launchable apps so the user
          can pick which apps to include/exclude from the tunnel. We only query
@@ -104,10 +112,20 @@
             android:theme="@style/Theme.SoildTunnel" />
 
         <!--
-          The FileProvider that exports downloaded APKs to the system
-          installer was removed along with the in-app updater. The app now
-          exports no content provider whatsoever.
+          Exports the downloaded update APK to the system installer and
+          nothing else: the paths file scopes it to the update cache, it is
+          not exported, and the URI grant lasts only for the one install
+          intent (see UpdateInstaller).
         -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 </manifest>

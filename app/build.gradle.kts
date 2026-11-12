@@ -76,11 +76,11 @@ android {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
 
-        // In-app updater: APK download + system installer handoff
-        // was REMOVED. The app no longer downloads executable code at runtime
-        // from anywhere. What remains is a read-only pointer to the official,
-        // signed GitHub Releases page that the About card can open in the
-        // browser -- no network call, no download, no installer intent.
+        // In-app updater: the release page pointer. The same URL is used to
+        // find the newest release (UpdateChecker) and to open the page in a
+        // browser when no matching APK asset can be resolved. It points only
+        // at this repository's own releases; downloaded files are checked
+        // against our own signing certificate before install (UpdateInstaller).
         val githubRepo = System.getenv("GITHUB_REPOSITORY")
             ?: (project.findProperty("githubRepo") as? String ?: "")
         val releasesUrl =
