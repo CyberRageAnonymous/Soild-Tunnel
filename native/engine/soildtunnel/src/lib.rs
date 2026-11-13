@@ -1190,6 +1190,12 @@ async fn run_masque(
     if !avoid.is_empty() {
         log::info!("[+] {} avoided gateways remembered", avoid.len());
     }
+    // One amnesty per run: if a scan starves while gateways are remembered as
+    // avoided, that list is probably stale — forget it once and let a fresh
+    // scan decide instead of rescanning until its TTL runs out.
+    let mut avoid_amnesty = false;
+    // Attempts that died because another engine instance owns the local port.
+    let mut port_taken = 0u32;
 
     loop {
         let peer = if let Some(p) = quick_peer.take() {
@@ -1237,6 +1243,16 @@ async fn run_masque(
                                             .collect();
                                     }
                                     Err(e) => {
+                                        if !avoid.is_empty() && !avoid_amnesty {
+                                            avoid_amnesty = true;
+                                            let held = avoid.len();
+                                            avoid.clear();
+                                            lastconn::clear_avoided(&avoid_path);
+                                            log::warn!(
+                                                "[-] no gateway found while {held} are avoided: {e}; forgetting the avoid list and rescanning"
+                                            );
+                                            continue;
+                                        }
                                         log::warn!("[-] no usable MASQUE gateway found: {e}; rescanning shortly");
                                         tokio::time::sleep(masque_reconnect_delay()).await;
                                         continue;
@@ -1244,6 +1260,16 @@ async fn run_masque(
                                 }
                             }
                             if ranked.is_empty() {
+                                if !avoid.is_empty() && !avoid_amnesty {
+                                    avoid_amnesty = true;
+                                    let held = avoid.len();
+                                    avoid.clear();
+                                    lastconn::clear_avoided(&avoid_path);
+                                    log::warn!(
+                                        "[-] every ranked gateway is avoided ({held}); forgetting the avoid list and rescanning"
+                                    );
+                                    continue;
+                                }
                                 log::warn!("[-] ranked gateways exhausted; rescanning");
                                 continue;
                             }
@@ -1252,6 +1278,16 @@ async fn run_masque(
                             match hunt_masque_peer(&identity, &mode_str, ip, &avoid).await {
                                 Ok(peer) => peer,
                                 Err(e) => {
+                                    if !avoid.is_empty() && !avoid_amnesty {
+                                        avoid_amnesty = true;
+                                        let held = avoid.len();
+                                        avoid.clear();
+                                        lastconn::clear_avoided(&avoid_path);
+                                        log::warn!(
+                                            "[-] no gateway found while {held} are avoided: {e}; forgetting the avoid list and rescanning"
+                                        );
+                                        continue;
+                                    }
                                     log::warn!("[-] no usable MASQUE gateway found: {e}; rescanning shortly");
                                     tokio::time::sleep(masque_reconnect_delay()).await;
                                     continue;
@@ -1271,20 +1307,73 @@ async fn run_masque(
 
         log::info!("[+] using cloudflare edge {peer}");
 
-        if forced.is_none() {
-            let profile = std::env::var("SOILDTUNNEL_NOIZE").unwrap_or_else(|_| "firewall".to_string());
-            lastconn::save(&lastconn_path, &peer.to_string(), &profile);
+        // The carried hop races a few ranked gateways at once and keeps the
+        // rest as standby for a front that dies later; a plain MASQUE session
+        // still dials exactly the peer chosen above.
+        let racing = front_mode() || inner_path.is_some();
+        let mut race_peers = vec![peer];
+        if racing && forced.is_none() {
+            let more = (RACE_WIDTH - 1).min(ranked.len());
+            race_peers.extend(ranked.drain(..more));
         }
 
-        last_good_peer = Some(peer);
-
-        let tunnel_result = if front_mode() {
-            match establish_soild_race(&identity, peer, ech.clone()).await {
-                Ok(est) => serve_masque(est, listen, inner_path.clone()).await,
+        let mut active_peer = peer;
+        let tunnel_result = if racing {
+            let prefer_h2 = if front_mode() { Some(!front_quic()) } else { None };
+            match establish_soild_race(&identity, race_peers, ech.clone(), prefer_h2).await {
+                Ok(win) => {
+                    active_peer = win.peer;
+                    if win.peer != peer {
+                        let settled = win.peer;
+                        log::info!("[+] the race settled on cloudflare edge {settled}");
+                    }
+                    if forced.is_none() {
+                        let profile =
+                            std::env::var("SOILDTUNNEL_NOIZE").unwrap_or_else(|_| "firewall".to_string());
+                        lastconn::save(&lastconn_path, &win.peer.to_string(), &profile);
+                    }
+                    last_good_peer = Some(win.peer);
+                    let front = inner_path.as_ref().map(|_| FrontCtx {
+                        identity: identity.clone(),
+                        ech: ech.clone(),
+                        candidates: win.standby,
+                        prefer_h2: win.prefer_h2,
+                    });
+                    serve_masque(win.est, listen, inner_path.clone(), front).await
+                }
                 Err(error) => Err(error),
             }
         } else {
+            if forced.is_none() {
+                let profile = std::env::var("SOILDTUNNEL_NOIZE").unwrap_or_else(|_| "firewall".to_string());
+                lastconn::save(&lastconn_path, &peer.to_string(), &profile);
+            }
+            last_good_peer = Some(peer);
             run_masque_tunnel(&identity, peer, ech.clone(), listen, inner_path.clone()).await
+        };
+
+        // A busy local port can never be won by rescanning remote gateways:
+        // give it a few attempts, then exit so the app reaps the leftover
+        // engine before the next start — the same recovery gool runs on.
+        let tunnel_result = match tunnel_result {
+            Err(SoildTunnelError::Io(io)) if io.kind() == std::io::ErrorKind::AddrInUse => {
+                port_taken += 1;
+                log::warn!(
+                    "[-] local port {listen} is already in use ({port_taken}/{PORT_TAKEN_TRIES})"
+                );
+                if port_taken >= PORT_TAKEN_TRIES {
+                    log::error!(
+                        "[-] local port {listen} stayed taken; another engine instance owns it — exiting"
+                    );
+                    std::process::exit(3);
+                }
+                tokio::time::sleep(masque_reconnect_delay()).await;
+                continue;
+            }
+            other => {
+                port_taken = 0;
+                other
+            }
         };
 
         match tunnel_result {
@@ -1298,10 +1387,10 @@ async fn run_masque(
                 continue;
             }
             Err(SoildTunnelError::IranianEgress) => {
-                log::warn!("[-] gateway {peer} exits in IR; avoiding it and rescanning");
-                avoid.insert(peer);
+                log::warn!("[-] gateway {active_peer} exits in IR; avoiding it and rescanning");
+                avoid.insert(active_peer);
                 lastconn::save_avoided(&avoid_path, &avoid);
-                lastconn::forget(&lastconn_path, &peer.to_string());
+                lastconn::forget(&lastconn_path, &active_peer.to_string());
                 last_good_peer = None;
                 if forced.is_some() {
                     return Err(SoildTunnelError::IranianEgress);
@@ -1430,7 +1519,32 @@ async fn serve_masque(
     est: EstablishedMasque,
     listen: SocketAddr,
     inner_path: Option<String>,
+    front: Option<FrontCtx>,
 ) -> Result<()> {
+    if let Some(inner_path) = inner_path {
+        // The carried hop owns its front: when it dies, the hop races its
+        // standby gateways and swaps the pieces in place, so the listeners
+        // never lose their ports.
+        let EstablishedMasque {
+            stack,
+            tunnel,
+            bridge,
+            ctrl,
+        } = est;
+        return serve_carried_hop(
+            FrontParts {
+                stack,
+                exit: tunnel,
+                bridge,
+                _ctrl: ctrl,
+            },
+            listen,
+            inner_path,
+            front,
+        )
+        .await;
+    }
+
     let EstablishedMasque {
         stack,
         tunnel: mut tunnel_task,
@@ -1440,10 +1554,6 @@ async fn serve_masque(
     let mut tasks = TaskGuard::new();
     tasks.push(bridge.abort_handle());
     tasks.push(tunnel_task.abort_handle());
-
-    if let Some(inner_path) = inner_path {
-        return run_carried_hop(&stack, &mut tunnel_task, listen, inner_path).await;
-    }
 
     let socks_stack = stack.clone();
     let socks_task = tokio::spawn(async move {
@@ -1494,37 +1604,106 @@ async fn run_masque_tunnel(
     inner_path: Option<String>,
 ) -> Result<()> {
     let est = establish_masque(identity, peer, ech, None).await?;
-    serve_masque(est, listen, inner_path).await
+    serve_masque(est, listen, inner_path, None).await
 }
 
-async fn establish_soild_race(
-    identity: &account::Identity,
+/// The gateways of a front race: up to `RACE_WIDTH` run in parallel and the
+/// rest wait as standby for a front that dies later.
+const RACE_WIDTH: usize = 3;
+/// The head start each racing attempt gets over the one behind it.
+const RACE_STAGGER_MS: u64 = 300;
+/// Attempts that died because another instance owns the local proxy port.
+const PORT_TAKEN_TRIES: u32 = 3;
+
+/// A front that won its race: the gateway that answered, the transport that
+/// got it there, and the peers that still wait to be tried.
+struct RaceWin {
+    est: EstablishedMasque,
+    peer: SocketAddr,
+    prefer_h2: Option<bool>,
+    standby: Vec<SocketAddr>,
+}
+
+/// One racing attempt. The bound sits just behind `establish_masque`'s own
+/// startup timeout, which tears its tasks down properly: cutting a handshake
+/// short here would kill a slow-but-working edge, and a gateway that is
+/// simply dead already fails on that inner bound.
+async fn race_attempt(
+    identity: account::Identity,
     peer: SocketAddr,
     ech: Option<Vec<u8>>,
-) -> Result<EstablishedMasque> {
-    let prefer_h2 = !front_quic();
-    let owned = identity.clone();
-    let ech_primary = ech.clone();
+    h2: Option<bool>,
+) -> (SocketAddr, Option<bool>, Result<EstablishedMasque>) {
+    let bound = masque_startup_timeout() + std::time::Duration::from_secs(2);
+    let bounded = tokio::time::timeout(bound, establish_masque(&identity, peer, ech, h2)).await;
+    let result = match bounded {
+        Ok(result) => result,
+        Err(_) => Err(SoildTunnelError::Other(format!(
+            "gateway {peer} did not answer within {}s",
+            bound.as_secs()
+        ))),
+    };
+    (peer, h2, result)
+}
+
+/// Race several gateways instead of walking them one by one: every peer tries
+/// the preferred transport first, staggered `RACE_STAGGER_MS` apart, and a peer
+/// on a known transport also brings its opposite one stagger later. The first
+/// front to come up wins; the peers that never started, then the ones that
+/// lost, stay behind as standby for the next switch.
+async fn establish_soild_race(
+    identity: &account::Identity,
+    mut peers: Vec<SocketAddr>,
+    ech: Option<Vec<u8>>,
+    prefer_h2: Option<bool>,
+) -> Result<RaceWin> {
+    if peers.is_empty() {
+        return Err(SoildTunnelError::Other("no gateway to race".into()));
+    }
+
+    let width = RACE_WIDTH.max(1).min(peers.len());
+    let mut standby = peers.split_off(width);
+    let raced = peers;
+
     let mut set = tokio::task::JoinSet::new();
-    set.spawn(async move { establish_masque(&owned, peer, ech_primary, Some(prefer_h2)).await });
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-    match set.try_join_next() {
-        Some(Ok(Ok(est))) => return Ok(est),
-        _ => {
+    for (index, &peer) in raced.iter().enumerate() {
+        let delay = RACE_STAGGER_MS * index as u64;
+        let owned = identity.clone();
+        let ech_primary = ech.clone();
+        set.spawn(async move {
+            if delay > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+            }
+            race_attempt(owned, peer, ech_primary, prefer_h2).await
+        });
+
+        if let Some(secondary) = prefer_h2.map(|h2| !h2) {
             let owned = identity.clone();
-            set.spawn(async move { establish_masque(&owned, peer, ech, Some(!prefer_h2)).await });
+            let ech_secondary = ech.clone();
+            let delay = delay + RACE_STAGGER_MS;
+            set.spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                race_attempt(owned, peer, ech_secondary, Some(secondary)).await
+            });
         }
     }
 
-    let mut last_error =
-        SoildTunnelError::Other("both soild transports failed".into());
-    while let Some(result) = set.join_next().await {
-        match result {
-            Ok(Ok(est)) => {
+    let mut last_error = SoildTunnelError::Other("no gateway accepted the masque".into());
+    while let Some(joined) = set.join_next().await {
+        match joined {
+            Ok((peer, h2, Ok(est))) => {
                 set.abort_all();
-                return Ok(est);
+                // The peers that raced and lost wait behind the untouched
+                // ones: a switch tries fresh gateways first, these last.
+                standby.extend(raced.iter().filter(|p| **p != peer).copied());
+                return Ok(RaceWin {
+                    est,
+                    peer,
+                    prefer_h2: h2,
+                    standby,
+                });
             }
-            Ok(Err(error)) => last_error = error,
+            Ok((_, _, Err(error))) => last_error = error,
             Err(error) => {
                 last_error =
                     SoildTunnelError::Other(format!("transport task join error: {error}"));
@@ -1756,15 +1935,44 @@ async fn cloudflare_trace_country(stack: &netstack::StackHandle) -> Result<Strin
     }
 }
 
-async fn run_carried_hop(
-    outer: &netstack::StackHandle,
-    outer_exit: &mut TunnelExit,
-    listen: SocketAddr,
-    inner_path: String,
-) -> Result<()> {
-    let had_saved = std::path::Path::new(&inner_path).exists();
-    match tokio::time::timeout(std::time::Duration::from_secs(15), exit_country(outer)).await
-    {
+/// A carried inner tunnel that is up and serving: the netstack, the WG
+/// session task, and the UDP forwarder that carries it inside the front.
+struct CarriedInner {
+    stack: netstack::StackHandle,
+    exit: TunnelExit,
+    peer: SocketAddr,
+    _forwarder: TaskGuard,
+}
+
+/// Tearing the hop down must stop its WireGuard session too: dropping a
+/// `JoinHandle` only detaches the task, so without this the session would
+/// outlive the hop that carried it.
+impl Drop for CarriedInner {
+    fn drop(&mut self) {
+        self.exit.abort();
+    }
+}
+
+fn soild_inner_repairs() -> u32 {
+    std::env::var("SOILDTUNNEL_SOILD_REPAIRS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(3)
+}
+
+fn soild_inner_stable_secs() -> u64 {
+    std::env::var("SOILD_INNER_STABLE_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(30)
+}
+
+/// The outer-geo gate of the carried hop, same verdicts and log lines as the
+/// legacy path. Kept separate so the new path can run it as its own step
+/// without touching what `--gool` without a front does.
+async fn outer_geo_verdict(outer: &netstack::StackHandle, had_saved: bool) -> Result<()> {
+    match tokio::time::timeout(std::time::Duration::from_secs(15), exit_country(outer)).await {
         Ok(Egress::Foreign { cc, via }) => {
             OUTER_IR_STREAK.store(0, Ordering::SeqCst);
             log::info!("[+] gool: outer gateway exits in {cc} ({via})");
@@ -1783,12 +1991,29 @@ async fn run_carried_hop(
         }
         _ => log::debug!("[*] gool: outer exit country unknown; continuing"),
     }
+    Ok(())
+}
 
-    let identity = carried_wg_identity(outer, &inner_path).await?;
-    let mut inner_avoid: HashSet<SocketAddr> = HashSet::new();
+/// Bring up one carried WireGuard session, walking the candidate endpoints
+/// until one validates. The geo check is left to the caller so it can run
+/// while the listeners are already coming up.
+async fn establish_carried_inner(
+    outer: &netstack::StackHandle,
+    identity: &account::Identity,
+    inner_path: &str,
+) -> Result<CarriedInner> {
+    let candidates = gool_inner_peers(identity);
+    establish_carried_on(outer, identity, inner_path, candidates).await
+}
 
-    let mut candidates = gool_inner_peers(&identity);
-    candidates.retain(|p| !inner_avoid.contains(p));
+/// Same walk over an explicit candidate list, so the primary and the spare
+/// members can divide the endpoints between them.
+async fn establish_carried_on(
+    outer: &netstack::StackHandle,
+    identity: &account::Identity,
+    inner_path: &str,
+    candidates: Vec<SocketAddr>,
+) -> Result<CarriedInner> {
     if candidates.is_empty() {
         return Err(SoildTunnelError::Other(
             "no wireguard endpoint for the carried identity".into(),
@@ -1804,25 +2029,8 @@ async fn run_carried_hop(
             "[+] gool: wireguard endpoint {inner_peer} tunneled through masque via {forwarder}"
         );
         for attempt in 1..=GOOL_INNER_ATTEMPTS {
-            match establish_wg(&identity, forwarder, GOOL_INNER_MTU, false, 10, "gool").await {
-                Ok((inner_stack, mut inner_exit)) => {
-                    match tokio::time::timeout(
-                        std::time::Duration::from_secs(15),
-                        exit_country(&inner_stack),
-                    )
-                    .await
-                    {
-                        Ok(Egress::Iranian) => {
-                            log::warn!(
-                                "[*] gool inner {inner_peer} geo-check reports IR (unreliable through tunnel); continuing anyway"
-                            );
-                        }
-                        Ok(Egress::Foreign { cc, via }) => {
-                            log::info!("[+] gool inner exits in {cc} ({via})");
-                        }
-                        _ => log::debug!("[*] gool inner exit country unknown; continuing"),
-                    }
-
+            match establish_wg(identity, forwarder, GOOL_INNER_MTU, false, 10, "gool").await {
+                Ok((inner_stack, inner_exit)) => {
                     let endpoint = inner_peer.ip().to_string();
                     if identity.assigned_endpoint != endpoint
                         && std::env::var("SOILDTUNNEL_GOOL_INNER").is_err()
@@ -1831,53 +2039,419 @@ async fn run_carried_hop(
                             assigned_endpoint: endpoint.clone(),
                             ..identity.clone()
                         };
-                        if config::save(&inner_path, &remembered).is_ok() {
+                        if config::save(inner_path, &remembered).is_ok() {
                             log::info!("[+] gool remembers {endpoint} as its wireguard endpoint");
                         }
                     }
 
                     log::info!("[+] gool ready: wireguard {inner_peer} rides inside masque");
-
-                    let http_task = spawn_http_proxy(&inner_stack);
-                    let socks_stack = inner_stack.clone();
-                    let mut socks_task =
-                        tokio::spawn(async move { socks::serve(listen, socks_stack).await });
-
-                    consume_migrate_hint();
-
-                    let outcome = tokio::select! {
-                        result = &mut *outer_exit => join_outcome("masque tunnel", result),
-                        result = &mut inner_exit => join_outcome("carried wireguard tunnel", result),
-                        result = &mut socks_task => join_outcome("socks5 server", result),
-                        _ = watch_migrate_hint() => {
-                            log::warn!("[-] migrate requested; dropping the carried hop");
-                            Err(SoildTunnelError::Migrate)
-                        }
-                    };
-
-                    if let Some(task) = &http_task {
-                        task.abort();
-                    }
-                    inner_exit.abort();
-                    socks_task.abort();
-                    drop(forwarder_guard);
-
-                    return outcome;
+                    return Ok(CarriedInner {
+                        stack: inner_stack,
+                        exit: inner_exit,
+                        peer: inner_peer,
+                        _forwarder: forwarder_guard,
+                    });
                 }
                 Err(e) => {
                     log::warn!(
                         "[-] gool wireguard {inner_peer} attempt {attempt}/{GOOL_INNER_ATTEMPTS} failed: {e}"
                     );
                     last_error = e;
-                    if attempt >= GOOL_INNER_ATTEMPTS {
-                        inner_avoid.insert(inner_peer);
-                    }
                 }
             }
         }
     }
 
-    return Err(last_error);
+    Err(last_error)
+}
+
+/// Log-only inner geo check: the legacy path blocked on it before opening
+/// SOCKS, here it runs detached so connect time stays short.
+fn spawn_inner_geo_check(inner: &CarriedInner) {
+    let stack = inner.stack.clone();
+    let peer = inner.peer;
+    tokio::spawn(async move {
+        match tokio::time::timeout(std::time::Duration::from_secs(15), exit_country(&stack)).await
+        {
+            Ok(Egress::Iranian) => log::warn!(
+                "[*] gool inner {peer} geo-check reports IR (unreliable through tunnel); continuing anyway"
+            ),
+            Ok(Egress::Foreign { cc, via }) => log::info!("[+] gool inner exits in {cc} ({via})"),
+            _ => log::debug!("[*] gool inner exit country unknown; continuing"),
+        }
+    });
+}
+
+/// Which event ended the current wait: the front, one of the inner members,
+/// a listener, a spare member arriving, or the periodic tick.
+enum HopEvent {
+    Front(Result<()>),
+    Member(usize, Result<()>),
+    Listener(Result<()>),
+    Joined(Option<CarriedInner>),
+    Tick,
+}
+
+/// What a carried hop needs to put a dead front back up without closing its
+/// listeners: the registered identity, the ECH blob resolved at start, the
+/// gateways the race kept as standby, and the transport that won.
+struct FrontCtx {
+    identity: account::Identity,
+    ech: Option<Vec<u8>>,
+    candidates: Vec<SocketAddr>,
+    prefer_h2: Option<bool>,
+}
+
+/// The front of a carried hop, owned by the hop itself: when it dies the hop
+/// replaces every piece in place instead of sending its listeners down too.
+struct FrontParts {
+    stack: netstack::StackHandle,
+    exit: TunnelExit,
+    bridge: tokio::task::JoinHandle<()>,
+    _ctrl: tokio::sync::mpsc::Sender<quic::Control>,
+}
+
+/// One inner tunnel riding the front, at the slot it occupies in the pool.
+struct CarriedMember {
+    inner: CarriedInner,
+    slot: usize,
+}
+
+/// How many inner tunnels the carried hop serves: two for a Soild front by
+/// default, one for gool, overridable for tuning.
+fn soild_edges() -> usize {
+    let wanted = std::env::var("SOILDTUNNEL_SOILD_EDGES")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(if front_mode() { 2 } else { 1 });
+    wanted.clamp(1, 4)
+}
+
+/// Whether another rebuild may be spent: the budget refills once the hop has
+/// held stable long enough to show the last failure was a one-off.
+fn refill_repairs(
+    repairs: &mut u32,
+    stable_since: &mut tokio::time::Instant,
+    max_repairs: u32,
+    stable_after: u64,
+) -> bool {
+    let waited = stable_since.elapsed().as_secs();
+    if *repairs > 0 && waited >= stable_after {
+        log::info!(
+            "[+] gool inner held for {waited}s; refilling its repair budget ({max_repairs})"
+        );
+        *repairs = 0;
+    }
+    *repairs < max_repairs
+}
+
+/// Build a spare inner tunnel in the background from the endpoints the
+/// primary did not need, and hand it over as soon as it validates.
+fn spawn_member_builder(
+    outer: netstack::StackHandle,
+    identity: account::Identity,
+    inner_path: String,
+    skip: SocketAddr,
+    edges: usize,
+    tx: tokio::sync::mpsc::Sender<CarriedInner>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut candidates: Vec<SocketAddr> = gool_inner_peers(&identity)
+            .into_iter()
+            .filter(|peer| *peer != skip)
+            .collect();
+        for _ in 1..edges {
+            if candidates.is_empty() {
+                return;
+            }
+            match establish_carried_on(&outer, &identity, &inner_path, candidates.clone()).await {
+                Ok(spare) => {
+                    let peer = spare.peer;
+                    if tx.send(spare).await.is_err() {
+                        return;
+                    }
+                    candidates.retain(|candidate| *candidate != peer);
+                }
+                Err(error) => {
+                    log::warn!("[-] spare inner tunnel unavailable: {error}");
+                    return;
+                }
+            }
+        }
+    })
+}
+
+/// The carried path behind both `--soild` and `--gool`: validate the front,
+/// bring up the inner tunnel, then serve through a pool so a dead inner hop
+/// is rebuilt in place, a dead front is raced back from its standby gateways,
+/// and the listeners keep their ports through all of it.
+async fn serve_carried_hop(
+    mut front: FrontParts,
+    listen: SocketAddr,
+    inner_path: String,
+    mut ctx: Option<FrontCtx>,
+) -> Result<()> {
+    let had_saved = std::path::Path::new(&inner_path).exists();
+
+    // The outer-geo verdict can eat its whole 15s budget, so it runs alongside
+    // identity loading and the inner handshake instead of ahead of them. It is
+    // joined before serving, and before returning an error, so an Iranian
+    // egress still stops the hop the way the legacy path does.
+    let geo_outer = front.stack.clone();
+    let geo_task = tokio::spawn(async move { outer_geo_verdict(&geo_outer, had_saved).await });
+
+    let setup = async {
+        let identity = carried_wg_identity(&front.stack, &inner_path).await?;
+        let inner = establish_carried_inner(&front.stack, &identity, &inner_path).await?;
+        Ok::<_, SoildTunnelError>((identity, inner))
+    }
+    .await;
+
+    let geo = match geo_task.await {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            log::warn!("[*] gool outer geo check task ended early: {error}");
+            Ok(())
+        }
+    };
+    geo?;
+
+    let (identity, primary) = setup?;
+    let primary_peer = primary.peer;
+    spawn_inner_geo_check(&primary);
+
+    let pool = std::sync::Arc::new(netstack::MultiStack::new(primary.stack.clone()));
+    let socks_backend = socks::Backend::Pool(pool.clone());
+
+    let mut members = vec![CarriedMember {
+        inner: primary,
+        slot: 0,
+    }];
+
+    let mut tasks = TaskGuard::new();
+    // The hop owns its front now, so it must also own the teardown: an error
+    // from a listener or a migrate ends the hop while the front is still up.
+    tasks.push(front.bridge.abort_handle());
+    tasks.push(front.exit.abort_handle());
+    let mut socks_task =
+        tokio::spawn(async move { socks::serve_backend(listen, socks_backend).await });
+    tasks.push(socks_task.abort_handle());
+
+    let http_task = spawn_http_proxy_backend(socks::Backend::Pool(pool.clone()));
+    if let Some(task) = &http_task {
+        tasks.push(task.abort_handle());
+    }
+
+    consume_migrate_hint();
+
+    // Spares join in the background so the pool has a second path before
+    // trouble starts; gool asks for a single member unless told otherwise.
+    // The sending half stays alive for the whole session: a front switch
+    // starts another builder on the same channel.
+    let edges = soild_edges();
+    let (member_tx, mut member_rx) = tokio::sync::mpsc::channel::<CarriedInner>(4);
+    if edges > 1 {
+        let handle = spawn_member_builder(
+            front.stack.clone(),
+            identity.clone(),
+            inner_path.clone(),
+            primary_peer,
+            edges,
+            member_tx.clone(),
+        );
+        tasks.push(handle.abort_handle());
+    }
+    let mut spares_open = true;
+
+    let max_repairs = soild_inner_repairs();
+    let stable_after = soild_inner_stable_secs();
+    let mut repairs = 0u32;
+    let mut stable_since = tokio::time::Instant::now();
+    let mut tick = tokio::time::interval(std::time::Duration::from_secs(2));
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    loop {
+        // One waiter per live exit plus the spare channel and the tick; every
+        // event re-checks the migrate hint, so a quiet tunnel still honors it
+        // within one tick.
+        let mut waiters: Vec<
+            std::pin::Pin<Box<dyn std::future::Future<Output = HopEvent> + Send + '_>>,
+        > = Vec::new();
+        waiters.push(Box::pin(async {
+            HopEvent::Front(join_outcome("masque tunnel", (&mut front.exit).await))
+        }));
+        for (index, member) in members.iter_mut().enumerate() {
+            waiters.push(Box::pin(async move {
+                HopEvent::Member(
+                    index,
+                    join_outcome("carried wireguard tunnel", (&mut member.inner.exit).await),
+                )
+            }));
+        }
+        waiters.push(Box::pin(async {
+            HopEvent::Listener(join_outcome("socks5 server", (&mut socks_task).await))
+        }));
+        if spares_open {
+            waiters.push(Box::pin(async { HopEvent::Joined(member_rx.recv().await) }));
+        }
+        waiters.push(Box::pin(async {
+            tick.tick().await;
+            HopEvent::Tick
+        }));
+
+        let (event, _winner, remaining) = futures::future::select_all(waiters).await;
+        drop(remaining);
+
+        if consume_migrate_hint() {
+            log::warn!("[-] migrate requested; dropping the carried hop");
+            return Err(SoildTunnelError::Migrate);
+        }
+
+        match event {
+            HopEvent::Tick => continue,
+            HopEvent::Listener(outcome) => return outcome,
+            HopEvent::Joined(None) => {
+                spares_open = false;
+                continue;
+            }
+            HopEvent::Joined(Some(spare)) => {
+                spawn_inner_geo_check(&spare);
+                let slot = pool.add(spare.stack.clone());
+                members.push(CarriedMember { inner: spare, slot });
+                continue;
+            }
+            HopEvent::Member(index, outcome) => {
+                let failure = match outcome {
+                    Ok(()) => SoildTunnelError::Other("carried wireguard tunnel stopped".into()),
+                    Err(error) => error,
+                };
+                if !refill_repairs(&mut repairs, &mut stable_since, max_repairs, stable_after) {
+                    // Budget spent: give up on this member; without any left,
+                    // the hop ends and the outer loop rescans.
+                    let gone = members.remove(index);
+                    pool.mark_dead(gone.slot);
+                    drop(gone);
+                    if members.is_empty() {
+                        return Err(failure);
+                    }
+                    log::warn!("[-] giving up on an inner tunnel after {max_repairs} rebuilds");
+                    continue;
+                }
+                repairs += 1;
+                log::warn!(
+                    "[-] gool inner tunnel died ({failure}); rebuilding it in place ({repairs}/{max_repairs})"
+                );
+                let slot = members[index].slot;
+                let fresh =
+                    match establish_carried_inner(&front.stack, &identity, &inner_path).await {
+                        Ok(fresh) => fresh,
+                        Err(error) => return Err(error),
+                    };
+                spawn_inner_geo_check(&fresh);
+                pool.replace(slot, fresh.stack.clone());
+                members[index] = CarriedMember { inner: fresh, slot };
+                stable_since = tokio::time::Instant::now();
+            }
+            HopEvent::Front(outcome) => {
+                let failure = match outcome {
+                    Err(error) => error,
+                    Ok(()) => SoildTunnelError::Other("masque tunnel stopped".into()),
+                };
+                let (f_identity, f_ech, f_h2, f_peers) = match ctx.as_ref() {
+                    Some(front_ctx) if !front_ctx.candidates.is_empty() => (
+                        front_ctx.identity.clone(),
+                        front_ctx.ech.clone(),
+                        front_ctx.prefer_h2,
+                        front_ctx.candidates.clone(),
+                    ),
+                    // Without standby there is nothing to switch to: hand the
+                    // error back so the outer loop scans fresh gateways.
+                    _ => return Err(failure),
+                };
+                if !refill_repairs(&mut repairs, &mut stable_since, max_repairs, stable_after) {
+                    return Err(failure);
+                }
+                repairs += 1;
+                log::warn!(
+                    "[-] front tunnel died ({failure}); racing {} standby gateways ({repairs}/{max_repairs})",
+                    f_peers.len()
+                );
+
+                let win = match establish_soild_race(&f_identity, f_peers, f_ech, f_h2).await {
+                    Ok(win) => win,
+                    Err(error) => {
+                        log::warn!("[-] the standby race found no front: {error}");
+                        return Err(error);
+                    }
+                };
+                if let Some(front_ctx) = ctx.as_mut() {
+                    front_ctx.candidates = win.standby;
+                }
+                let moved_to = win.peer;
+                log::info!(
+                    "[+] front moved to cloudflare edge {moved_to}; rebuilding the inner hop on it"
+                );
+
+                // Out with the old front, in with the new one — the listeners
+                // and their ports stay exactly where they are.
+                front.bridge.abort();
+                front = FrontParts {
+                    stack: win.est.stack,
+                    exit: win.est.tunnel,
+                    bridge: win.est.bridge,
+                    _ctrl: win.est.ctrl,
+                };
+                tasks.push(front.bridge.abort_handle());
+                tasks.push(front.exit.abort_handle());
+
+                // Every old member rode the dead front: free their slots and
+                // stop their tasks for the fresh ones while the geo verdict
+                // and the inner handshake run on the new front.
+                let primary_slot = members[0].slot;
+                for member in members.drain(..) {
+                    pool.mark_dead(member.slot);
+                    member.inner.exit.abort();
+                }
+
+                let geo_outer = front.stack.clone();
+                let geo_task =
+                    tokio::spawn(async move { outer_geo_verdict(&geo_outer, had_saved).await });
+                let setup =
+                    async { establish_carried_inner(&front.stack, &identity, &inner_path).await }
+                        .await;
+                let geo = match geo_task.await {
+                    Ok(outcome) => outcome,
+                    Err(error) => {
+                        log::warn!("[*] gool outer geo check task ended early: {error}");
+                        Ok(())
+                    }
+                };
+                geo?;
+                let fresh = setup?;
+                spawn_inner_geo_check(&fresh);
+                let fresh_peer = fresh.peer;
+                pool.replace(primary_slot, fresh.stack.clone());
+                members.push(CarriedMember {
+                    inner: fresh,
+                    slot: primary_slot,
+                });
+                stable_since = tokio::time::Instant::now();
+
+                // Fill the spare slots again on the new front.
+                if edges > 1 {
+                    let handle = spawn_member_builder(
+                        front.stack.clone(),
+                        identity.clone(),
+                        inner_path.clone(),
+                        fresh_peer,
+                        edges,
+                        member_tx.clone(),
+                    );
+                    tasks.push(handle.abort_handle());
+                }
+            }
+        }
+    }
 }
 
 fn wg_keepalive_secs() -> u16 {
@@ -2319,11 +2893,14 @@ fn http_proxy_listen() -> Option<SocketAddr> {
 }
 
 fn spawn_http_proxy(stack: &netstack::StackHandle) -> Option<TunnelExit> {
+    spawn_http_proxy_backend(socks::Backend::Stack(stack.clone()))
+}
+
+fn spawn_http_proxy_backend(backend: socks::Backend) -> Option<TunnelExit> {
     let listen = http_proxy_listen()?;
-    let stack = stack.clone();
     Some(tokio::spawn(async move {
         log::info!("[+] http proxy listening on {listen}");
-        socks::serve_http(listen, stack).await
+        socks::serve_http_backend(listen, backend).await
     }))
 }
 

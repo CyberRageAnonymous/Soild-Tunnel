@@ -197,6 +197,11 @@
     <string name="update_available">Update available</string>
     <string name="update_version">v%1$s</string>
     <string name="update_dismiss">Dismiss</string>
+    <!-- In-app install flow (tap on the banner downloads and verifies the APK). -->
+    <string name="update_downloading">Downloading update… %1$d%%</string>
+    <string name="update_error">Update failed: %1$s</string>
+    <string name="update_error_signer">the downloaded file is not signed by this app</string>
+    <string name="update_permission_needed">Allow installs from this app in Settings, then tap again.</string>
 
     <!-- Language selector -->
     <string name="lang_title">Language</string>
@@ -403,4 +408,5 @@
     <string name="theme_dark">Dark</string>
     <string name="theme_light">Light</string>
     <string name="theme_neon">Soild Neon</string>
+    <string name="theme_volt">Neon</string>
 </resources>

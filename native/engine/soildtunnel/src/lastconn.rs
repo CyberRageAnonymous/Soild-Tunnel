@@ -96,3 +96,12 @@ pub fn save_avoided(path: &str, peers: &std::collections::HashSet<std::net::Sock
         Err(e) => log::debug!("[lastconn] failed to encode avoided list: {e}"),
     }
 }
+
+/// Forget every avoided gateway. Used once when a scan comes up empty with
+/// the list in effect: one unlucky round must not lock the engine out of
+/// gateways until the TTL runs out.
+pub fn clear_avoided(path: &str) {
+    if std::fs::remove_file(path).is_ok() {
+        log::info!("[+] forgot the remembered avoided gateways");
+    }
+}

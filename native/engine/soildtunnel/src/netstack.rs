@@ -298,6 +298,116 @@ impl StackHandle {
     }
 }
 
+/// A set of stack handles serving one listener set: the Soild carried hop
+/// keeps its inner tunnels here, rebuilds a member after a flap, and points
+/// fresh connections at the new netstack without rebinding its ports. New
+/// connections round-robin over the healthy members; existing ones stay on
+/// the stack they opened and simply end with it.
+#[derive(Clone)]
+pub struct MultiStack {
+    state: std::sync::Arc<std::sync::RwLock<MultiState>>,
+}
+
+struct MultiState {
+    /// Slot per member; `None` marks a member that ended and is not served
+    /// until something replaces it. Slots never shift, so an index handed
+    /// out by `add` stays valid for the life of the pool.
+    members: Vec<Option<StackHandle>>,
+    next: usize,
+}
+
+impl MultiStack {
+    pub fn new(handle: StackHandle) -> Self {
+        Self {
+            state: std::sync::Arc::new(std::sync::RwLock::new(MultiState {
+                members: vec![Some(handle)],
+                next: 0,
+            })),
+        }
+    }
+
+    /// A clone of the stack the next connection should use: round-robin over
+    /// the members still believed healthy.
+    pub fn pick(&self) -> StackHandle {
+        let mut state = self.state.write().expect("multi stack lock poisoned");
+        let len = state.members.len();
+        if len == 0 {
+            return Self::closed();
+        }
+        let start = state.next % len;
+        let mut chosen = start;
+        for offset in 0..len {
+            let i = (start + offset) % len;
+            if state.members[i].is_some() {
+                chosen = i;
+                break;
+            }
+        }
+        state.next = (chosen + 1) % len;
+        match &state.members[chosen] {
+            Some(handle) => handle.clone(),
+            None => Self::closed(),
+        }
+    }
+
+    /// The first healthy member: DNS sticks to it so lookups share one view
+    /// of the tunnel instead of spreading across replicas.
+    pub fn primary(&self) -> StackHandle {
+        let state = self.state.read().expect("multi stack lock poisoned");
+        for member in &state.members {
+            if let Some(handle) = member {
+                return handle.clone();
+            }
+        }
+        drop(state);
+        self.pick()
+    }
+
+    /// Flag a member whose tunnel ended so connections skip it until the
+    /// carried hop replaces it (or gives up on it).
+    pub fn mark_dead(&self, index: usize) {
+        let mut state = self.state.write().expect("multi stack lock poisoned");
+        if index < state.members.len() {
+            state.members[index] = None;
+        }
+    }
+
+    /// Point slot `index` at `handle` and make it eligible again.
+    pub fn replace(&self, index: usize, handle: StackHandle) {
+        let mut state = self.state.write().expect("multi stack lock poisoned");
+        if index < state.members.len() {
+            state.members[index] = Some(handle);
+        }
+    }
+
+    /// Register a new member; the returned index identifies it for later
+    /// `mark_dead`/`replace` calls. A free slot is reused first.
+    pub fn add(&self, handle: StackHandle) -> usize {
+        let mut state = self.state.write().expect("multi stack lock poisoned");
+        if let Some(free) = state.members.iter().position(Option::is_none) {
+            state.members[free] = Some(handle);
+            return free;
+        }
+        state.members.push(Some(handle));
+        state.members.len() - 1
+    }
+
+    /// How many members are still served — the carried hop only gives up
+    /// when the last one is gone.
+    pub fn healthy(&self) -> usize {
+        let state = self.state.read().expect("multi stack lock poisoned");
+        state.members.iter().filter(|m| m.is_some()).count()
+    }
+
+    /// A handle that refuses work: handed out only when no member is left,
+    /// so openers fail fast instead of waiting on a stack nobody serves.
+    fn closed() -> StackHandle {
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        drop(rx);
+        StackHandle { cmd_tx: tx }
+    }
+}
+
 struct TcpState {
     handle: SocketHandle,
     to_app: mpsc::Sender<Vec<u8>>,
@@ -911,6 +1021,58 @@ mod tests {
                 })
                 .expect("inbound channel should stay open");
         }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn multi_stack_spreads_new_connections_and_keeps_old_ones() {
+        // Held for the whole test: dropping it closes the inbound channel and
+        // takes the live stack down with it.
+        let (_inbound_tx, inbound_rx) = mpsc::channel::<Vec<u8>>(4);
+        let (outbound_tx, _outbound_rx) = mpsc::channel::<Vec<u8>>(1);
+        let live = spawn("198.18.0.1", "fc00::1", 1400, inbound_rx, outbound_tx)
+            .expect("netstack should start");
+
+        let pool = MultiStack::new(live.clone());
+
+        pool.pick()
+            .open_udp()
+            .await
+            .expect("the initial member should accept connections");
+
+        // A handle cloned before a repoint keeps serving its own stack; only
+        // future connections follow the change.
+        let kept = pool.pick();
+        pool.mark_dead(0);
+        assert_eq!(pool.healthy(), 0, "a flagged member should stop being served");
+
+        let error = match pool.primary().open_udp().await {
+            Ok(_) => panic!("with every member flagged the primary should refuse connections"),
+            Err(error) => error,
+        };
+        assert!(
+            error.to_string().contains("netstack closed"),
+            "unexpected error: {error}"
+        );
+
+        let (dead_tx, dead_rx) = mpsc::channel::<Cmd>(1);
+        drop(dead_rx);
+        let slot = pool.add(StackHandle { cmd_tx: dead_tx });
+        assert_eq!(slot, 0, "a freed slot should be reused");
+        assert_eq!(pool.healthy(), 1, "the replaced member should be served again");
+
+        kept
+            .open_udp()
+            .await
+            .expect("a handle taken before the repoint should keep working");
+
+        let error = match pool.pick().open_udp().await {
+            Ok(_) => panic!("a repointed dead stack should refuse connections"),
+            Err(error) => error,
+        };
+        assert!(
+            error.to_string().contains("netstack closed"),
+            "unexpected error: {error}"
+        );
     }
 
     fn checksum16(data: &[u8], initial: u32) -> u16 {

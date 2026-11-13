@@ -15,6 +15,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import com.soildtunnel.app.ui.theme.AuraIndigo
 import com.soildtunnel.app.ui.theme.GlowPoolCyan
 import com.soildtunnel.app.ui.theme.GlowPoolViolet
@@ -24,6 +25,7 @@ import com.soildtunnel.app.ui.theme.NeonPrimary
 import com.soildtunnel.app.ui.theme.Palette
 import com.soildtunnel.app.ui.theme.Skin
 import com.soildtunnel.app.ui.theme.Void
+import com.soildtunnel.app.ui.theme.VoltPrimary
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
@@ -34,6 +36,11 @@ fun AmbientBackground(
     active: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    if (Palette.skin == Skin.VOLT) {
+        VoltBackdrop(accent, active, modifier)
+        return
+    }
+
     if (Palette.skin == Skin.NEON) {
         NeonBackdrop(accent, active, modifier)
         return
@@ -233,6 +240,95 @@ private fun NeonBackdrop(
                     brush = Brush.radialGradient(
                         colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
                         radius = size.maxDimension * 1.05f,
+                    ),
+                )
+            },
+    )
+}
+
+@Composable
+private fun VoltBackdrop(
+    accent: Color,
+    active: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val drift = rememberInfiniteTransition(label = "voltDrift").animateFloat(
+        initialValue = 0f,
+        targetValue = (Math.PI * 2).toFloat(),
+        animationSpec = infiniteRepeatable(tween(26_000, easing = LinearEasing)),
+        label = "drift",
+    )
+    val sheen = rememberInfiniteTransition(label = "voltSheen").animateFloat(
+        initialValue = -0.40f,
+        targetValue = 1.40f,
+        animationSpec = infiniteRepeatable(tween(9_000, easing = LinearEasing)),
+        label = "sheen",
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .drawBehind {
+                drawRect(Void)
+                val t = drift.value
+                val live = if (active) 1.30f else 1f
+
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            VoltPrimary.copy(alpha = (if (active) 0.20f else 0.13f) * live),
+                            Color.Transparent,
+                        ),
+                        center = Offset(
+                            size.width * (0.86f + 0.05f * cos(t).toFloat()),
+                            size.height * (0.90f + 0.04f * sin(t).toFloat()),
+                        ),
+                        radius = size.maxDimension * 1.15f,
+                    ),
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            GlowPoolViolet.copy(alpha = if (active) 0.60f else 0.42f),
+                            Color.Transparent,
+                        ),
+                        center = Offset(
+                            size.width * (0.06f + 0.04f * sin(t).toFloat()),
+                            size.height * (0.06f + 0.04f * cos(t).toFloat()),
+                        ),
+                        radius = size.maxDimension * 0.95f,
+                    ),
+                )
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            accent.copy(alpha = if (active) 0.12f else 0.07f),
+                            Color.Transparent,
+                        ),
+                        startY = size.height * 0.70f,
+                        endY = size.height,
+                    ),
+                )
+
+                val band = size.maxDimension * 0.55f
+                val x = size.width * sheen.value
+                drawRect(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color.White.copy(alpha = 0.045f),
+                            Color.Transparent,
+                        ),
+                        start = Offset(x - band, 0f),
+                        end = Offset(x + band, size.height),
+                    ),
+                )
+
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
+                        radius = size.maxDimension * 1.15f,
                     ),
                 )
             },

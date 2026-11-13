@@ -44,6 +44,7 @@ import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -81,6 +82,7 @@ import com.soildtunnel.app.core.ServerPinger
 import com.soildtunnel.app.core.TorManager
 import com.soildtunnel.app.core.TunnelConfig
 import com.soildtunnel.app.core.UpdateChecker
+import com.soildtunnel.app.core.UpdateInstaller
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.ConnectionState
 import com.soildtunnel.app.model.GoolMode
@@ -100,7 +102,9 @@ import com.soildtunnel.app.ui.components.UsagePanel
 import com.soildtunnel.app.ui.components.ServerPickerSheet
 import com.soildtunnel.app.ui.components.SpeedTestPanel
 import com.soildtunnel.app.ui.components.glassChip
+import com.soildtunnel.app.ui.components.glassPane
 import com.soildtunnel.app.ui.theme.CardSubSurface
+import com.soildtunnel.app.ui.theme.ChipRadius
 import com.soildtunnel.app.ui.theme.CardTextDim
 import com.soildtunnel.app.ui.theme.CardTextMuted
 import com.soildtunnel.app.ui.theme.CardTextPrimary
@@ -110,7 +114,10 @@ import com.soildtunnel.app.ui.theme.NeonCyan
 import com.soildtunnel.app.ui.theme.NeonMint
 import com.soildtunnel.app.ui.theme.NeonRed
 import com.soildtunnel.app.ui.theme.DrawerGlass
+import com.soildtunnel.app.ui.theme.Palette
 import com.soildtunnel.app.ui.theme.SheetGlass
+import com.soildtunnel.app.ui.theme.Skin
+import com.soildtunnel.app.ui.theme.Void
 import com.soildtunnel.app.ui.theme.latencyColor
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -153,11 +160,20 @@ fun HomeScreen(
     // Tor exit picker (replaces the server console in Tor mode).
     var showTorSheet by remember { mutableStateOf(false) }
     var updateResult by remember { mutableStateOf(UpdateChecker.getCachedResult()) }
+    // In-app install progress for that banner: idle until the user taps it.
+    var updatePhase by remember { mutableStateOf(UpdatePhase.IDLE) }
+    var updateProgress by remember { mutableStateOf(0) }
+    var updateError by remember { mutableStateOf("") }
+    val updateScope = rememberCoroutineScope()
     // One-shot Telegram channel banner (once per install, then never again).
     var telegramBannerSeen by remember {
         mutableStateOf(OnboardingFlags.telegramBannerSeen(context))
     }
     val settingsEnabled = state is ConnectionState.Idle || state is ConnectionState.Error
+
+    // The Neon skin docks the control at the bottom of the screen instead of
+    // letting it ride in the scrolling column with the cards.
+    val dockedButton = Palette.skin == Skin.VOLT
 
     // Kick off a background sweep when the screen first appears; TTL keeps
     // it from hammering the network if data is still fresh.
@@ -321,15 +337,68 @@ fun HomeScreen(
                     Spacer(Modifier.height(14.dp))
                     UpdateBanner(
                         version = updateResult.latestVersion,
-                        onClick = {
-                            context.startActivity(
-                                android.content.Intent(
-                                    android.content.Intent.ACTION_VIEW,
-                                    android.net.Uri.parse(updateResult.downloadUrl),
+                        phase = updatePhase,
+                        progress = updateProgress,
+                        error = updateError,
+                        onClick = updateClick@{
+                            if (updatePhase == UpdatePhase.DOWNLOADING) return@updateClick
+
+                            val apkUrl = updateResult.apkUrl
+                            if (apkUrl.isBlank()) {
+                                // No direct asset for this device: the release
+                                // page in a browser is the fallback.
+                                context.startActivity(
+                                    android.content.Intent(
+                                        android.content.Intent.ACTION_VIEW,
+                                        android.net.Uri.parse(updateResult.downloadUrl),
+                                    )
                                 )
-                            )
+                                return@updateClick
+                            }
+                            if (!UpdateInstaller.canInstall(context)) {
+                                // Android needs this granted before any APK can
+                                // be handed to the installer; ask, don't assume.
+                                updateError =
+                                    context.getString(R.string.update_permission_needed)
+                                updatePhase = UpdatePhase.ERROR
+                                UpdateInstaller.requestInstallPermission(context)
+                                return@updateClick
+                            }
+
+                            updatePhase = UpdatePhase.DOWNLOADING
+                            updateProgress = 0
+                            updateError = ""
+                            updateScope.launch {
+                                val outcome = UpdateInstaller.download(context, apkUrl) {
+                                    updateProgress = it
+                                }
+                                when (outcome) {
+                                    is UpdateInstaller.Outcome.Ready -> {
+                                        // Verified against our own signer;
+                                        // the system installer takes it from here.
+                                        updatePhase = UpdatePhase.IDLE
+                                        updateResult = UpdateChecker.Result()
+                                        UpdateInstaller.install(context, outcome.apk)
+                                    }
+                                    is UpdateInstaller.Outcome.Failed -> {
+                                        updatePhase = UpdatePhase.ERROR
+                                        // A signer mismatch gets its own wording:
+                                        // it means the file was not ours to install.
+                                        updateError =
+                                            if (outcome.reason == "signature mismatch") {
+                                                context.getString(R.string.update_error_signer)
+                                            } else {
+                                                outcome.reason
+                                            }
+                                    }
+                                }
+                            }
                         },
-                        onDismiss = { updateResult = UpdateChecker.Result() },
+                        onDismiss = {
+                            updateResult = UpdateChecker.Result()
+                            updatePhase = UpdatePhase.IDLE
+                            updateError = ""
+                        },
                     )
                 }
 
@@ -377,9 +446,11 @@ fun HomeScreen(
 
                 Spacer(modifier = Modifier.height(26.dp))
 
-                ConnectButton(mode = mode, onClick = onToggleConnection)
+                if (!dockedButton) {
+                    ConnectButton(mode = mode, onClick = onToggleConnection)
 
-                Spacer(Modifier.height(26.dp))
+                    Spacer(Modifier.height(26.dp))
+                }
 
                 // Status, timer, IP, speeds and the protocol row: one unified
                 // telemetry console - see ConnectionCard.
@@ -395,7 +466,34 @@ fun HomeScreen(
                     else TunnelConfig.SOCKS_PORT,
                 )
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(if (dockedButton) 140.dp else 16.dp))
+            }
+
+            // Docked control for the Neon skin: a lit capsule on a glass tray
+            // above the gesture bar, with its own scrim so the cards scroll
+            // out behind it.
+            if (dockedButton) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(
+                            brush = Brush.verticalGradient(
+                                listOf(Color.Transparent, Void.copy(alpha = 0.94f)),
+                            ),
+                        )
+                        .navigationBarsPadding()
+                        .padding(horizontal = 18.dp, vertical = 16.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .glassPane(RoundedCornerShape(34.dp), brightRim = true)
+                            .padding(10.dp),
+                    ) {
+                        ConnectButton(mode = mode, onClick = onToggleConnection)
+                    }
+                }
             }
 
             IconButton(
@@ -551,7 +649,7 @@ private fun ServerSelectorPill(
     }
 
     val alpha = if (enabled) 1f else 0.55f
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(ChipRadius)
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -603,7 +701,7 @@ private fun TorExitPill(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(ChipRadius)
     val name = if (exitCountry.isBlank()) {
         stringResource(R.string.tor_exit_auto)
     } else {
@@ -713,9 +811,15 @@ private fun stateSubtitle(state: ConnectionState): String = when (state) {
 
 private const val URL_TELEGRAM_CHANNEL = "https://t.me/cyberrageofficial"
 
+/** Where the in-app update banner is in its install flow. */
+private enum class UpdatePhase { IDLE, DOWNLOADING, ERROR }
+
 @Composable
 private fun UpdateBanner(
     version: String,
+    phase: UpdatePhase,
+    progress: Int,
+    error: String,
     onClick: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -725,7 +829,8 @@ private fun UpdateBanner(
             .clip(RoundedCornerShape(14.dp))
             .background(NeonAmber.copy(alpha = 0.10f))
             .border(1.dp, NeonAmber.copy(alpha = 0.30f), RoundedCornerShape(14.dp))
-            .clickable { onClick() }
+            // A download in flight must not be restarted by a stray tap.
+            .clickable(enabled = phase != UpdatePhase.DOWNLOADING) { onClick() }
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -743,10 +848,27 @@ private fun UpdateBanner(
                 color = CardTextPrimary,
             )
             Text(
-                text = stringResource(R.string.update_version, version),
+                text = when (phase) {
+                    UpdatePhase.IDLE -> stringResource(R.string.update_version, version)
+                    UpdatePhase.DOWNLOADING ->
+                        stringResource(R.string.update_downloading, progress)
+                    UpdatePhase.ERROR ->
+                        stringResource(R.string.update_error, error)
+                },
                 style = MaterialTheme.typography.labelSmall,
-                color = NeonAmber,
+                color = if (phase == UpdatePhase.ERROR) MaterialTheme.colorScheme.error
+                else NeonAmber,
             )
+            if (phase == UpdatePhase.DOWNLOADING) {
+                LinearProgressIndicator(
+                    progress = { progress / 100f },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp),
+                    color = NeonAmber,
+                    trackColor = NeonAmber.copy(alpha = 0.20f),
+                )
+            }
         }
         Text(
             text = "×",

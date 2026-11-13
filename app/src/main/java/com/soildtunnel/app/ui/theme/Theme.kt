@@ -87,17 +87,44 @@ private val NeonScheme = darkColorScheme(
     outlineVariant = Color(0x243D7BFF),
 )
 
+// Champagne gold on warm obsidian: one accent, jade for "go", rose for fault.
+private val VoltScheme = darkColorScheme(
+    primary = VoltPrimary,
+    onPrimary = Color(0xFF2A2113),
+    secondary = VoltOk,
+    onSecondary = Color(0xFF06281C),
+    tertiary = VoltTertiary,
+    onTertiary = Color(0xFF2A2113),
+    background = Color(0xFF0B0B0D),
+    onBackground = Color(0xFFF6F2EA),
+    surface = Color(0xFF131318),
+    onSurface = Color(0xFFF6F2EA),
+    surfaceVariant = Color(0xFF212129),
+    onSurfaceVariant = Color(0xFFA9A296),
+    surfaceContainer = Color(0xFF101015),
+    surfaceContainerHigh = Color(0xFF17171D),
+    surfaceContainerHighest = Color(0xFF1F1F26),
+    error = VoltError,
+    onError = Color(0xFF3A0713),
+    outline = Color(0x40E8C87E),
+    outlineVariant = Color(0x33E8C87E),
+)
+
 @Composable
 fun SoildTunnelTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     content: @Composable () -> Unit,
 ) {
     val dark = when (themeMode) {
-        ThemeMode.DARK, ThemeMode.NEON -> true
+        ThemeMode.DARK, ThemeMode.NEON, ThemeMode.VOLT -> true
         ThemeMode.LIGHT -> false
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
     }
-    Palette.skin = if (themeMode == ThemeMode.NEON) Skin.NEON else Skin.AURORA
+    Palette.skin = when (themeMode) {
+        ThemeMode.NEON -> Skin.NEON
+        ThemeMode.VOLT -> Skin.VOLT
+        else -> Skin.AURORA
+    }
     Palette.light = !dark
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -110,6 +137,7 @@ fun SoildTunnelTheme(
 
     MaterialTheme(
         colorScheme = when {
+            themeMode == ThemeMode.VOLT -> VoltScheme
             themeMode == ThemeMode.NEON -> NeonScheme
             dark -> ControlRoomScheme
             else -> DayScheme

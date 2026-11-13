@@ -78,11 +78,14 @@ impl std::fmt::Display for Target {
 
 /// Where proxied traffic goes. `Stack` is the existing in-tunnel TCP/IP stack;
 /// `Out` hands the connection to an outbound protocol that speaks for itself
-/// and can keep a name as a name instead of resolving it here.
+/// and can keep a name as a name instead of resolving it here; `Pool` follows
+/// the members of a Soild carried hop, which can rebuild or grow a tunnel
+/// while these listeners stay bound to their ports.
 #[derive(Clone)]
 pub(crate) enum Backend {
     Stack(StackHandle),
     Out(std::sync::Arc<crate::outbound::Outbound>),
+    Pool(std::sync::Arc<crate::netstack::MultiStack>),
 }
 
 pub(crate) enum TcpUp {
@@ -168,11 +171,10 @@ impl Backend {
         port: u16,
     ) -> Result<(TcpUp, mpsc::Receiver<Vec<u8>>)> {
         match self {
-            Backend::Stack(stack) => {
-                let ip = resolve(stack, target.clone()).await?;
-                let conn = stack.open_tcp(SocketAddr::new(ip, port)).await?;
-                let (sender, from_stack) = conn.into_split();
-                Ok((TcpUp::Stack(sender), from_stack))
+            Backend::Stack(stack) => open_tcp_on(stack, target, port).await,
+            Backend::Pool(pool) => {
+                let current = pool.pick();
+                open_tcp_on(&current, target, port).await
             }
             Backend::Out(outbound) => {
                 let host = match target {
@@ -191,10 +193,10 @@ impl Backend {
         dst: SocketAddr,
     ) -> Result<(TcpUp, mpsc::Receiver<Vec<u8>>)> {
         match self {
-            Backend::Stack(stack) => {
-                let conn = stack.open_tcp(dst).await?;
-                let (sender, from_stack) = conn.into_split();
-                Ok((TcpUp::Stack(sender), from_stack))
+            Backend::Stack(stack) => open_tcp_addr_on(stack, dst).await,
+            Backend::Pool(pool) => {
+                let current = pool.pick();
+                open_tcp_addr_on(&current, dst).await
             }
             Backend::Out(outbound) => {
                 let pipe = outbound.open_tcp(&dst.ip().to_string(), dst.port()).await?;
@@ -206,10 +208,10 @@ impl Backend {
 
     async fn open_udp(&self) -> Result<(UdpUp, mpsc::Receiver<(SocketAddr, Vec<u8>)>)> {
         match self {
-            Backend::Stack(stack) => {
-                let conn = stack.open_udp().await?;
-                let (sender, from_stack) = conn.into_split();
-                Ok((UdpUp::Stack(sender), from_stack))
+            Backend::Stack(stack) => open_udp_on(stack).await,
+            Backend::Pool(pool) => {
+                let current = pool.pick();
+                open_udp_on(&current).await
             }
             Backend::Out(outbound) => {
                 let pipe = outbound.open_udp().await?;
@@ -222,11 +224,46 @@ impl Backend {
     async fn dns(&self, name: &str) -> Result<IpAddr> {
         match self {
             Backend::Stack(stack) => dns_resolve(stack, name).await,
+            Backend::Pool(pool) => {
+                let primary = pool.primary();
+                dns_resolve(&primary, name).await
+            }
             // The outbound path carries one UDP session for the client, so a
             // second one for a lookup would push it aside. TCP keeps them apart.
             Backend::Out(_) => dns_exchange_tcp(self, name).await,
         }
     }
+}
+
+// Shared by the plain stack and the pooled ones: a pooled backend hands its
+// handle to these instead of calling back into the method that asked, which
+// would make the returned future infinitely large.
+async fn open_tcp_on(
+    stack: &StackHandle,
+    target: &Target,
+    port: u16,
+) -> Result<(TcpUp, mpsc::Receiver<Vec<u8>>)> {
+    let ip = resolve(stack, target.clone()).await?;
+    let conn = stack.open_tcp(SocketAddr::new(ip, port)).await?;
+    let (sender, from_stack) = conn.into_split();
+    Ok((TcpUp::Stack(sender), from_stack))
+}
+
+async fn open_tcp_addr_on(
+    stack: &StackHandle,
+    dst: SocketAddr,
+) -> Result<(TcpUp, mpsc::Receiver<Vec<u8>>)> {
+    let conn = stack.open_tcp(dst).await?;
+    let (sender, from_stack) = conn.into_split();
+    Ok((TcpUp::Stack(sender), from_stack))
+}
+
+async fn open_udp_on(
+    stack: &StackHandle,
+) -> Result<(UdpUp, mpsc::Receiver<(SocketAddr, Vec<u8>)>)> {
+    let conn = stack.open_udp().await?;
+    let (sender, from_stack) = conn.into_split();
+    Ok((UdpUp::Stack(sender), from_stack))
 }
 
 static GATEWAY_PROXY: std::sync::OnceLock<SocketAddr> = std::sync::OnceLock::new();
