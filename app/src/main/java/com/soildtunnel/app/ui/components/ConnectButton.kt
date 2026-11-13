@@ -230,8 +230,9 @@ fun ConnectButton(
 }
 
 /**
- * The Neon theme's control: a lit bar instead of the orb — full width, hard
- * corners, black type on a solid accent fill, glow drawn outside the shape.
+ * The Neon theme's control: a floating capsule on a glass tray instead of
+ * the orb. Each state carries its own metallic fill, a sheen sweeps across
+ * it, and a soft halo keeps it the one lit thing on the screen.
  */
 @Composable
 private fun VoltConnectButton(
@@ -250,10 +251,18 @@ private fun VoltConnectButton(
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val pressScale by animateFloatAsState(
-        targetValue = if (pressed) 0.975f else 1f,
+        targetValue = if (pressed) 0.98f else 1f,
         animationSpec = tween(150),
         label = "voltPressScale",
     )
+
+    val fill: List<Color> = when (mode) {
+        ButtonMode.IDLE -> listOf(Color(0xFFF8E9C6), Color(0xFFE8C87E), Color(0xFFC9A45C))
+        ButtonMode.BUSY -> listOf(Color(0xFF27272F), Color(0xFF17171C))
+        ButtonMode.CONNECTED -> listOf(Color(0xFF95EAC7), Color(0xFF6ED6A8), Color(0xFF3FB98A))
+        ButtonMode.ERROR -> listOf(Color(0xFFF996A8), Color(0xFFF2677E), Color(0xFFD6425C))
+    }
+    val ink = if (mode == ButtonMode.BUSY) NeonCyan else Color(0xFF221B10)
 
     val label = when (mode) {
         ButtonMode.IDLE -> stringResource(R.string.tap_to_connect)
@@ -271,7 +280,17 @@ private fun VoltConnectButton(
         ButtonMode.CONNECTED -> Icons.Rounded.Check
         else -> Icons.Rounded.PowerSettingsNew
     }
-    val ink = Color(0xFF051004)
+
+    val sweep by rememberInfiniteTransition(label = "voltSweep").animateFloat(
+        initialValue = -0.60f,
+        targetValue = 1.60f,
+        animationSpec = infiniteRepeatable(
+            tween(if (mode == ButtonMode.BUSY) 1_100 else 3_000, easing = LinearEasing),
+        ),
+        label = "sweep",
+    )
+
+    val shape = RoundedCornerShape(VOLT_BAR_RADIUS)
 
     Box(modifier = modifier.fillMaxWidth()) {
         Canvas(Modifier.matchParentSize()) {
@@ -283,94 +302,124 @@ private fun VoltConnectButton(
             var halo = 0
             while (halo < 3) {
                 drawRoundRect(
-                    color = animatedAccent.copy(alpha = 0.13f - halo * 0.04f),
+                    color = animatedAccent.copy(alpha = 0.13f - halo * 0.035f),
                     topLeft = Offset(inset - grow, inset - grow),
                     size = Size(w + grow * 2f, h + grow * 2f),
                     cornerRadius = CornerRadius(rad + grow),
                 )
-                grow += 5.dp.toPx()
+                grow += 6.dp.toPx()
                 halo++
             }
-            drawRoundRect(
-                color = animatedAccent.copy(alpha = 0.55f),
-                topLeft = Offset(inset, inset),
-                size = Size(w, h),
-                cornerRadius = CornerRadius(rad),
-                style = Stroke(1.5.dp.toPx()),
-            )
         }
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(8.dp)
-                .height(58.dp)
                 .scale(pressScale)
-                .clip(RoundedCornerShape(VOLT_BAR_RADIUS))
-                .background(
-                    brush = Brush.horizontalGradient(
-                        listOf(animatedAccent, animatedAccent.copy(alpha = 0.74f)),
+                .clip(shape)
+                .background(Brush.verticalGradient(fill))
+                .then(
+                    if (mode == ButtonMode.BUSY) {
+                        Modifier.border(1.dp, NeonCyan.copy(alpha = 0.45f), shape)
+                    } else {
+                        Modifier
+                    },
+                ),
+        ) {
+            Canvas(Modifier.matchParentSize()) {
+                val x = size.width * sweep
+                val band = size.width * 0.45f
+                drawRect(
+                    brush = Brush.linearGradient(
+                        colors = if (mode == ButtonMode.BUSY) {
+                            listOf(
+                                Color.Transparent,
+                                NeonCyan.copy(alpha = 0.20f),
+                                Color.Transparent,
+                            )
+                        } else {
+                            listOf(
+                                Color.Transparent,
+                                Color.White.copy(alpha = 0.30f),
+                                Color.Transparent,
+                            )
+                        },
+                        start = Offset(x - band, 0f),
+                        end = Offset(x + band, size.height),
                     ),
                 )
-                .clickable(
-                    interactionSource = interaction,
-                    indication = null,
-                    onClick = onClick,
-                )
-                .padding(horizontal = 14.dp),
-        ) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(38.dp)
-                    .background(ink.copy(alpha = 0.88f), RoundedCornerShape(VOLT_CHIP_RADIUS))
-                    .border(1.dp, ink.copy(alpha = 0.6f), RoundedCornerShape(VOLT_CHIP_RADIUS)),
-            ) {
-                if (mode == ButtonMode.BUSY) {
-                    SpinningGlyph(Icons.Rounded.Autorenew, animatedAccent)
-                } else {
-                    Icon(
-                        imageVector = glyph,
-                        contentDescription = null,
-                        tint = animatedAccent,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
             }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Black,
-                        fontSize = 15.sp,
-                        color = ink,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    if (mode == ButtonMode.CONNECTED) {
-                        Spacer(Modifier.width(8.dp))
-                        EqualizerBars(ink)
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 9.dp),
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(
+                            if (mode == ButtonMode.BUSY) Color.Transparent
+                            else ink.copy(alpha = 0.90f),
+                            CircleShape,
+                        )
+                        .border(
+                            1.dp,
+                            if (mode == ButtonMode.BUSY) animatedAccent.copy(alpha = 0.55f)
+                            else Color.Transparent,
+                            CircleShape,
+                        ),
+                ) {
+                    if (mode == ButtonMode.BUSY) {
+                        SpinningGlyph(Icons.Rounded.Autorenew, animatedAccent)
+                    } else {
+                        Icon(
+                            imageVector = glyph,
+                            contentDescription = null,
+                            tint = animatedAccent,
+                            modifier = Modifier.size(22.dp),
+                        )
                     }
                 }
-                Text(
-                    text = hint,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = ink.copy(alpha = 0.62f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            letterSpacing = 0.2.sp,
+                            color = ink,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        if (mode == ButtonMode.CONNECTED) {
+                            Spacer(Modifier.width(8.dp))
+                            EqualizerBars(ink)
+                        }
+                    }
+                    Text(
+                        text = hint,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ink.copy(alpha = 0.62f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (mode == ButtonMode.IDLE || mode == ButtonMode.ERROR) {
+                    Spacer(Modifier.width(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .border(1.5.dp, ink.copy(alpha = 0.75f), CircleShape),
+                    )
+                }
             }
-            Spacer(Modifier.width(10.dp))
-            Box(
-                modifier = Modifier
-                    .size(10.dp)
-                    .background(ink.copy(alpha = 0.85f), RoundedCornerShape(2.dp))
-                    .border(1.dp, ink.copy(alpha = 0.5f), RoundedCornerShape(2.dp)),
-            )
         }
     }
 }
@@ -541,5 +590,4 @@ private val ORB_RING = 176.dp
 private val ORB_IN = 160.dp
 private val RING_STROKE = 4.dp
 
-private val VOLT_BAR_RADIUS = 6.dp
-private val VOLT_CHIP_RADIUS = 4.dp
+private val VOLT_BAR_RADIUS = 31.dp

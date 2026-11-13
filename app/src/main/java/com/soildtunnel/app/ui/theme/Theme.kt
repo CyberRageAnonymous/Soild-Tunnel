@@ -87,27 +87,27 @@ private val NeonScheme = darkColorScheme(
     outlineVariant = Color(0x243D7BFF),
 )
 
-// Acid-green console: pure black, hard corners, one loud accent.
+// Champagne gold on warm obsidian: one accent, jade for "go", rose for fault.
 private val VoltScheme = darkColorScheme(
     primary = VoltPrimary,
-    onPrimary = Color(0xFF001A00),
-    secondary = VoltBusy,
-    onSecondary = Color(0xFF2B0024),
+    onPrimary = Color(0xFF2A2113),
+    secondary = VoltOk,
+    onSecondary = Color(0xFF06281C),
     tertiary = VoltTertiary,
-    onTertiary = Color(0xFF241C00),
-    background = Color(0xFF000000),
-    onBackground = Color(0xFFF4FFF0),
-    surface = Color(0xFF0B0F0A),
-    onSurface = Color(0xFFF4FFF0),
-    surfaceVariant = Color(0xFF171D14),
-    onSurfaceVariant = Color(0xFF93A898),
-    surfaceContainer = Color(0xFF080B07),
-    surfaceContainerHigh = Color(0xFF101410),
-    surfaceContainerHighest = Color(0xFF181E16),
+    onTertiary = Color(0xFF2A2113),
+    background = Color(0xFF0B0B0D),
+    onBackground = Color(0xFFF6F2EA),
+    surface = Color(0xFF131318),
+    onSurface = Color(0xFFF6F2EA),
+    surfaceVariant = Color(0xFF212129),
+    onSurfaceVariant = Color(0xFFA9A296),
+    surfaceContainer = Color(0xFF101015),
+    surfaceContainerHigh = Color(0xFF17171D),
+    surfaceContainerHighest = Color(0xFF1F1F26),
     error = VoltError,
-    onError = Color(0xFF2B0006),
-    outline = Color(0x6639FF14),
-    outlineVariant = Color(0x3339FF14),
+    onError = Color(0xFF3A0713),
+    outline = Color(0x40E8C87E),
+    outlineVariant = Color(0x33E8C87E),
 )
 
 @Composable

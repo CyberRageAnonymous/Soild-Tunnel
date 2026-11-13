@@ -102,6 +102,7 @@ import com.soildtunnel.app.ui.components.UsagePanel
 import com.soildtunnel.app.ui.components.ServerPickerSheet
 import com.soildtunnel.app.ui.components.SpeedTestPanel
 import com.soildtunnel.app.ui.components.glassChip
+import com.soildtunnel.app.ui.components.glassPane
 import com.soildtunnel.app.ui.theme.CardSubSurface
 import com.soildtunnel.app.ui.theme.ChipRadius
 import com.soildtunnel.app.ui.theme.CardTextDim
@@ -465,11 +466,12 @@ fun HomeScreen(
                     else TunnelConfig.SOCKS_PORT,
                 )
 
-                Spacer(Modifier.height(if (dockedButton) 104.dp else 16.dp))
+                Spacer(Modifier.height(if (dockedButton) 140.dp else 16.dp))
             }
 
-            // Docked control for the Neon skin: it sits above the gesture bar
-            // with its own scrim so the cards scroll out behind it.
+            // Docked control for the Neon skin: a lit capsule on a glass tray
+            // above the gesture bar, with its own scrim so the cards scroll
+            // out behind it.
             if (dockedButton) {
                 Box(
                     modifier = Modifier
@@ -477,13 +479,20 @@ fun HomeScreen(
                         .fillMaxWidth()
                         .background(
                             brush = Brush.verticalGradient(
-                                listOf(Color.Transparent, Void.copy(alpha = 0.95f)),
+                                listOf(Color.Transparent, Void.copy(alpha = 0.94f)),
                             ),
                         )
                         .navigationBarsPadding()
-                        .padding(horizontal = 24.dp, vertical = 14.dp),
+                        .padding(horizontal = 18.dp, vertical = 16.dp),
                 ) {
-                    ConnectButton(mode = mode, onClick = onToggleConnection)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .glassPane(RoundedCornerShape(34.dp), brightRim = true)
+                            .padding(10.dp),
+                    ) {
+                        ConnectButton(mode = mode, onClick = onToggleConnection)
+                    }
                 }
             }
 

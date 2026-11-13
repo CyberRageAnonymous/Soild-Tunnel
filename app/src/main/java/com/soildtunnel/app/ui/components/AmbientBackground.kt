@@ -25,7 +25,6 @@ import com.soildtunnel.app.ui.theme.NeonPrimary
 import com.soildtunnel.app.ui.theme.Palette
 import com.soildtunnel.app.ui.theme.Skin
 import com.soildtunnel.app.ui.theme.Void
-import com.soildtunnel.app.ui.theme.VoltBusy
 import com.soildtunnel.app.ui.theme.VoltPrimary
 import kotlin.math.abs
 import kotlin.math.cos
@@ -253,17 +252,17 @@ private fun VoltBackdrop(
     active: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val scroll = rememberInfiniteTransition(label = "voltScroll").animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(9_000, easing = LinearEasing)),
-        label = "scroll",
-    )
-    val sweep = rememberInfiniteTransition(label = "voltSweep").animateFloat(
+    val drift = rememberInfiniteTransition(label = "voltDrift").animateFloat(
         initialValue = 0f,
         targetValue = (Math.PI * 2).toFloat(),
-        animationSpec = infiniteRepeatable(tween(7_500, easing = LinearEasing)),
-        label = "sweep",
+        animationSpec = infiniteRepeatable(tween(26_000, easing = LinearEasing)),
+        label = "drift",
+    )
+    val sheen = rememberInfiniteTransition(label = "voltSheen").animateFloat(
+        initialValue = -0.40f,
+        targetValue = 1.40f,
+        animationSpec = infiniteRepeatable(tween(9_000, easing = LinearEasing)),
+        label = "sheen",
     )
 
     Box(
@@ -271,100 +270,65 @@ private fun VoltBackdrop(
             .fillMaxSize()
             .drawBehind {
                 drawRect(Void)
-                val live = if (active) 1.4f else 1f
-                val s = sweep.value
+                val t = drift.value
+                val live = if (active) 1.30f else 1f
 
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            VoltPrimary.copy(alpha = (if (active) 0.30f else 0.18f) * live),
-                            Color.Transparent,
-                        ),
-                        center = Offset(size.width * 0.5f, size.height * 1.04f),
-                        radius = size.maxDimension * 0.95f,
-                    ),
-                )
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            VoltBusy.copy(alpha = (if (active) 0.22f else 0.14f) * live),
+                            VoltPrimary.copy(alpha = (if (active) 0.20f else 0.13f) * live),
                             Color.Transparent,
                         ),
                         center = Offset(
-                            size.width * (0.88f + 0.04f * sin(s).toFloat()),
-                            size.height * (0.10f + 0.03f * cos(s).toFloat()),
+                            size.width * (0.86f + 0.05f * cos(t).toFloat()),
+                            size.height * (0.90f + 0.04f * sin(t).toFloat()),
                         ),
-                        radius = size.maxDimension * 0.62f,
+                        radius = size.maxDimension * 1.15f,
                     ),
                 )
-
-                val stepY = 34.dp.toPx()
-                var gy = (scroll.value * stepY) - stepY
-                while (gy < size.height) {
-                    drawRect(
-                        color = VoltPrimary.copy(alpha = 0.05f),
-                        topLeft = Offset(0f, gy),
-                        size = Size(size.width, 1f),
-                    )
-                    gy += stepY
-                }
-
-                val stepX = size.width / 9f
-                var gx = 0f
-                var rail = 0
-                while (gx <= size.width) {
-                    drawRect(
-                        color = VoltPrimary.copy(alpha = if (rail % 5 == 0) 0.10f else 0.045f),
-                        topLeft = Offset(gx, 0f),
-                        size = Size(1f, size.height),
-                    )
-                    gx += stepX
-                    rail++
-                }
-
-                val scanY = size.height * (s / (Math.PI * 2)).toFloat()
-                val scanHalf = 40.dp.toPx()
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            GlowPoolViolet.copy(alpha = if (active) 0.60f else 0.42f),
+                            Color.Transparent,
+                        ),
+                        center = Offset(
+                            size.width * (0.06f + 0.04f * sin(t).toFloat()),
+                            size.height * (0.06f + 0.04f * cos(t).toFloat()),
+                        ),
+                        radius = size.maxDimension * 0.95f,
+                    ),
+                )
                 drawRect(
                     brush = Brush.verticalGradient(
                         colors = listOf(
                             Color.Transparent,
-                            VoltBusy.copy(alpha = if (active) 0.55f else 0.30f),
+                            accent.copy(alpha = if (active) 0.12f else 0.07f),
                             Color.Transparent,
                         ),
-                        startY = scanY - scanHalf,
-                        endY = scanY + scanHalf,
+                        startY = size.height * 0.70f,
+                        endY = size.height,
                     ),
-                    topLeft = Offset(0f, scanY - scanHalf),
-                    size = Size(size.width, scanHalf * 2f),
                 )
 
-                val horizon = size.height * 0.78f
+                val band = size.maxDimension * 0.55f
+                val x = size.width * sheen.value
                 drawRect(
-                    brush = Brush.verticalGradient(
+                    brush = Brush.linearGradient(
                         colors = listOf(
                             Color.Transparent,
-                            accent.copy(alpha = if (active) 0.26f else 0.13f),
+                            Color.White.copy(alpha = 0.045f),
                             Color.Transparent,
                         ),
-                        startY = horizon - size.height * 0.05f,
-                        endY = horizon + size.height * 0.05f,
+                        start = Offset(x - band, 0f),
+                        end = Offset(x + band, size.height),
                     ),
-                )
-                drawRect(
-                    color = VoltPrimary.copy(alpha = 0.50f * live),
-                    topLeft = Offset(0f, horizon),
-                    size = Size(size.width, 2f),
-                )
-                drawRect(
-                    color = VoltBusy.copy(alpha = 0.35f * live),
-                    topLeft = Offset(0f, horizon + 5f),
-                    size = Size(size.width, 1.5f),
                 )
 
                 drawRect(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.62f)),
-                        radius = size.maxDimension,
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
+                        radius = size.maxDimension * 1.15f,
                     ),
                 )
             },
