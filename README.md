@@ -14,7 +14,7 @@ liquid-glass interface.
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Android-3DDC84.svg)]()
 [![Min SDK](https://img.shields.io/badge/API-26%2B-green.svg)]()
-[![Version](https://img.shields.io/badge/Version-1.1.3-orange.svg)]()
+[![Version](https://img.shields.io/badge/Version-1.1.4-orange.svg)]()
 
 </div>
 
@@ -181,9 +181,9 @@ Grab the latest signed APK from the
 
 | File | Device | Notes |
 |------|--------|-------|
-| `SoildTunnel-1.1.3-arm64-v8a.apk` | Modern 64-bit phones | **Recommended** |
-| `SoildTunnel-1.1.3-armeabi-v7a.apk` | Older 32-bit phones | |
-| `SoildTunnel-1.1.3-universal.apk` | Any Android device | Largest file |
+| `SoildTunnel-1.1.4-arm64-v8a.apk` | Modern 64-bit phones | **Recommended** |
+| `SoildTunnel-1.1.4-armeabi-v7a.apk` | Older 32-bit phones | |
+| `SoildTunnel-1.1.4-universal.apk` | Any Android device | Largest file |
 
 **Installation:**
 1. Download the APK for your device architecture
@@ -225,7 +225,7 @@ gradle :app:assembleRelease
 
 The release build is fully automated via
 [`.github/workflows/build.yml`](.github/workflows/build.yml) — push a tag
-(`v1.1.3`) and GitHub Actions builds, signs, and publishes the APKs.
+(`v1.1.4`) and GitHub Actions builds, signs, and publishes the APKs.
 
 ---
 

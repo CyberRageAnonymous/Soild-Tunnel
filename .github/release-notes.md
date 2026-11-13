@@ -1,23 +1,43 @@
-# SoildTunnel v1.1.3
+# SoildTunnel v1.1.4
 
-A slow-connect fix for WARP×2: one bad second no longer costs minutes.
+Updates that install from inside the app, a fourth theme called Neon, and
+the pinned exit country gone for good.
 
-**WARP×2 (gool) connects fast again**
-- The saved pair from the last session is tried before any scan, and a
-  refused handshake used to park BOTH edges for five minutes — twice the
-  whole connect budget. Every scan in that run then came up with only one
-  edge, the first attempt burned its full timeout, and only a second engine
-  connected — to the same edges — seconds later. The usual result was two
-  minutes on "Connecting" for a tunnel that was actually fine.
-- A refusal that arrives in milliseconds from the recycled pair is now
-  treated as a stale hint rather than a dead edge: the edges stay eligible,
-  the on-disk cache is dropped and the rescan decides. A repeat failure —
-  from a scan rather than the cache — parks them exactly as before.
-- A scan left short of two edges by parked endpoints now retries once with
-  the cooldowns ignored (warp-in-warp cannot run on a single edge anyway),
-  instead of only doing that when the scan outright failed.
+**Updates install from inside the app**
+- When a release is out, a banner appears on the home screen: the APK
+  downloads in the app with a live percentage, is checked against our own
+  signature, and then goes straight to the system installer — no browser,
+  no hunting for the file.
+- A device with no matching asset falls back to the release page, and
+  Android's install permission is asked for only when it is really
+  missing instead of being assumed.
 
-Everything from 1.1.2 — TUIC, the Tor upgrade, the single-engine guard and
-the watchdog rework — is included.
+**New theme: Neon**
+- A fourth choice next to System, Dark, Light and Soild Neon: champagne
+  gold on warm obsidian, glass panels with a gold hairline, two slow pools
+  of light behind the cards instead of a busy backdrop, and the connect
+  control moved out of the scrolling column onto a glass tray at the
+  bottom of the screen — a capsule that takes a different metallic fill
+  for every state, with light sweeping across it.
 
-Version: SoildTunnel 1.1.3 (version code 14).
+**The pinned exit country is gone**
+- Soild and Gool always took whichever inner endpoint won the walk, and
+  the picker that promised a country never really kept one: the badge
+  showed something other than what was picked, and a lookup that stayed
+  silent counted as a pass. The picker, the engine flag and the second
+  guessing are all removed — both modes take the winning endpoint again.
+  Tor keeps its own exit picker.
+
+**A flap no longer takes the whole carried hop down**
+- A dead front is switched in place while the listeners keep their port
+  bound, gateways race a few at a time with the rest held as standby, and
+  only the inner member that died is rebuilt — so a reconnect no longer
+  starts from a cold scan.
+- The outer geo check now runs alongside identity loading and the inner
+  handshake instead of ahead of them, so a connect does not sit for half
+  a minute before the SOCKS port opens.
+
+Everything from 1.1.3 — the WARP×2 connect-speed fix, TUIC, the Tor
+upgrade and the single-engine guard — is included.
+
+Version: SoildTunnel 1.1.4 (version code 15).
