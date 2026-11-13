@@ -355,6 +355,11 @@ private fun VoltConnectButton(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clickable(
+                        interactionSource = interaction,
+                        indication = null,
+                        onClick = onClick,
+                    )
                     .padding(horizontal = 10.dp, vertical = 9.dp),
             ) {
                 Box(
