@@ -1,43 +1,52 @@
-# SoildTunnel v1.1.4
+# SoildTunnel v1.1.5
 
-Updates that install from inside the app, a fourth theme called Neon, and
-the pinned exit country gone for good.
+Nine opt-in features for people who need to look different, not just
+different: protocol chains, a client fingerprint, a stealth lab with
+leak and DPI tests, a per-network firewall, scenes and a live route map.
+Every one of them ships off, so a profile nobody touches connects
+exactly as it did before.
 
-**Updates install from inside the app**
-- When a release is out, a banner appears on the home screen: the APK
-  downloads in the app with a live percentage, is checked against our own
-  signature, and then goes straight to the system installer — no browser,
-  no hunting for the file.
-- A device with no matching asset falls back to the release page, and
-  Android's install permission is asked for only when it is really
-  missing instead of being assumed.
+**Protocol chains**
+- Tor over WARP and WARP over Tor, picked as a single option. The first
+  rides the engine's own SOCKS port so a bridge cannot skip the tunnel;
+  the second dials the gateway through Tor and forces the MASQUE
+  transport onto HTTP/2, since UDP cannot cross a Tor proxy.
+- A dead hop in either direction is rebuilt by the supervisor instead
+  of dropping the session.
 
-**New theme: Neon**
-- A fourth choice next to System, Dark, Light and Soild Neon: champagne
-  gold on warm obsidian, glass panels with a gold hairline, two slow pools
-  of light behind the cards instead of a busy backdrop, and the connect
-  control moved out of the scrolling column onto a glass tray at the
-  bottom of the screen — a capsule that takes a different metallic fill
-  for every state, with light sweeping across it.
+**Client fingerprint**
+- The cipher list, key groups and GREASE of the first handshake can be
+  pinned to Chrome, Firefox or Safari, or picked at random, and it is
+  applied to the MASQUE/H2, Soild and TUIC handshakes alike.
 
-**The pinned exit country is gone**
-- Soild and Gool always took whichever inner endpoint won the walk, and
-  the picker that promised a country never really kept one: the badge
-  showed something other than what was picked, and a lookup that stayed
-  silent counted as a pass. The picker, the engine flag and the second
-  guessing are all removed — both modes take the winning endpoint again.
-  Tor keeps its own exit picker.
+**Stealth lab**
+- Bounded decoy traffic keeps an idle tunnel carrying ordinary-looking
+  HTTPS, capped so it can never turn into a data bill.
+- A cover listener answers on a chosen port with a static page instead
+  of a closed port that says nobody is home.
+- Separate app block lists for Wi-Fi, mobile and roaming: the firewall
+  follows the network you are on.
 
-**A flap no longer takes the whole carried hop down**
-- A dead front is switched in place while the listeners keep their port
-  bound, gateways race a few at a time with the rest held as standby, and
-  only the inner member that died is rebuilt — so a reconnect no longer
-  starts from a cold scan.
-- The outer geo check now runs alongside identity loading and the inner
-  handshake instead of ahead of them, so a connect does not sit for half
-  a minute before the SOCKS port opens.
+**Leak test lab**
+- One tap answers whether anything still reaches the network without
+  the tunnel: exit IP, remote DNS, resolver hijack and the IPv6 path,
+  each reported pass, warn or fail.
 
-Everything from 1.1.3 — the WARP×2 connect-speed fix, TUIC, the Tor
-upgrade and the single-engine guard — is included.
+**DPI probe**
+- A plain connect followed by a real TLS handshake with a chosen SNI,
+  run outside the app's own VPN, so it sees exactly what the operator
+  sees — open, reset, timed out or refused, per target name.
 
-Version: SoildTunnel 1.1.4 (version code 15).
+**Scenes**
+- One tap to switch between Balanced, Stealth, Speed, Double Hop and
+  Tor Only; each scene writes the connection fields it owns and leaves
+  the rest of the profile alone.
+
+**Live route map**
+- The home screen draws the world outline with the route over it and
+  the traffic flowing along it.
+
+Everything from 1.1.4 — in-app updates, the Neon theme and the flap
+fixes — is included.
+
+Version: SoildTunnel 1.1.5 (version code 16).
