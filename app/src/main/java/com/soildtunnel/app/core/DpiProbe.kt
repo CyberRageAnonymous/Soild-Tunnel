@@ -81,7 +81,8 @@ object DpiProbe {
             Socket().use { raw ->
                 raw.connect(InetSocketAddress(sni, 443), TIMEOUT_MS)
                 raw.soTimeout = TIMEOUT_MS
-                val ssl = SSLSocketFactory.getDefault().createSocket(raw, sni, 443, true) as SSLSocket
+                val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
+                val ssl = factory.createSocket(raw, sni, 443, true) as SSLSocket
                 try {
                     ssl.startHandshake()
                     verdict = Verdict.OPEN

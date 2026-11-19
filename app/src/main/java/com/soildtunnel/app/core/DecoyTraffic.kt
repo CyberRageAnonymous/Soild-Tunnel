@@ -60,7 +60,8 @@ object DecoyTraffic {
         Socket(proxy).use { raw ->
             raw.connect(InetSocketAddress.createUnresolved(host, 443), CONNECT_TIMEOUT_MS)
             raw.soTimeout = READ_TIMEOUT_MS
-            val ssl = SSLSocketFactory.getDefault().createSocket(raw, host, 443, true) as SSLSocket
+            val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
+            val ssl = factory.createSocket(raw, host, 443, true) as SSLSocket
             try {
                 ssl.startHandshake()
                 val request = buildString {

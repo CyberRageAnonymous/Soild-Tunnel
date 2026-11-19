@@ -143,7 +143,7 @@ object LeakLab {
             out.flush()
 
             val head = ByteArray(4)
-            if (!readFully(input, head) || head[1] != 0x00) return false
+            if (!readFully(input, head) || head[1] != 0x00.toByte()) return false
             val skip = when (head[3].toInt() and 0xFF) {
                 0x01 -> 4
                 0x03 -> (input.read().coerceAtLeast(0)) + 2
