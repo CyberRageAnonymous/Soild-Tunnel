@@ -137,6 +137,8 @@ fn build_tls(cfg: &H2TunnelConfig) -> Result<boring::ssl::ConnectConfiguration> 
         .set_alpn_protos(H2_ALPN)
         .map_err(|e| SoildTunnelError::Tls(e.to_string()))?;
 
+    crate::tls::apply_fingerprint(&mut builder);
+
     let cert = X509::from_pem(&cfg.cert_pem).map_err(|e| SoildTunnelError::Tls(e.to_string()))?;
     let key =
         PKey::private_key_from_pem(&cfg.key_pem).map_err(|e| SoildTunnelError::Tls(e.to_string()))?;

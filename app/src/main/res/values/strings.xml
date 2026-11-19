@@ -402,6 +402,106 @@
     <string name="tuic_insecure_desc">Accept the server certificate without verifying it. Only for self-signed servers — it makes the connection easier to intercept.</string>
     <string name="tuic_note">TUIC runs over QUIC, so it needs a server you control. It carries both TCP and UDP, and a UDP target can be left as a name so the exit resolves it and your own DNS stays out of it.</string>
 
+    <!-- Protocol chain + TLS client fingerprint -->
+    <string name="section_chain">Protocol chain</string>
+    <string name="chain_label">Chain</string>
+    <string name="chain_off">Off (single hop)</string>
+    <string name="chain_tor_over_warp">Tor over WARP</string>
+    <string name="chain_warp_over_tor">WARP over Tor</string>
+    <string name="chain_hint_off">One hop only — exactly how this app has always connected.</string>
+    <string name="chain_hint_tor_over_warp">The tunnel comes up first and Tor rides it. Tor enters directly here on purpose: a bridge would reach the network on its own and quietly skip the tunnel.</string>
+    <string name="chain_hint_warp_over_tor">Tor is the outer hop, so the tunnel dials its gateway through it. Needs MASQUE on H2 — protocols that speak UDP cannot cross a Tor proxy.</string>
+    <string name="chain_restart_note">Turn the chain off and reconnect to go back to a single hop.</string>
+    <string name="err_chain_proxy">A protocol chain needs the system VPN, so it is unavailable in proxy mode.</string>
+    <string name="err_chain_tor_over_tor">Tor cannot be stacked on top of Tor.</string>
+    <string name="err_chain_udp">This protocol speaks UDP, which Tor cannot carry. Pick MASQUE or SOILD for a chain.</string>
+    <string name="tls_fp_label">ClientHello shape</string>
+    <string name="tls_fp_off">Off (default)</string>
+    <string name="tls_fp_chrome">Chrome-like</string>
+    <string name="tls_fp_firefox">Firefox-like</string>
+    <string name="tls_fp_safari">Safari-like</string>
+    <string name="tls_fp_random">A random one each connect</string>
+    <string name="tls_fp_desc">Picks the cipher list, key groups and GREASE of the first handshake so it reads like a desktop browser instead of a library. Off by default: with it off, not one byte of the handshake changes.</string>
+
+    <!-- Stealth extras + per-network firewall -->
+    <string name="section_stealth">Stealth &amp; firewall</string>
+    <string name="decoy_title">Decoy traffic</string>
+    <string name="decoy_desc">Pulls small pages through the tunnel while it would otherwise sit idle, so the link never looks quiet. Bounded per session, so it cannot turn into a data bill.</string>
+    <string name="net_policy_title">Firewall per network</string>
+    <string name="net_policy_desc">Keep a different list of apps dark on Wi-Fi, mobile data and roaming.</string>
+    <string name="net_policy_helper">Each button edits the list for that uplink. Blocked apps stay inside the tunnel and simply get nothing.</string>
+    <string name="net_list_wifi">Wi-Fi</string>
+    <string name="net_list_mobile">Mobile</string>
+    <string name="net_list_roaming">Roaming</string>
+    <string name="cover_port_label">Cover listener port</string>
+    <string name="cover_port_hint">0 = off</string>
+    <string name="cover_port_desc">While a port is set, anything that knocks on it gets a plain static web page instead of a closed port.</string>
+
+    <!-- One-tap scenes -->
+    <string name="scene_title">Scenes</string>
+    <string name="scene_balanced">Balanced</string>
+    <string name="scene_balanced_desc">The knobs back to what a fresh install ships with.</string>
+    <string name="scene_stealth">Stealth</string>
+    <string name="scene_stealth_desc">Heavy noise, fragmented handshakes and a browser-shaped hello for networks that inspect and reset.</string>
+    <string name="scene_speed">Speed</string>
+    <string name="scene_speed_desc">No extra layers and a fast scan, for networks that are not fighting back.</string>
+    <string name="scene_doublehop">Double hop</string>
+    <string name="scene_doublehop_desc">Tor riding the tunnel, entered through it.</string>
+    <string name="scene_toronly">Tor only</string>
+    <string name="scene_toronly_desc">Nothing but Tor in the path.</string>
+
+    <!-- Leak test lab -->
+    <string name="leak_title">Leak test</string>
+    <string name="leak_need_connect">Connect first</string>
+    <string name="leak_running">Checking…</string>
+    <string name="leak_summary">%1$d of %2$d passed</string>
+    <string name="leak_run">Run leak test</string>
+    <string name="leak_run_again">Run again</string>
+    <string name="leak_exit_ok">Sites see %1$s through the tunnel, while you are seen as %2$s without it.</string>
+    <string name="leak_exit_same">Sites see %1$s — the same address they would see with the tunnel off.</string>
+    <string name="leak_exit_unknown">One of the two addresses could not be read, so this run proves nothing either way.</string>
+    <string name="leak_dns_ok">The tunnel resolved a name itself and reached it.</string>
+    <string name="leak_dns_fail">The tunnel could not resolve a name — DNS is not riding along.</string>
+    <string name="leak_hijack_ok">A name that does not exist stays unresolved.</string>
+    <string name="leak_hijack_warn">%1$s does not exist, yet something opened it — a resolver on this network is rewriting misses.</string>
+    <string name="leak_v6_none">This network has no working IPv6 outside the tunnel.</string>
+    <string name="leak_v6_v4">IPv6 works here, and the tunnel is set to IPv4 only.</string>
+    <string name="leak_v6_ok">IPv6 works here and the tunnel carries it too.</string>
+    <string name="leak_v6_risk">IPv6 works outside the tunnel while leak protection is off — v6 can take the physical path.</string>
+
+    <!-- DPI probe -->
+    <string name="dpi_title">DPI probe</string>
+    <string name="dpi_running">Probing…</string>
+    <string name="dpi_run">Probe this network</string>
+    <string name="dpi_run_again">Probe again</string>
+    <string name="dpi_target_control">Control</string>
+    <string name="dpi_target_microsoft">Microsoft</string>
+    <string name="dpi_target_apple">Apple</string>
+    <string name="dpi_target_wikipedia">Wikipedia</string>
+    <string name="dpi_target_github">GitHub</string>
+    <string name="dpi_verdict_open">open</string>
+    <string name="dpi_verdict_reset">reset</string>
+    <string name="dpi_verdict_timeout">no answer</string>
+    <string name="dpi_verdict_refused">refused</string>
+    <string name="dpi_verdict_unreachable">unreachable</string>
+    <string name="dpi_open_ms">%1$d ms</string>
+    <string name="dpi_udp_ok">Plain DNS on UDP/53 still gets answers here.</string>
+    <string name="dpi_udp_fail">Plain DNS on UDP/53 is getting nothing back here.</string>
+    <string name="dpi_class">Verdict: %1$s</string>
+    <string name="dpi_class_open">open</string>
+    <string name="dpi_class_sni">SNI filtering</string>
+    <string name="dpi_class_udp">UDP throttled</string>
+    <string name="dpi_class_hostile">hostile</string>
+
+    <!-- Live traffic map -->
+    <string name="traffic_title">Live traffic</string>
+    <string name="traffic_down">↓ %1$s</string>
+    <string name="traffic_up">↑ %1$s</string>
+    <string name="traffic_idle">Connect to see the route and what is moving along it.</string>
+    <string name="traffic_route">%1$s → %2$s</string>
+
+    <string name="drawer_section_lab">Lab</string>
+
     <!-- Theme -->
     <string name="theme_title">Theme</string>
     <string name="theme_system">System default</string>

@@ -5,6 +5,7 @@ import IPtProxy.IPtProxy as PtProxy
 import IPtProxy.OnTransportEvents
 import android.content.Context
 import com.soildtunnel.app.R
+import com.soildtunnel.app.model.ChainMode
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.TorTransport
 import java.io.File
@@ -471,6 +472,13 @@ object TorManager {
         appendLine("GeoIPv6File ${File(dir, "geoip6").absolutePath}")
         // Phones die without this: tor otherwise fsyncs its state constantly.
         appendLine("AvoidDiskWrites 1")
+        // Double hop with the engine in front: every connection tor makes
+        // leaves through the engine's local SOCKS5 instead of the uplink.
+        // Only tor-over-WARP needs it — the other direction has the engine
+        // dialling through tor, which travels as SOILDTUNNEL_UPSTREAM.
+        if (profile.chainMode == ChainMode.TOR_OVER_WARP) {
+            appendLine("Socks5Proxy 127.0.0.1:${TunnelConfig.SOCKS_PORT}")
+        }
         if (lines.isEmpty()) {
             appendLine("UseBridges 0")
         } else {

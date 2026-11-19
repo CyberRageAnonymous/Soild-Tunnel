@@ -1144,6 +1144,8 @@ fn tuic_config(sni: &str, insecure: bool, cc: &str) -> Result<quiche::Config> {
         .set_alpn_protos(&wire)
         .map_err(|e| SoildTunnelError::Tls(e.to_string()))?;
 
+    crate::tls::apply_fingerprint(&mut builder);
+
     if insecure {
         builder.set_verify(SslVerifyMode::NONE);
         log::info!("[+] tuic accepts the server certificate as it stands");

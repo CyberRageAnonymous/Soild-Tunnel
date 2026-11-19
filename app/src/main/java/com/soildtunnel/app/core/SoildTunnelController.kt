@@ -7,9 +7,11 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import com.soildtunnel.app.model.ChainMode
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.CoreLogLevel
 import com.soildtunnel.app.model.ConnectionState
+import com.soildtunnel.app.model.DnsMode
 import com.soildtunnel.app.model.EndpointMode
 import com.soildtunnel.app.model.GoolMode
 import com.soildtunnel.app.model.IpVersion
@@ -18,6 +20,8 @@ import com.soildtunnel.app.model.Protocol
 import com.soildtunnel.app.model.ScanMode
 import com.soildtunnel.app.model.SoildMode
 import com.soildtunnel.app.model.SplitMode
+import com.soildtunnel.app.model.TeamAuth
+import com.soildtunnel.app.model.TlsFp
 import com.soildtunnel.app.model.TorTransport
 import com.soildtunnel.app.vpn.SoildTunnelVpnService
 
@@ -137,8 +141,40 @@ object ProfileCodec {
         add("coreLog=${p.coreLogLevel.name}")
         add("blockedApps=${p.blockedApps.joinToString(",")}")
         add("torTransport=${p.torTransport.name}")
-        add("torBridges=${p.torBridges.replace("\n", "\\n")}")
+        add("torBridges=${esc(p.torBridges)}")
         add("torExit=${p.torExitCountry}")
+        // Everything below used to be missing entirely, so the setting was
+        // saved in the UI and then quietly dropped before the engine saw it.
+        add("dnsServers=${esc(p.dnsServers)}")
+        add("dnsMode=${p.dnsMode.name}")
+        add("encDns=${esc(p.encryptedDnsEndpoint)}")
+        add("dnsAdBlock=${p.dnsAdBlock}")
+        add("dnsMalware=${p.dnsMalwareBlock}")
+        add("team=${esc(p.team)}")
+        add("teamAuth=${p.teamAuth.name}")
+        add("accessId=${esc(p.accessClientId)}")
+        add("accessEmail=${esc(p.accessEmail)}")
+        add("gateway=${p.gateway}")
+        add("routeBlock=${esc(p.routeBlock)}")
+        add("routeDirect=${esc(p.routeDirect)}")
+        add("upstream=${esc(p.upstreamProxy)}")
+        add("customSni=${esc(p.customSni)}")
+        add("routeSniff=${p.routeSniff}")
+        add("routeSniffMs=${p.routeSniffMs}")
+        add("reprovision=${p.autoReprovision}")
+        add("tuicServer=${esc(p.tuicServer)}")
+        add("tuicSni=${esc(p.tuicSni)}")
+        add("tuicCc=${esc(p.tuicCc)}")
+        add("tuicInsecure=${p.tuicInsecure}")
+        add("chain=${p.chainMode.name}")
+        add("tlsFp=${p.tlsFp.name}")
+        add("decoy=${p.decoyTraffic}")
+        add("coverPort=${p.coverPort}")
+        add("netPolicy=${p.netPolicy}")
+        add("netWifi=${p.netWifiBlock.joinToString(",")}")
+        add("netMobile=${p.netMobileBlock.joinToString(",")}")
+        add("netRoaming=${p.netRoamingBlock.joinToString(",")}")
+        add("scene=${p.scene}")
     }.joinToString("\n")
 
     fun decode(raw: String?): ConnectionProfile {
@@ -193,8 +229,41 @@ object ProfileCodec {
                 blockedApps = map["blockedApps"]?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
                     ?: d.blockedApps,
                 torTransport = map["torTransport"]?.let { enumOr<TorTransport>(it) } ?: d.torTransport,
-                torBridges = map["torBridges"]?.replace("\\n", "\n") ?: d.torBridges,
+                torBridges = map["torBridges"]?.let { unesc(it) } ?: d.torBridges,
                 torExitCountry = map["torExit"]?.trim()?.take(2)?.uppercase() ?: d.torExitCountry,
+                dnsServers = map["dnsServers"]?.let { unesc(it) } ?: d.dnsServers,
+                dnsMode = map["dnsMode"]?.let { enumOr<DnsMode>(it) } ?: d.dnsMode,
+                encryptedDnsEndpoint = map["encDns"]?.let { unesc(it) } ?: d.encryptedDnsEndpoint,
+                dnsAdBlock = map["dnsAdBlock"]?.toBooleanStrictOrNull() ?: d.dnsAdBlock,
+                dnsMalwareBlock = map["dnsMalware"]?.toBooleanStrictOrNull() ?: d.dnsMalwareBlock,
+                team = map["team"]?.let { unesc(it) } ?: d.team,
+                teamAuth = map["teamAuth"]?.let { enumOr<TeamAuth>(it) } ?: d.teamAuth,
+                accessClientId = map["accessId"]?.let { unesc(it) } ?: d.accessClientId,
+                accessEmail = map["accessEmail"]?.let { unesc(it) } ?: d.accessEmail,
+                gateway = map["gateway"]?.toBooleanStrictOrNull() ?: d.gateway,
+                routeBlock = map["routeBlock"]?.let { unesc(it) } ?: d.routeBlock,
+                routeDirect = map["routeDirect"]?.let { unesc(it) } ?: d.routeDirect,
+                upstreamProxy = map["upstream"]?.let { unesc(it) } ?: d.upstreamProxy,
+                customSni = map["customSni"]?.let { unesc(it) } ?: d.customSni,
+                routeSniff = map["routeSniff"]?.toBooleanStrictOrNull() ?: d.routeSniff,
+                routeSniffMs = map["routeSniffMs"]?.toIntOrNull() ?: d.routeSniffMs,
+                autoReprovision = map["reprovision"]?.toBooleanStrictOrNull() ?: d.autoReprovision,
+                tuicServer = map["tuicServer"]?.let { unesc(it) } ?: d.tuicServer,
+                tuicSni = map["tuicSni"]?.let { unesc(it) } ?: d.tuicSni,
+                tuicCc = map["tuicCc"]?.let { unesc(it) } ?: d.tuicCc,
+                tuicInsecure = map["tuicInsecure"]?.toBooleanStrictOrNull() ?: d.tuicInsecure,
+                chainMode = map["chain"]?.let { enumOr<ChainMode>(it) } ?: d.chainMode,
+                tlsFp = map["tlsFp"]?.let { enumOr<TlsFp>(it) } ?: d.tlsFp,
+                decoyTraffic = map["decoy"]?.toBooleanStrictOrNull() ?: d.decoyTraffic,
+                coverPort = map["coverPort"]?.toIntOrNull() ?: d.coverPort,
+                netPolicy = map["netPolicy"]?.toBooleanStrictOrNull() ?: d.netPolicy,
+                netWifiBlock = map["netWifi"]?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
+                    ?: d.netWifiBlock,
+                netMobileBlock = map["netMobile"]?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
+                    ?: d.netMobileBlock,
+                netRoamingBlock = map["netRoaming"]?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
+                    ?: d.netRoamingBlock,
+                scene = map["scene"] ?: d.scene,
             )
         }.getOrDefault(d)
     }
@@ -216,4 +285,27 @@ object ProfileCodec {
 
     private inline fun <reified T : Enum<T>> enumOr(name: String): T? =
         runCatching { enumValueOf<T>(name) }.getOrNull()
+
+    /** One payload value per line, so a pasted rule list has to be flattened. */
+    private fun esc(value: String): String = buildString {
+        for (c in value) when (c) {
+            '\\' -> append("\\\\")
+            '\n' -> append("\\n")
+            else -> append(c)
+        }
+    }
+
+    private fun unesc(value: String): String = buildString {
+        var i = 0
+        while (i < value.length) {
+            val c = value[i]
+            if (c == '\\' && i + 1 < value.length) {
+                val next = value[i + 1]
+                if (next == 'n') { append('\n'); i += 2; continue }
+                if (next == '\\') { append('\\'); i += 2; continue }
+            }
+            append(c)
+            i++
+        }
+    }
 }

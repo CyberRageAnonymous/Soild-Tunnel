@@ -26,10 +26,13 @@ import com.soildtunnel.app.MainActivity
 import com.soildtunnel.app.R
 import com.soildtunnel.app.core.SoildTunnelController
 import com.soildtunnel.app.core.SoildTunnelProcess
+import com.soildtunnel.app.core.CoverServer
+import com.soildtunnel.app.core.DecoyTraffic
 import com.soildtunnel.app.core.Diagnostics
 import com.soildtunnel.app.core.DiagnosticsLog
 import com.soildtunnel.app.core.EngineMeta
 import com.soildtunnel.app.core.AutoCandidate
+import com.soildtunnel.app.core.NetworkPolicy
 import com.soildtunnel.app.core.PingMonitor
 import com.soildtunnel.app.core.PortProbe
 import com.soildtunnel.app.core.ProfileCodec
@@ -43,13 +46,16 @@ import com.soildtunnel.app.core.StrategyMemo
 import com.soildtunnel.app.core.SocksTunBridge
 import com.soildtunnel.app.core.TorManager
 import com.soildtunnel.app.core.TunnelConfig
+import com.soildtunnel.app.model.ChainMode
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.ConnectionState
 import com.soildtunnel.app.model.EndpointMode
 import com.soildtunnel.app.model.GoolMode
 import com.soildtunnel.app.model.Noize
 import com.soildtunnel.app.model.Protocol
+import com.soildtunnel.app.model.SoildMode
 import com.soildtunnel.app.model.SplitMode
+import com.soildtunnel.app.model.TorTransport
 import com.soildtunnel.app.widget.SoildTunnelWidgetProvider
 import java.io.File
 
@@ -108,6 +114,22 @@ class SoildTunnelVpnService : VpnService() {
     @Volatile
     private var networkChangedAt = 0L
 
+    // ---- Protocol chain (opt-in, see ChainMode) ----
+
+    /** Set while a chain owns a tor instance, so ordinary teardowns leave it alone. */
+    @Volatile
+    private var chainTorUp = false
+
+    /** URL the engine dials for WARP-over-tor; refreshed when tor moves ports. */
+    @Volatile
+    private var chainUpstream = ""
+
+    /** Port the TUN is actually pointed at — the watchdog probes this one. */
+    @Volatile
+    private var tunSocksPort: Int = SOCKS_PORT
+
+    private var extrasJob: Job? = null
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // CRASH FIX : startForeground must be called before the 5-second
         // FGS deadline on EVERY start path — including ACTION_DISCONNECT.
@@ -139,6 +161,9 @@ class SoildTunnelVpnService : VpnService() {
 
     private fun startTunnel(profile: ConnectionProfile) {
         lastProfile = profile
+        // Any chain left over from the previous session dies with it: the
+        // cleanup below only spares tor while a live chain still owns it.
+        teardownChain()
         // PROTOCOL-SWITCH FIX: this used to bail out silently whenever a
         // previous run coroutine was still winding down ("if active, return"),
         // so a connect tapped right after a disconnect — or right after
@@ -165,6 +190,7 @@ class SoildTunnelVpnService : VpnService() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                teardownChain()
                 SoildTunnelController.setState(
                     ConnectionState.Error(e.message ?: getString(R.string.state_error)),
                 )
@@ -174,8 +200,14 @@ class SoildTunnelVpnService : VpnService() {
         }
     }
 
-    private suspend fun connectFlow(profile: ConnectionProfile) {
+    private suspend fun connectFlow(requested: ConnectionProfile) {
         DiagnosticsLog.clear()
+        // The chain bootstraps tor before anything else in here gets a chance
+        // to run, so the busy state has to be published first — otherwise the
+        // button looks idle for the whole bootstrap and a second tap starts a
+        // second session on top of the first.
+        SoildTunnelController.setState(ConnectionState.Launching)
+        val profile = prepareChain(requested)
         // STALE-CIRCLES ROOT-CAUSE FIX: the four self-test circles were only
         // reset inside Diagnostics.run, which starts AFTER the engine has
         // launched AND finished its endpoint scan — so on a reconnect the
@@ -253,6 +285,7 @@ class SoildTunnelVpnService : VpnService() {
         DiagnosticsLog.i(TAG, "All checks passed — tunnel is ready.")
         UsageStore.startSession()
         registerNetworkWatch()
+        startExtras(resolved)
 
         superviseEngine(resolved)
     }
@@ -301,6 +334,7 @@ class SoildTunnelVpnService : VpnService() {
         DiagnosticsLog.i(TAG, "All checks passed — tunnel is ready.")
         UsageStore.startSession()
         registerNetworkWatch()
+        startExtras(profile)
 
         superviseTor(profile)
     }
@@ -605,6 +639,16 @@ class SoildTunnelVpnService : VpnService() {
                     "SOCKS5 127.0.0.1:${ShareBridge.SOCKS_SHARE_PORT}, HTTP 127.0.0.1:${ShareBridge.HTTP_SHARE_PORT}",
             )
         } else {
+            if (profile.chainMode == ChainMode.TOR_OVER_WARP) {
+                // Tor dials its neighbours through the engine's SOCKS5, so it
+                // has to come up after the engine and before the TUN points
+                // at it.
+                TorManager.start(this, profile, onProgress = { percent, summary ->
+                    updateNotification(getString(R.string.tor_bootstrap, percent))
+                    DiagnosticsLog.i(TAG, "Chain tor bootstrap $percent% — $summary")
+                })
+                chainTorUp = true
+            }
             establishTun(profile)
             startTun2Socks(profile)
             // LAN sharing: if the user enabled it, expose the tunnel to other
@@ -629,9 +673,13 @@ class SoildTunnelVpnService : VpnService() {
         // In proxy mode, test THROUGH the shared SOCKS5 listener — the exact
         // endpoint external apps connect to — so a dead bridge can no longer
         // hide behind a passing engine-port (1819) self-test.
-        val diagPort =
-            if (profile.proxyMode) ShareBridge.socksPort.value ?: SOCKS_PORT
-            else SOCKS_PORT
+        val diagPort = when {
+            profile.proxyMode -> ShareBridge.socksPort.value ?: SOCKS_PORT
+            // The chain's self-test has to cross both hops, so it runs
+            // against whatever the TUN is actually dialling.
+            profile.chainMode == ChainMode.TOR_OVER_WARP -> TorManager.socksPort
+            else -> SOCKS_PORT
+        }
         val healthy = runCatching { Diagnostics.run(port = diagPort) }.getOrDefault(false)
         if (!healthy) {
             DiagnosticsLog.e(TAG, "Self-test failed — refusing to report Connected.")
@@ -695,7 +743,11 @@ class SoildTunnelVpnService : VpnService() {
             engine = null
             DiagnosticsLog.i(TAG, "Launching engine (libsoildtunnel-core.so)…")
             val fresh = SoildTunnelProcess(applicationInfo.nativeLibraryDir, filesDir)
-            fresh.start(profile)
+            // A chain keeps tor's current port out of the profile and injects
+            // it here, so a tor restart is picked up by the next spawn.
+            val launchable =
+                if (chainUpstream.isEmpty()) profile else profile.copy(upstreamProxy = chainUpstream)
+            fresh.start(launchable)
             // Register the process before returning it: every reader (the
             // port probe's alive-check, the watchdog, cleanup) consults this
             // field, and a process nobody tracks is an orphan the next
@@ -775,12 +827,19 @@ class SoildTunnelVpnService : VpnService() {
                 // restart the engine only on SUSTAINED failure; see
                 // probeTunnelCycle for why the bar is deliberately high.
                 if (engine?.isAlive() == true) {
-                    if (probeTunnelCycle()) {
+                    if (probeTunnelCycle(tunSocksPort)) {
                         probeFailures = 0
                         socksOpened = true
                         recoveryDeadline = 0L
                         healthyChecks++
                         if (healthyChecks >= WATCHDOG_HEALTHY_CHECKS) migrateStreak = 0
+                    } else if (chainTorUp && !TorManager.isAlive() && restoreChainTor(profile)) {
+                        // The chain lost its tor hop while the engine still
+                        // looked fine. Put tor back and give the tunnel a
+                        // recovery window before judging it again.
+                        probeFailures = 0
+                        socksOpened = false
+                        recoveryDeadline = System.currentTimeMillis() + profile.connectTimeoutMs()
                     } else if (switched) {
                         // Wi-Fi <-> mobile handover kills most QUIC/WG
                         // sessions outright, so a single failed probe after a
@@ -865,7 +924,7 @@ class SoildTunnelVpnService : VpnService() {
                 // a silent engine restart until traffic really flows again.
                 SoildTunnelController.setState(ConnectionState.Verifying)
                 updateNotification(getString(R.string.state_verifying))
-                if (runCatching { Diagnostics.run() }.getOrDefault(false)) {
+                if (runCatching { Diagnostics.run(port = tunSocksPort) }.getOrDefault(false)) {
                     attempt = 0
                     SoildTunnelController.setState(ConnectionState.Connected("$SOCKS_HOST:$SOCKS_PORT"))
                     updateNotification(getString(R.string.state_connected))
@@ -901,6 +960,110 @@ class SoildTunnelVpnService : VpnService() {
         netCallback = null
         val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
         runCatching { cm.unregisterNetworkCallback(cb) }
+    }
+
+    /**
+     * Checks a requested protocol chain and returns the profile the engine
+     * and tor should actually run with. With the chain off the profile comes
+     * back byte for byte identical, so an ordinary connect never enters a
+     * different path.
+     */
+    private suspend fun prepareChain(requested: ConnectionProfile): ConnectionProfile {
+        val chain = requested.chainMode
+        if (chain == ChainMode.OFF) return requested
+        if (requested.proxyMode) throw IllegalStateException(getString(R.string.err_chain_proxy))
+        if (requested.protocol == Protocol.TOR) {
+            throw IllegalStateException(getString(R.string.err_chain_tor_over_tor))
+        }
+
+        if (chain == ChainMode.TOR_OVER_WARP) {
+            // A bridge would dial the network itself and quietly skip the
+            // engine, so tor enters straight through it instead.
+            if (requested.torTransport != TorTransport.DIRECT) {
+                DiagnosticsLog.i(TAG, "Chain: tor uses direct entry — bridges would bypass the tunnel.")
+            }
+            DiagnosticsLog.i(TAG, "Chain: tor riding the engine's SOCKS5 on $SOCKS_HOST:$SOCKS_PORT.")
+            return requested.copy(torTransport = TorTransport.DIRECT)
+        }
+
+        // WARP over tor: tor is the outer hop, so the engine has to reach its
+        // gateway through tor, and only transports that run over TCP can do it.
+        val base = when {
+            requested.protocol == Protocol.WIREGUARD ||
+                requested.protocol == Protocol.TUIC ||
+                (requested.protocol == Protocol.GOOL && requested.goolMode == GoolMode.CLASSIC) ->
+                throw IllegalStateException(getString(R.string.err_chain_udp))
+            requested.protocol == Protocol.AUTO -> requested.copy(protocol = Protocol.MASQUE)
+            else -> requested
+        }
+        val normalised = base.copy(masqueHttp2 = true, soildMode = SoildMode.H2)
+        startChainTor(normalised)
+        return normalised
+    }
+
+    private suspend fun startChainTor(profile: ConnectionProfile) {
+        TorManager.start(this, profile, onProgress = { percent, summary ->
+            updateNotification(getString(R.string.tor_bootstrap, percent))
+            DiagnosticsLog.i(TAG, "Chain tor bootstrap $percent% — $summary")
+        })
+        chainTorUp = true
+        chainUpstream = "socks5://127.0.0.1:${TorManager.socksPort}"
+        DiagnosticsLog.i(TAG, "Chain: engine will dial its gateway through $chainUpstream")
+    }
+
+    /**
+     * Brings a chain's tor back after it died under a healthy-looking engine.
+     * Tor-over-WARP only has to rebind its own port (the TUN follows it);
+     * WARP-over-tor bakes tor's port into the engine's environment, so the
+     * engine is dropped and the supervisor respawns it against the new one.
+     */
+    private suspend fun restoreChainTor(profile: ConnectionProfile): Boolean = runCatching {
+        DiagnosticsLog.w(TAG, "Chain: tor died — restarting it.")
+        TorManager.start(
+            this,
+            profile,
+            onProgress = { percent, summary ->
+                DiagnosticsLog.i(TAG, "Chain tor bootstrap $percent% — $summary")
+            },
+            keepExit = true,
+        )
+        if (profile.chainMode == ChainMode.TOR_OVER_WARP) {
+            repointTunBridge(profile)
+        } else {
+            chainUpstream = "socks5://127.0.0.1:${TorManager.socksPort}"
+            engine?.stop()
+        }
+        true
+    }.getOrElse {
+        DiagnosticsLog.e(TAG, "Chain: tor could not be restarted — ${it.message}")
+        false
+    }
+
+    /** Drops chain ownership so the next teardown really kills tor. */
+    private fun teardownChain() {
+        chainTorUp = false
+        chainUpstream = ""
+    }
+
+    /** Background extras the user switched on: idle noise and the cover listener. */
+    private fun startExtras(profile: ConnectionProfile) {
+        stopExtras()
+        if (profile.decoyTraffic) {
+            // Tor mode has no engine on 1819, so its noise has to ride the
+            // port tor actually listens on.
+            val socks = if (profile.protocol == Protocol.TOR) TorManager.socksPort else SOCKS_PORT
+            extrasJob = scope.launch(Dispatchers.IO) { runCatching { DecoyTraffic.run(socks) } }
+            DiagnosticsLog.i(TAG, "Decoy traffic on.")
+        }
+        if (profile.coverPort > 0 && CoverServer.start(profile.coverPort)) {
+            DiagnosticsLog.i(TAG, "Cover listener on :${profile.coverPort}")
+        }
+    }
+
+    private fun stopExtras() {
+        extrasJob?.cancel()
+        extrasJob = null
+        runCatching { CoverServer.stop() }
     }
 
     private fun establishTun(profile: ConnectionProfile) {
@@ -970,22 +1133,28 @@ class SoildTunnelVpnService : VpnService() {
      */
     private fun applyAppFilter(builder: Builder, profile: ConnectionProfile) {
         val apps = profile.splitApps.filter { it.isNotBlank() && it != packageName }
+        // Apps the per-network firewall is about have to sit INSIDE the TUN
+        // for the filter bridge to be able to drop them; split mode would
+        // otherwise hand them the direct path with working internet.
+        val netBlocked = if (profile.netPolicy) NetworkPolicy.blockedHere(this, profile) else emptySet()
         when (profile.splitMode) {
             SplitMode.INCLUDE -> {
-                if (apps.isEmpty()) {
+                if (apps.isEmpty() && netBlocked.isEmpty()) {
                     // Nothing selected -> fall back to OFF so we don't build a
                     // tunnel that carries no traffic at all.
                     safeDisallow(builder, packageName)
                     return
                 }
                 apps.forEach { safeAllow(builder, it) }
+                netBlocked.forEach { safeAllow(builder, it) }
             }
             SplitMode.EXCLUDE -> {
                 safeDisallow(builder, packageName)
                 // Blocked apps must stay INSIDE the TUN so the filter bridge
                 // can drop their traffic; excluding them would give them
                 // direct internet instead of none.
-                apps.filter { it !in profile.blockedApps }.forEach { safeDisallow(builder, it) }
+                apps.filter { it !in profile.blockedApps && it !in netBlocked }
+                    .forEach { safeDisallow(builder, it) }
             }
             SplitMode.OFF -> safeDisallow(builder, packageName)
         }
@@ -1012,8 +1181,9 @@ class SoildTunnelVpnService : VpnService() {
         // apps: hev forwards UDP through SOCKS5 UDP ASSOCIATE, which tor
         // does not implement, so DNS would silently die on the hev path.
         // The bridge answers DNS through tor's own resolver instead.
-        val torMode = profile.protocol == Protocol.TOR
-        if (torMode || profile.blockedApps.isNotEmpty()) {
+        // Tor-over-WARP puts tor behind the TUN, so it needs the same bridge.
+        val torMode = profile.protocol == Protocol.TOR || profile.chainMode == ChainMode.TOR_OVER_WARP
+        if (torMode || profile.blockedApps.isNotEmpty() || profile.netPolicy) {
             // PER-APP BLOCKING : hev-socks5-tunnel cannot filter per
             // UID, so a userspace filter bridge (merged into SoildTunnel's
             // SocksTunBridge) reads the TUN itself, resolves each flow's
@@ -1028,15 +1198,24 @@ class SoildTunnelVpnService : VpnService() {
                 socksHost = SOCKS_HOST,
                 socksPort = bridgePort,
                 mtu = profile.mtu.coerceIn(576, 9000),
-                blockedPackagesProvider = { profile.blockedApps.toSet() },
+                blockedPackagesProvider = {
+                    profile.blockedApps.toSet() +
+                        NetworkPolicy.blockedHere(this@SoildTunnelVpnService, profile)
+                },
                 routingEngine = RoutingEngine(emptyList()),
                 torMode = torMode,
                 torDnsPort = TorManager.dnsPort,
             )
-            DiagnosticsLog.i(TAG, "Starting userspace filter bridge (blocked apps=${profile.blockedApps.size})")
+            DiagnosticsLog.i(
+                TAG,
+                "Starting userspace filter bridge " +
+                    "(blocked apps=${profile.blockedApps.size}, " +
+                    "network firewall=${if (profile.netPolicy) NetworkPolicy.blockedHere(this, profile).size else 0})",
+            )
             bridge.start()
             tunBridge = bridge
             tunBridgePort = bridgePort
+            tunSocksPort = bridgePort
             return
         }
         val config = writeHevConfig(profile.mtu.coerceIn(576, 9000), socksPort)
@@ -1047,6 +1226,7 @@ class SoildTunnelVpnService : VpnService() {
         DiagnosticsLog.i(TAG, "Starting hev-socks5-tunnel in-process (fd=$fd)")
         HevTunnel.start(config.absolutePath, fd)
         tunnelStarted = true
+        tunSocksPort = socksPort
     }
 
     /**
@@ -1092,6 +1272,8 @@ class SoildTunnelVpnService : VpnService() {
         updateNotification(getString(R.string.state_disconnecting))
         UsageStore.endSession()
         unregisterNetworkWatch()
+        teardownChain()
+        stopExtras()
         val job = runJob
         runJob = null
         // DISCONNECT MUST BE INSTANT. Order matters:
@@ -1188,6 +1370,8 @@ class SoildTunnelVpnService : VpnService() {
         runJob = null
         job?.cancel()
         stopJob = scope.launch(Dispatchers.IO) {
+            teardownChain()
+            stopExtras()
             cleanupForwardingOnly()
             ensureLockdownTun(profile)
             lockdownTunActive = true
@@ -1248,7 +1432,10 @@ class SoildTunnelVpnService : VpnService() {
             ShareBridge.stop()
         } catch (_: Throwable) {
         }
-        runCatching { TorManager.stop() }
+        stopExtras()
+        // A chain's tor outlives a single engine attempt on purpose: the next
+        // attempt reuses it instead of paying for another bootstrap.
+        if (!chainTorUp) runCatching { TorManager.stop() }
         tunBridge?.let { runCatching { it.stop() } }
         tunBridge = null
         if (tunnelStarted) {
@@ -1290,6 +1477,8 @@ class SoildTunnelVpnService : VpnService() {
         runJob?.cancel()
         UsageStore.endSession()
         unregisterNetworkWatch()
+        teardownChain()
+        stopExtras()
         cleanupNativeOnly()
         scope.coroutineContext[Job]?.cancel()
         super.onDestroy()

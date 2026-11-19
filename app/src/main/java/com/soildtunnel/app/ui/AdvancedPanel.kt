@@ -15,6 +15,7 @@ import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.RestartAlt
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -47,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import com.soildtunnel.app.R
 import com.soildtunnel.app.core.ShareBridge
 import com.soildtunnel.app.model.ConnectionProfile
+import com.soildtunnel.app.model.ChainMode
 import com.soildtunnel.app.model.CoreLogLevel
 import com.soildtunnel.app.model.EndpointMode
 import com.soildtunnel.app.model.GoolMode
@@ -59,6 +62,7 @@ import com.soildtunnel.app.model.TorTransport
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.soildtunnel.app.model.SplitMode
 import com.soildtunnel.app.model.TeamAuth
+import com.soildtunnel.app.model.TlsFp
 import com.soildtunnel.app.ui.components.AppPickerDialog
 import com.soildtunnel.app.ui.components.DropdownSelector
 import com.soildtunnel.app.ui.components.LtrOutlinedTextField
@@ -133,6 +137,15 @@ fun AdvancedPanel(
                 TransportSection(profile = profile, onProfileChange = onProfileChange, enabled = enabled)
             }
         }
+        PanelCard(
+            icon = Icons.Rounded.Layers,
+            title = stringResource(R.string.section_chain),
+            subtitle = "",
+            expanded = entered == "chain",
+            onToggle = { toggle("chain") },
+        ) {
+            ChainSection(profile = profile, onProfileChange = onProfileChange, enabled = enabled)
+        }
         if (profile.protocol != Protocol.TOR) {
             PanelCard(
                 icon = Icons.Rounded.Wifi,
@@ -198,6 +211,15 @@ fun AdvancedPanel(
             onToggle = { toggle("security") },
         ) {
             SecuritySection(profile = profile, onProfileChange = onProfileChange, enabled = enabled)
+        }
+        PanelCard(
+            icon = Icons.Rounded.VisibilityOff,
+            title = stringResource(R.string.section_stealth),
+            subtitle = "",
+            expanded = entered == "stealth",
+            onToggle = { toggle("stealth") },
+        ) {
+            StealthSection(profile = profile, onProfileChange = onProfileChange, enabled = enabled)
         }
         if (profile.protocol != Protocol.TOR) {
             PanelCard(
@@ -1094,6 +1116,149 @@ private fun ResetSection(
     }
 }
 
+/**
+ * Two hops in one connection, plus the shape the handshake presents. Both
+ * default to off, so nobody who leaves this box alone sends a single byte
+ * differently than before.
+ */
+@Composable
+private fun ChainSection(
+    profile: ConnectionProfile,
+    onProfileChange: (ConnectionProfile) -> Unit,
+    enabled: Boolean,
+) {
+    // Tor is an endpoint in its own right; stacking it inside a chain would
+    // just make one of the two hops pointless.
+    val usable = enabled && profile.protocol != Protocol.TOR
+    BoxColumn {
+        SettingLabel(stringResource(R.string.chain_label))
+        DropdownSelector(
+            options = ChainMode.entries,
+            selected = profile.chainMode,
+            onSelect = { onProfileChange(profile.copy(chainMode = it)) },
+            label = { chainLabel(it) },
+            enabled = usable,
+        )
+        HelperText(stringResource(chainHint(profile.chainMode)))
+
+        if (profile.chainMode != ChainMode.OFF) {
+            Divider()
+            HelperText(stringResource(R.string.chain_restart_note))
+        }
+
+        Divider()
+        SettingLabel(stringResource(R.string.tls_fp_label))
+        DropdownSelector(
+            options = TlsFp.entries,
+            selected = profile.tlsFp,
+            onSelect = { onProfileChange(profile.copy(tlsFp = it)) },
+            label = { tlsFpLabel(it) },
+            enabled = usable,
+        )
+        HelperText(stringResource(R.string.tls_fp_desc))
+    }
+}
+
+/** Which list the per-network firewall should show. */
+private enum class NetList { WIFI, MOBILE, ROAMING }
+
+/**
+ * Background noise, a listener that looks like a plain web server, and the
+ * app lists that go dark per uplink. Everything here is off out of the box.
+ */
+@Composable
+private fun StealthSection(
+    profile: ConnectionProfile,
+    onProfileChange: (ConnectionProfile) -> Unit,
+    enabled: Boolean,
+) {
+    var picking by remember { mutableStateOf<NetList?>(null) }
+    var portText by remember(profile.coverPort) {
+        mutableStateOf(if (profile.coverPort == 0) "" else profile.coverPort.toString())
+    }
+
+    BoxColumn {
+        ToggleRow(
+            title = stringResource(R.string.decoy_title),
+            description = stringResource(R.string.decoy_desc),
+            checked = profile.decoyTraffic,
+            enabled = enabled,
+            onChange = { onProfileChange(profile.copy(decoyTraffic = it)) },
+        )
+        ToggleRow(
+            title = stringResource(R.string.net_policy_title),
+            description = stringResource(R.string.net_policy_desc),
+            checked = profile.netPolicy,
+            enabled = enabled,
+            onChange = { onProfileChange(profile.copy(netPolicy = it)) },
+        )
+        if (profile.netPolicy) {
+            Spacer(Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                NetList.entries.forEach { list ->
+                    val count = when (list) {
+                        NetList.WIFI -> profile.netWifiBlock.size
+                        NetList.MOBILE -> profile.netMobileBlock.size
+                        NetList.ROAMING -> profile.netRoamingBlock.size
+                    }
+                    OutlinedButton(
+                        onClick = { picking = list },
+                        enabled = enabled,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(
+                            text = stringResource(netListLabel(list)) + " " + count,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                }
+            }
+            HelperText(stringResource(R.string.net_policy_helper))
+        }
+
+        Divider()
+        SettingLabel(stringResource(R.string.cover_port_label))
+        LtrOutlinedTextField(
+            value = portText,
+            onValueChange = { raw ->
+                val digits = raw.filter { it.isDigit() }.take(5)
+                portText = digits
+                onProfileChange(
+                    profile.copy(coverPort = digits.toIntOrNull()?.coerceIn(0, 65535) ?: 0),
+                )
+            },
+            enabled = enabled,
+            singleLine = true,
+            label = { Text(stringResource(R.string.cover_port_label)) },
+            placeholder = { Text(stringResource(R.string.cover_port_hint)) },
+            supportingText = { Text(stringResource(R.string.cover_port_desc)) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+
+    val chosen = picking
+    if (chosen != null) {
+        AppPickerDialog(
+            selected = when (chosen) {
+                NetList.WIFI -> profile.netWifiBlock
+                NetList.MOBILE -> profile.netMobileBlock
+                NetList.ROAMING -> profile.netRoamingBlock
+            },
+            onDismiss = { picking = null },
+            onConfirm = { apps ->
+                onProfileChange(
+                    when (chosen) {
+                        NetList.WIFI -> profile.copy(netWifiBlock = apps)
+                        NetList.MOBILE -> profile.copy(netMobileBlock = apps)
+                        NetList.ROAMING -> profile.copy(netRoamingBlock = apps)
+                    },
+                )
+                picking = null
+            },
+        )
+    }
+}
+
 @Composable
 private fun Divider() {
     HorizontalDivider(
@@ -1283,4 +1448,32 @@ private fun ProxyEndpointRow(label: String, value: String) {
             )
         }
     }
+}
+
+@Composable
+private fun chainLabel(mode: ChainMode): String = when (mode) {
+    ChainMode.OFF -> stringResource(R.string.chain_off)
+    ChainMode.TOR_OVER_WARP -> stringResource(R.string.chain_tor_over_warp)
+    ChainMode.WARP_OVER_TOR -> stringResource(R.string.chain_warp_over_tor)
+}
+
+@Composable
+private fun tlsFpLabel(fp: TlsFp): String = when (fp) {
+    TlsFp.OFF -> stringResource(R.string.tls_fp_off)
+    TlsFp.CHROME -> stringResource(R.string.tls_fp_chrome)
+    TlsFp.FIREFOX -> stringResource(R.string.tls_fp_firefox)
+    TlsFp.SAFARI -> stringResource(R.string.tls_fp_safari)
+    TlsFp.RANDOM -> stringResource(R.string.tls_fp_random)
+}
+
+private fun chainHint(mode: ChainMode): Int = when (mode) {
+    ChainMode.OFF -> R.string.chain_hint_off
+    ChainMode.TOR_OVER_WARP -> R.string.chain_hint_tor_over_warp
+    ChainMode.WARP_OVER_TOR -> R.string.chain_hint_warp_over_tor
+}
+
+private fun netListLabel(list: NetList): Int = when (list) {
+    NetList.WIFI -> R.string.net_list_wifi
+    NetList.MOBILE -> R.string.net_list_mobile
+    NetList.ROAMING -> R.string.net_list_roaming
 }

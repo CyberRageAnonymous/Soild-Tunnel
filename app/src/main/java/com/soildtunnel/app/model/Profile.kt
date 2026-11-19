@@ -68,6 +68,18 @@ enum class TeamAuth { OFF, SERVICE_TOKEN, EMAIL, TOKEN }
 enum class CoreLogLevel(val raw: String) { OFF("off"), ERROR("error"), WARN("warn"), INFO("info"), DEBUG("debug") }
 
 /**
+ * Two-layer protocol chain: one tunnel dialled through another.
+ * OFF keeps a single tunnel, same as every build before it.
+ */
+enum class ChainMode { OFF, TOR_OVER_WARP, WARP_OVER_TOR }
+
+/**
+ * ClientHello shape offered to a gateway. OFF leaves it as the engine
+ * sends it today; the rest only touch GREASE, extension order and curves.
+ */
+enum class TlsFp { OFF, CHROME, FIREFOX, SAFARI, RANDOM }
+
+/**
  * User-tunable connection profile. Knows how to turn itself into the engine's
  * CLI arguments and environment variables.
  */
@@ -274,6 +286,22 @@ data class ConnectionProfile(
      * the UI, so this stays on by default.
      */
     val autoReprovision: Boolean = false,
+
+    // ---- Added later (stealth / chain) ----
+
+    val chainMode: ChainMode = ChainMode.OFF,
+    val tlsFp: TlsFp = TlsFp.OFF,
+    /** Fetch real pages through the tunnel while the device is idle. */
+    val decoyTraffic: Boolean = false,
+    /** Local cover listener port. 0 = off. */
+    val coverPort: Int = 0,
+    /** Per-network app firewall; off by default. */
+    val netPolicy: Boolean = false,
+    val netWifiBlock: List<String> = emptyList(),
+    val netMobileBlock: List<String> = emptyList(),
+    val netRoamingBlock: List<String> = emptyList(),
+    /** Name of the scene last applied, blank when none. */
+    val scene: String = "",
 
 ) {
     /** True when a Zero Trust organization is configured and usable. */
@@ -513,6 +541,7 @@ data class ConnectionProfile(
         if (noProfileRetry) put("SOILDTUNNEL_WG_NO_PROFILE_RETRY", "1")
         sanitizedTlsGroups()?.let { put("SOILDTUNNEL_TLS_GROUPS", it) }
         customSni.trim().takeIf { it.isNotEmpty() }?.let { put("SOILDTUNNEL_SNI", it) }
+        if (tlsFp != TlsFp.OFF) put("SOILDTUNNEL_TLS_FP", tlsFp.name.lowercase())
         if (coreLogLevel != CoreLogLevel.WARN) put("SOILDTUNNEL_LOG_LEVEL", coreLogLevel.raw)
 
         //

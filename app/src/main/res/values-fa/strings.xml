@@ -397,6 +397,106 @@
     <string name="tuic_insecure_desc">گواهی سرور را بدون تأیید قبول کن. فقط برای سرورهای self-signed — اتصال را شکننده‌تر می‌کند.</string>
     <string name="tuic_note">TUIC روی QUIC کار می‌کند و به سروری نیاز دارد که خودت داشته باشی. هم TCP و هم UDP را حمل می‌کند، و مقصد UDP می‌تواند دامنه بماند تا خروجی خودش resolve کند و DNS تو لو نرود.</string>
 
+    <!-- Protocol chain + TLS client fingerprint -->
+    <string name="section_chain">زنجیرهٔ پروتکل</string>
+    <string name="chain_label">زنجیره</string>
+    <string name="chain_off">خاموش (تک‌پرش)</string>
+    <string name="chain_tor_over_warp">تور روی WARP</string>
+    <string name="chain_warp_over_tor">WARP روی تور</string>
+    <string name="chain_hint_off">فقط یک پرش — دقیقاً همان‌طور که این اپ همیشه وصل می‌شد.</string>
+    <string name="chain_hint_tor_over_warp">اول تونل بالا می‌آید و تور سوار آن می‌شود. تور اینجا عمداً مستقیم وصل می‌شود؛ چون بریج خودش به شبکه می‌زند و بی‌صدا از کنار تونل رد می‌شود.</string>
+    <string name="chain_hint_warp_over_tor">تور حلقهٔ بیرونی است و تونل دروازه‌اش را از مسیر آن می‌زند. MASQUE روی H2 لازم دارد — پروتکل‌های UDP‌محور از پروکسی تور رد نمی‌شوند.</string>
+    <string name="chain_restart_note">زنجیره را خاموش کن و دوباره وصل شو تا برگردی به تک‌پرش.</string>
+    <string name="err_chain_proxy">زنجیرهٔ پروتکل به VPN سیستم نیاز دارد، برای همین در حالت پروکسی در دسترس نیست.</string>
+    <string name="err_chain_tor_over_tor">تور را نمی‌شود روی خود تور سوار کرد.</string>
+    <string name="err_chain_udp">این پروتکل با UDP حرف می‌زند و تور آن را حمل نمی‌کند. برای زنجیره MASQUE یا SOILD را انتخاب کن.</string>
+    <string name="tls_fp_label">شکل ClientHello</string>
+    <string name="tls_fp_off">خاموش (پیش‌فرض)</string>
+    <string name="tls_fp_chrome">شبیه Chrome</string>
+    <string name="tls_fp_firefox">شبیه Firefox</string>
+    <string name="tls_fp_safari">شبیه Safari</string>
+    <string name="tls_fp_random">هر بار یکی از همین‌ها</string>
+    <string name="tls_fp_desc">لیست رمزها، گروه‌های کلید و GREASE در دست‌داد اول را جوری می‌چیند که شبیه مرورگر دسکتاپ دیده شود، نه شبیه یک کتابخانه. پیش‌فرض خاموش است؛ با خاموش بودن حتی یک بایت از دست‌داد عوض نمی‌شود.</string>
+
+    <!-- Stealth extras + per-network firewall -->
+    <string name="section_stealth">استتار و فایروال</string>
+    <string name="decoy_title">ترافیک پوششی</string>
+    <string name="decoy_desc">موقعی که تونل بیکار است چند صفحهٔ کوچک از آن رد می‌کند تا خط هیچ‌وقت بی‌حرکت به نظر نرسد. برای هر نشست سقف دارد تا تبدیل به قبض اینترنت نشود.</string>
+    <string name="net_policy_title">فایروال بر اساس شبکه</string>
+    <string name="net_policy_desc">برای وای‌فای، دیتای موبایل و رومینگ، لیست جداگانه‌ای از برنامه‌ها را بلاک کن.</string>
+    <string name="net_policy_helper">هر دکمه لیست همان نوع اتصال را باز می‌کند. برنامه‌های بلاک‌شده داخل تونل می‌مانند و هیچ چیزی از آن‌ها رد نمی‌شود.</string>
+    <string name="net_list_wifi">وای‌فای</string>
+    <string name="net_list_mobile">موبایل</string>
+    <string name="net_list_roaming">رومینگ</string>
+    <string name="cover_port_label">پورت شنود پوششی</string>
+    <string name="cover_port_hint">۰ = خاموش</string>
+    <string name="cover_port_desc">تا وقتی پورتی پر باشد، هرچیزی که به آن بزند به‌جای پورت بسته، یک صفحهٔ وب ساده می‌بیند.</string>
+
+    <!-- One-tap scenes -->
+    <string name="scene_title">صحنه‌ها</string>
+    <string name="scene_balanced">متعادل</string>
+    <string name="scene_balanced_desc">گزینه‌ها برمی‌گردند به حالتی که نصب تازه با آن شروع می‌شود.</string>
+    <string name="scene_stealth">استتار</string>
+    <string name="scene_stealth_desc">نویز سنگین، تکه‌تکه کردن دست‌داد و هِلوی شبیه مرورگر؛ برای شبکه‌هایی که بازرسی و قطع می‌کنند.</string>
+    <string name="scene_speed">سرعت</string>
+    <string name="scene_speed_desc">بدون لایهٔ اضافه و با اسکن سریع؛ برای شبکه‌هایی که مقاومت نمی‌کنند.</string>
+    <string name="scene_doublehop">دوپرشی</string>
+    <string name="scene_doublehop_desc">تور سوار بر تونل، و ورود از مسیر خود تونل.</string>
+    <string name="scene_toronly">فقط تور</string>
+    <string name="scene_toronly_desc">در مسیر چیزی جز تور نیست.</string>
+
+    <!-- Leak test lab -->
+    <string name="leak_title">آزمایش نشت</string>
+    <string name="leak_need_connect">اول وصل شو</string>
+    <string name="leak_running">در حال بررسی…</string>
+    <string name="leak_summary">%1$d از %2$d رد شد</string>
+    <string name="leak_run">اجرای آزمایش نشت</string>
+    <string name="leak_run_again">اجرای دوباره</string>
+    <string name="leak_exit_ok">سایت‌ها از طریق تونل %1$s را می‌بینند، در حالی که بدون تونل %2$s دیده می‌شوی.</string>
+    <string name="leak_exit_same">سایت‌ها %1$s را می‌بینند — همان نشانی‌ای که بدون تونل هم دیده می‌شد.</string>
+    <string name="leak_exit_unknown">یکی از دو نشانی خوانده نشد، پس این اجرا چیزی را ثابت نمی‌کند.</string>
+    <string name="leak_dns_ok">تونل خودش یک نام را resolve کرد و به آن رسید.</string>
+    <string name="leak_dns_fail">تونل نتوانست نامی را resolve کند — DNS همراهش نیست.</string>
+    <string name="leak_hijack_ok">اسمی که وجود ندارد، همچنان resolve نمی‌شود.</string>
+    <string name="leak_hijack_warn">%1$s وجود ندارد، اما چیزی آن را باز کرد — resolver این شبکه دنبال‌نیافت‌ها را بازنویسی می‌کند.</string>
+    <string name="leak_v6_none">این شبکه بیرون از تونل IPv6 کارآمدی ندارد.</string>
+    <string name="leak_v6_v4">اینجا IPv6 کار می‌کند و تونل روی فقط IPv4 تنظیم است.</string>
+    <string name="leak_v6_ok">اینجا IPv6 کار می‌کند و تونل آن را هم می‌برد.</string>
+    <string name="leak_v6_risk">IPv6 بیرون از تونل کار می‌کند و محافظت نشت خاموش است — مسیر v6 می‌تواند از کنار تونل رد شود.</string>
+
+    <!-- DPI probe -->
+    <string name="dpi_title">کاوشگر DPI</string>
+    <string name="dpi_running">در حال کاوش…</string>
+    <string name="dpi_run">کاوش این شبکه</string>
+    <string name="dpi_run_again">کاوش دوباره</string>
+    <string name="dpi_target_control">کنترل</string>
+    <string name="dpi_target_microsoft">مایکروسافت</string>
+    <string name="dpi_target_apple">اپل</string>
+    <string name="dpi_target_wikipedia">ویکی‌پدیا</string>
+    <string name="dpi_target_github">گیت‌هاب</string>
+    <string name="dpi_verdict_open">باز</string>
+    <string name="dpi_verdict_reset">قطع</string>
+    <string name="dpi_verdict_timeout">بی‌پاسخ</string>
+    <string name="dpi_verdict_refused">رد شده</string>
+    <string name="dpi_verdict_unreachable">دست‌نیافتنی</string>
+    <string name="dpi_open_ms">%1$d میلی‌ثانیه</string>
+    <string name="dpi_udp_ok">DNS ساده روی UDP/53 اینجا هنوز جواب می‌گیرد.</string>
+    <string name="dpi_udp_fail">DNS ساده روی UDP/53 اینجا هیچ جوابی نمی‌گیرد.</string>
+    <string name="dpi_class">قضاوت: %1$s</string>
+    <string name="dpi_class_open">باز</string>
+    <string name="dpi_class_sni">فیلتر SNI</string>
+    <string name="dpi_class_udp">کند شدن UDP</string>
+    <string name="dpi_class_hostile">خصمانه</string>
+
+    <!-- Live traffic map -->
+    <string name="traffic_title">ترافیک زنده</string>
+    <string name="traffic_down">↓ %1$s</string>
+    <string name="traffic_up">↑ %1$s</string>
+    <string name="traffic_idle">وصل شو تا مسیر و چیزی که رویش حرکت می‌کند را ببینی.</string>
+    <string name="traffic_route">%1$s → %2$s</string>
+
+    <string name="drawer_section_lab">آزمایشگاه</string>
+
     <!-- Theme -->
     <string name="theme_title">تم</string>
     <string name="theme_system">پیش‌فرض سیستم</string>

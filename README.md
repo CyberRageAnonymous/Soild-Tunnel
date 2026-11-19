@@ -82,6 +82,61 @@ Choose which apps go through the VPN and which don't:
 | **IPv6 Leak Protection** | Routes IPv6 through tunnel (on by default) |
 | **No Logs** | Zero tracking, zero analytics, zero telemetry |
 
+### Protocol Chains
+
+Two hops instead of one, chosen from the Protocol chain box. Off by default,
+so an untouched profile behaves exactly as it always has:
+
+| Chain | Path |
+|-------|------|
+| **Tor over WARP** | The engine comes up first and Tor enters through its local SOCKS5. Tor always enters directly here — a bridge would dial the network itself and skip the tunnel. The TUN then rides Tor. |
+| **WARP over Tor** | Tor is the outer hop: the engine reaches its gateway through Tor, so the TUN keeps riding the engine as usual. Only transports that run over TCP qualify, so MASQUE is forced onto HTTP/2. |
+
+Both directions survive a dead hop on their own: if Tor dies while the
+engine looks healthy, Tor is bootstrapped again and the tunnel is given a
+recovery window before anything else is judged.
+
+### Client Fingerprint
+
+The shape of the first ClientHello (cipher list, key groups, GREASE,
+extension order) can be pinned to look like Chrome, Firefox or Safari, or
+reshaped at random on every connect. It is applied to the MASQUE/HTTP2,
+SOILD and TUIC handshakes. **Off by default** — with it off, not one byte
+of the handshake changes.
+
+### Scenes
+
+One tap rewrites the knobs that shape a connection — never the server, the
+account or the app lists — so applying one is always reversible by applying
+another: **Balanced**, **Stealth**, **Speed**, **Double hop** and
+**Tor only**.
+
+### Leak Test Lab
+
+Four checks, run on demand from the drawer, that answer one question: is
+anything still reaching the network without the tunnel?
+
+- **Exit IP** — the address a site sees through the tunnel vs. the one it
+  would see without it
+- **Remote DNS** — the tunnel resolves a name itself
+- **Resolver hijack** — a name that does not exist must stay unresolved
+- **IPv6** — whether v6 has a physical path around the tunnel right now
+
+Alongside it, the **DPI probe** opens a handful of real TLS handshakes with
+different SNI names, outside the tunnel, and reports what this network
+lets through (open / reset / no answer) plus whether plain UDP/53 DNS
+still works.
+
+### Stealth & Firewall
+
+| Feature | Description |
+|---------|-------------|
+| **Decoy traffic** | Small pages pulled through an idle tunnel at a jittered rate, capped per session |
+| **Cover listener** | A local port that answers every request with a plain static web page instead of staying closed |
+| **Firewall per network** | Separate app block lists for Wi-Fi, mobile data and roaming |
+
+Everything in this box is off out of the box.
+
 ### Smart Reconnection
 
 The engine monitors the tunnel with a watchdog that probes end-to-end through
@@ -99,6 +154,8 @@ The connection card shows real-time:
 - Upload and download speeds
 - Active protocol and endpoint
 - Live latency badge (color-coded)
+- A world map with the route drawn on it, with packet dots moving at the
+  measured throughput
 
 ### Server Selection
 
@@ -269,6 +326,19 @@ The release build is fully automated via
 | Strict Kill Switch | Off | Stay locked after manual disconnect |
 | IPv6 Leak Protection | On | Route IPv6 through tunnel |
 | Auto Reprovision | Off | Re-register identity when refused |
+
+### Protocol Chain
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Chain | Off | Tor over WARP, or WARP over Tor (two hops) |
+| ClientHello shape | Off | Chrome / Firefox / Safari / random handshake shape |
+
+### Stealth & Firewall
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Decoy traffic | Off | Bounded background fetches through an idle tunnel |
+| Firewall per network | Off | Per-uplink app block lists (Wi-Fi / mobile / roaming) |
+| Cover listener port | 0 (off) | Local port that serves a static page to anything that knocks |
 
 ### Engine Tuning
 | Setting | Default | Description |

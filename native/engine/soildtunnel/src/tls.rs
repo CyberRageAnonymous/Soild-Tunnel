@@ -38,6 +38,64 @@ extern "C" {
 
 const CHROME_GROUPS: &str = "P-256:X25519:P-384";
 
+const CHROME_CIPHERS: &str = "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:\
+TLS_CHACHA20_POLY1305_SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:\
+ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:\
+ECDHE-RSA-CHACHA20-POLY1305";
+
+const FIREFOX_CIPHERS: &str = "TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256:\
+TLS_AES_256_GCM_SHA384:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:\
+ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-CHACHA20-POLY1305:\
+ECDHE-RSA-AES256-GCM-SHA384";
+
+const SAFARI_CIPHERS: &str = "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:\
+TLS_CHACHA20_POLY1305_SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:\
+ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384";
+
+/// Reshapes the ClientHello according to `SOILDTUNNEL_TLS_FP`.
+///
+/// The variable is only set when the user picks a shape, and an unrecognised
+/// value returns without touching the context, so every handshake keeps the
+/// exact bytes it has always sent unless someone asked for something else.
+pub fn apply_fingerprint(builder: &mut SslContextBuilder) {
+    let raw = match std::env::var("SOILDTUNNEL_TLS_FP") {
+        Ok(value) => value,
+        Err(_) => return,
+    };
+    let wanted = raw.trim().to_ascii_lowercase();
+    let shape = match wanted.as_str() {
+        "chrome" | "firefox" | "safari" => wanted.as_str(),
+        "random" => {
+            const ALL: [&str; 3] = ["chrome", "firefox", "safari"];
+            ALL[rand::random::<usize>() % ALL.len()]
+        }
+        _ => return,
+    };
+
+    let (grease, groups, ciphers) = match shape {
+        "firefox" => (true, "X25519:P-256:P-384", FIREFOX_CIPHERS),
+        "safari" => (false, "X25519:P-256:P-384", SAFARI_CIPHERS),
+        _ => (true, CHROME_GROUPS, CHROME_CIPHERS),
+    };
+
+    builder.set_grease_enabled(grease);
+    builder.set_permute_extensions(true);
+
+    // A group list typed into settings keeps its own order.
+    let pinned = std::env::var("SOILDTUNNEL_TLS_GROUPS")
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+    if !pinned {
+        if let Err(error) = builder.set_curves_list(groups) {
+            log::debug!("tls fingerprint groups skipped: {error}");
+        }
+    }
+    if let Err(error) = builder.set_cipher_list(ciphers) {
+        log::debug!("tls fingerprint ciphers skipped: {error}");
+    }
+    log::info!("[+] ClientHello shaped as {shape}");
+}
+
 pub struct TlsParams<'a> {
     pub cert_pem: &'a [u8],
     pub key_pem: &'a [u8],
@@ -213,6 +271,8 @@ pub fn build_config(params: &TlsParams) -> Result<quiche::Config> {
     builder
         .set_alpn_protos(&alpn)
         .map_err(|e| SoildTunnelError::Tls(e.to_string()))?;
+
+    apply_fingerprint(&mut builder);
 
     let cert = X509::from_pem(params.cert_pem).map_err(|e| SoildTunnelError::Tls(e.to_string()))?;
     let key = PKey::private_key_from_pem(params.key_pem)

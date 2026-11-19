@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import com.soildtunnel.app.model.ChainMode
 import com.soildtunnel.app.model.ConnectionProfile
 import com.soildtunnel.app.model.CoreLogLevel
 import com.soildtunnel.app.model.DnsMode
@@ -20,6 +21,7 @@ import com.soildtunnel.app.model.ScanMode
 import com.soildtunnel.app.model.SoildMode
 import com.soildtunnel.app.model.SplitMode
 import com.soildtunnel.app.model.TeamAuth
+import com.soildtunnel.app.model.TlsFp
 import com.soildtunnel.app.model.TorTransport
 
 private val Context.dataStore by preferencesDataStore(name = "soildtunnel_profile")
@@ -89,6 +91,16 @@ class ProfileStore(private val context: Context) {
         val tuicSni = stringPreferencesKey("tuicSni")
         val tuicCc = stringPreferencesKey("tuicCc")
         val tuicInsecure = booleanPreferencesKey("tuicInsecure")
+        // Added later (stealth / chain)
+        val chain = stringPreferencesKey("chain")
+        val tlsFp = stringPreferencesKey("tlsFp")
+        val decoy = booleanPreferencesKey("decoy")
+        val coverPort = intPreferencesKey("coverPort")
+        val netPolicy = booleanPreferencesKey("netPolicy")
+        val netWifi = stringPreferencesKey("netWifi")
+        val netMobile = stringPreferencesKey("netMobile")
+        val netRoaming = stringPreferencesKey("netRoaming")
+        val scene = stringPreferencesKey("scene")
     }
 
     /**
@@ -179,6 +191,17 @@ class ProfileStore(private val context: Context) {
             tuicSni = prefs[Keys.tuicSni] ?: "",
             tuicCc = prefs[Keys.tuicCc] ?: "",
             tuicInsecure = prefs[Keys.tuicInsecure] ?: false,
+            chainMode = prefs[Keys.chain]
+                ?.let { runCatching { ChainMode.valueOf(it) }.getOrNull() } ?: ChainMode.OFF,
+            tlsFp = prefs[Keys.tlsFp]
+                ?.let { runCatching { TlsFp.valueOf(it) }.getOrNull() } ?: TlsFp.OFF,
+            decoyTraffic = prefs[Keys.decoy] ?: false,
+            coverPort = prefs[Keys.coverPort] ?: 0,
+            netPolicy = prefs[Keys.netPolicy] ?: false,
+            netWifiBlock = splitList(prefs[Keys.netWifi]),
+            netMobileBlock = splitList(prefs[Keys.netMobile]),
+            netRoamingBlock = splitList(prefs[Keys.netRoaming]),
+            scene = prefs[Keys.scene] ?: "",
         )
     }
 
@@ -242,6 +265,15 @@ class ProfileStore(private val context: Context) {
             prefs[Keys.tuicSni] = profile.tuicSni
             prefs[Keys.tuicCc] = profile.tuicCc
             prefs[Keys.tuicInsecure] = profile.tuicInsecure
+            prefs[Keys.chain] = profile.chainMode.name
+            prefs[Keys.tlsFp] = profile.tlsFp.name
+            prefs[Keys.decoy] = profile.decoyTraffic
+            prefs[Keys.coverPort] = profile.coverPort
+            prefs[Keys.netPolicy] = profile.netPolicy
+            prefs[Keys.netWifi] = profile.netWifiBlock.joinToString(",")
+            prefs[Keys.netMobile] = profile.netMobileBlock.joinToString(",")
+            prefs[Keys.netRoaming] = profile.netRoamingBlock.joinToString(",")
+            prefs[Keys.scene] = profile.scene
         }
         // Secrets go to the Keystore-sealed store, never to the prefs file.
         secrets.write(SecretStore.ACCESS_SECRET, profile.accessClientSecret)
@@ -252,4 +284,7 @@ class ProfileStore(private val context: Context) {
 
     /** Wipes the sealed Zero Trust secrets (used by "Reset settings"). */
     fun clearSecrets() = secrets.clear()
+
+    private fun splitList(raw: String?): List<String> =
+        raw?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
 }

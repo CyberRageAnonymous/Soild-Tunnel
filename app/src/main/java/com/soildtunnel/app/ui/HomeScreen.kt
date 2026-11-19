@@ -35,6 +35,7 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.PieChart
+import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Send
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Tune
@@ -95,9 +96,13 @@ import com.soildtunnel.app.ui.components.ButtonMode
 import com.soildtunnel.app.ui.components.ConnectButton
 import com.soildtunnel.app.ui.components.ConnectionCard
 import com.soildtunnel.app.ui.components.DiagnosticsPanel
+import com.soildtunnel.app.ui.components.DpiProbePanel
 import com.soildtunnel.app.ui.components.LanguagePanel
+import com.soildtunnel.app.ui.components.LeakLabPanel
+import com.soildtunnel.app.ui.components.ScenePanel
 import com.soildtunnel.app.ui.components.ThemePanel
 import com.soildtunnel.app.ui.components.TorExitSheet
+import com.soildtunnel.app.ui.components.TrafficMapCard
 import com.soildtunnel.app.ui.components.UsagePanel
 import com.soildtunnel.app.ui.components.ServerPickerSheet
 import com.soildtunnel.app.ui.components.SpeedTestPanel
@@ -154,6 +159,9 @@ fun HomeScreen(
 
     // Advanced settings, reachable directly from the home screen (top-right).
     var showAdvancedSheet by remember { mutableStateOf(false) }
+
+    // Which box of the lab shelf is open — one at a time, like the hub.
+    var labPanel by remember { mutableStateOf<String?>(null) }
 
     // The server console.
     var showServerSheet by remember { mutableStateOf(false) }
@@ -291,6 +299,36 @@ fun HomeScreen(
                             profile = profile,
                             onProfileChange = onProfileChange,
                         )
+
+                        DrawerDivider()
+
+                        DrawerSectionHeader(
+                            text = stringResource(R.string.drawer_section_lab),
+                            icon = Icons.Rounded.Science,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        ScenePanel(
+                            profile = profile,
+                            onProfileChange = onProfileChange,
+                            expanded = labPanel == "scenes",
+                            onToggle = {
+                                labPanel = if (labPanel == "scenes") null else "scenes"
+                            },
+                            enabled = settingsEnabled,
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        LeakLabPanel(
+                            state = state,
+                            profile = profile,
+                            expanded = labPanel == "leak",
+                            onToggle = { labPanel = if (labPanel == "leak") null else "leak" },
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        DpiProbePanel(
+                            expanded = labPanel == "dpi",
+                            onToggle = { labPanel = if (labPanel == "dpi") null else "dpi" },
+                        )
+                        Spacer(Modifier.height(16.dp))
 
                         DrawerDivider()
 
@@ -465,6 +503,10 @@ fun HomeScreen(
                     socksPort = if (profile.protocol == Protocol.TOR) TorManager.socksPort
                     else TunnelConfig.SOCKS_PORT,
                 )
+
+                Spacer(Modifier.height(20.dp))
+
+                TrafficMapCard(connected = state.isConnected)
 
                 Spacer(Modifier.height(if (dockedButton) 140.dp else 16.dp))
             }
